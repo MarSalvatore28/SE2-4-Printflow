@@ -82,4 +82,9 @@ app.use('/api/staging', stagingRoutes); // [C-F2]
 const reportemesRoutes = require('@routes/reportemes/reportemes.routes'); // [C-F3]
 app.use('/api/reportes', reportemesRoutes); // [C-F3]
 
+// Ruta que no existe: responde JSON (el frontend siempre espera JSON)
+app.use((req, res) => {
+  res.status(404).json({ success: false, message: `Ruta no encontrada: ${req.method} ${req.originalUrl}` });
+});
+
 module.exports = app;
