@@ -1,0 +1,109 @@
+{
+  "_nota": "Datos 100 % ficticios para la demo. No corresponden a clientes, máquinas ni IP reales de DOX.",
+  "periodo_base": "2026-01",
+  "buzon_destino": "contadores@printflow.example",
+  "clientes": [
+    {
+      "codigo": "horizonte",
+      "nombre": "Colegio Horizonte (demo)",
+      "ruc": "0900000001001",
+      "razon_social": "Unidad Educativa Horizonte Demo",
+      "remitente": "reportes@horizonte.example",
+      "contrato": {
+        "fecha_inicio": "2026-01-01",
+        "fecha_fin": null,
+        "impresiones_bn_incluidas": 5000,
+        "impresiones_color_incluidas": 500,
+        "costo_impresion_bn": 0.02,
+        "costo_impresion_color": 0.1,
+        "costo_excedente_impresion_bn": 0.025,
+        "costo_excedente_impresion_color": 0.12,
+        "facturacion_de_impresora": "Diferenciar B/N de Color"
+      },
+      "areas": ["Secretaría", "Sala de profesores"],
+      "maquinas": [
+        {
+          "serie": "SIMA0001",
+          "modelo": "Multifuncional láser color A4 (demo)",
+          "tipo": "Color",
+          "formato": "csv-cuentas",
+          "area": "Secretaría",
+          "ip": "10.20.1.11",
+          "contador_inicial": { "impresion_bn": 120000, "impresion_color": 15000, "copia_bn": 30000, "copia_color": 2000 },
+          "consumo_mensual": { "impresion_bn": 3200, "impresion_color": 600, "copia_bn": 900, "copia_color": 80 },
+          "usuarios": [
+            { "cuenta": "001", "nombre": "Secretaría", "peso": 5 },
+            { "cuenta": "002", "nombre": "Rectorado", "peso": 3 },
+            { "cuenta": "003", "nombre": "Inspección", "peso": 2 }
+          ]
+        },
+        {
+          "serie": "SIMB0002",
+          "modelo": "Impresora láser B/N (demo)",
+          "tipo": "BN",
+          "formato": "texto-contadores",
+          "area": "Sala de profesores",
+          "ip": "10.20.1.12",
+          "contador_inicial": { "impresion_bn": 250000, "impresion_color": 0, "copia_bn": 40000, "copia_color": 0 },
+          "consumo_mensual": { "impresion_bn": 7800, "impresion_color": 0, "copia_bn": 1500, "copia_color": 0 }
+        }
+      ]
+    },
+    {
+      "codigo": "andina",
+      "nombre": "Constructora Andina (demo)",
+      "ruc": "1700000002001",
+      "razon_social": "Constructora Andina Demo S.A.",
+      "remitente": "impresoras@andina.example",
+      "contrato": {
+        "fecha_inicio": "2026-01-01",
+        "fecha_fin": "2026-12-31",
+        "impresiones_bn_incluidas": 8000,
+        "impresiones_color_incluidas": 1000,
+        "costo_impresion_bn": 0.018,
+        "costo_impresion_color": 0.09,
+        "costo_excedente_impresion_bn": 0.022,
+        "costo_excedente_impresion_color": 0.11,
+        "facturacion_de_impresora": "Diferenciar B/N de Color"
+      },
+      "areas": ["Planos", "Contabilidad", "Bodega"],
+      "maquinas": [
+        {
+          "serie": "SIMC0003",
+          "modelo": "Plotter color A0 (demo)",
+          "tipo": "Color",
+          "formato": "xml-estado",
+          "area": "Planos",
+          "ip": "10.30.2.21",
+          "contador_inicial": { "impresion_bn": 8000, "impresion_color": 22000, "copia_bn": 0, "copia_color": 0 },
+          "consumo_mensual": { "impresion_bn": 400, "impresion_color": 1800, "copia_bn": 0, "copia_color": 0 }
+        },
+        {
+          "serie": "SIMD0004",
+          "modelo": "Multifuncional láser color A3 (demo)",
+          "tipo": "Color",
+          "formato": "csv-cuentas",
+          "area": "Contabilidad",
+          "ip": "10.30.2.22",
+          "contador_inicial": { "impresion_bn": 98000, "impresion_color": 11000, "copia_bn": 25000, "copia_color": 1500 },
+          "consumo_mensual": { "impresion_bn": 5100, "impresion_color": 750, "copia_bn": 1300, "copia_color": 120 },
+          "usuarios": [
+            { "cuenta": "100", "nombre": "Contabilidad", "peso": 6 },
+            { "cuenta": "101", "nombre": "Gerencia", "peso": 3 },
+            { "cuenta": "102", "nombre": "Recursos humanos", "peso": 2 }
+          ]
+        },
+        {
+          "serie": "SIME0005",
+          "modelo": "Impresora láser B/N (demo)",
+          "tipo": "BN",
+          "formato": "texto-contadores",
+          "area": "Bodega",
+          "ip": "10.30.2.23",
+          "contador_inicial": { "impresion_bn": 61000, "impresion_color": 0, "copia_bn": 9000, "copia_color": 0 },
+          "consumo_mensual": { "impresion_bn": 2100, "impresion_color": 0, "copia_bn": 300, "copia_color": 0 }
+        }
+      ]
+    }
+  ]
+}

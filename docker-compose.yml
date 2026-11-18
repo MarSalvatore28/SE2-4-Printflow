@@ -78,6 +78,24 @@ services:
     ports:
       - "127.0.0.1:5678:5678"
 
+  # Simulador del flujo de correo (hace lo que hacía el n8n de DOX, con datos ficticios).
+  # No arranca con `up`: se usa bajo demanda. Ver simulador/README.md
+  #   docker compose run --rm simulador demo.js
+  simulador:
+    image: node:22-slim
+    profiles: ["simulador"]
+    working_dir: /simulador
+    entrypoint: ["node"]
+    command: ["procesar-buzon.js"]
+    environment:
+      API_URL: http://api:9000
+      INGESTA_TOKEN: ${INGESTA_TOKEN:-}
+      TZ: America/Guayaquil
+    volumes:
+      - ./simulador:/simulador
+    depends_on:
+      - api
+
 volumes:
   db_data:
   n8n_data:
