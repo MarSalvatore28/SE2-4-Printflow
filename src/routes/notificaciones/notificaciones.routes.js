@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { requireRole } = require('@middlewares/role.middleware');
 
 const {
   listarController,
@@ -143,7 +144,7 @@ const {
  *       400: { description: Datos inválidos, tipo o lote inexistente }
  */
 router.get('/', listarController);
-router.post('/', crearController);
+router.post('/', requireRole('admin', 'operador'), crearController);
 
 /**
  * @swagger
@@ -225,7 +226,7 @@ router.get('/estadisticas', estadisticasController);
  */
 router.patch('/marcar-varias-leidas', marcarVariasLeidasController);
 router.patch('/marcar-todas-leidas', marcarTodasLeidasController);
-router.delete('/limpiar-antiguas', limpiarAntiguasController);
+router.delete('/limpiar-antiguas', requireRole('admin'), limpiarAntiguasController);
 
 /**
  * @swagger
@@ -333,8 +334,8 @@ router.delete('/limpiar-antiguas', limpiarAntiguasController);
  */
 router.get('/lotes', listarLotesController);
 router.get('/lotes/:loteId', obtenerLoteController);
-router.post('/lotes/:loteId/aprobar', aprobarLoteController);
-router.post('/lotes/:loteId/rechazar', rechazarLoteController);
+router.post('/lotes/:loteId/aprobar', requireRole('admin', 'operador'), aprobarLoteController);
+router.post('/lotes/:loteId/rechazar', requireRole('admin', 'operador'), rechazarLoteController);
 
 /**
  * @swagger
@@ -441,9 +442,9 @@ router.get('/lote/:loteId', listarPorLoteController);
  *       409: { description: El lote ya estaba aprobado o rechazado }
  */
 router.get('/:id', obtenerController);
-router.delete('/:id', eliminarController);
+router.delete('/:id', requireRole('admin', 'operador'), eliminarController);
 router.patch('/:id/marcar-leida', marcarLeidaController);
-router.post('/:id/aprobar', aprobarPorNotificacionController);
-router.post('/:id/rechazar', rechazarPorNotificacionController);
+router.post('/:id/aprobar', requireRole('admin', 'operador'), aprobarPorNotificacionController);
+router.post('/:id/rechazar', requireRole('admin', 'operador'), rechazarPorNotificacionController);
 
 module.exports = router;

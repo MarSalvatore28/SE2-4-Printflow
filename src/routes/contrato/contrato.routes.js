@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { requireRole } = require('@middlewares/role.middleware');
 const {
     fetchAllContratos,
     getContratoByIdController,
@@ -122,7 +123,7 @@ router.get('/cliente/:id', getContratosController);
  *       201:
  *         description: Contrato creado
  */
-router.post('/', (req, res, next) => {
+router.post('/', requireRole('admin'), (req, res, next) => {
     req.params.id = req.body.cliente_id;
     next();
 }, crearContratoController);
@@ -149,7 +150,7 @@ router.post('/', (req, res, next) => {
  *       200:
  *         description: Contrato actualizado
  */
-router.put('/:id', actualizarContratoController);
+router.put('/:id', requireRole('admin'), actualizarContratoController);
 
 /**
  * @swagger
@@ -167,6 +168,6 @@ router.put('/:id', actualizarContratoController);
  *       200:
  *         description: Contrato desactivado
  */
-router.delete('/:id', desactivarContratoController);
+router.delete('/:id', requireRole('admin'), desactivarContratoController);
 
 module.exports = router;

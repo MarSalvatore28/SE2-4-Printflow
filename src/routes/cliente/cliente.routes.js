@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { requireRole } = require('@middlewares/role.middleware');
 
 const {
   fetchAllClientes,
@@ -155,7 +156,7 @@ router.get('/:id', getClienteByIdController);
  *       201:
  *         description: Cliente creado exitosamente
  */
-router.post('/', crearClienteController);
+router.post('/', requireRole('admin'), crearClienteController);
 
 /**
  * @swagger
@@ -179,7 +180,7 @@ router.post('/', crearClienteController);
  *       200:
  *         description: Cliente actualizado
  */
-router.put('/:id', actualizarClienteController);
+router.put('/:id', requireRole('admin'), actualizarClienteController);
 
 /**
  * @swagger
@@ -197,7 +198,7 @@ router.put('/:id', actualizarClienteController);
  *       200:
  *         description: Cliente activado
  */
-router.patch('/:id/activar', activarClienteController);
+router.patch('/:id/activar', requireRole('admin'), activarClienteController);
 
 /**
  * @swagger
@@ -215,7 +216,7 @@ router.patch('/:id/activar', activarClienteController);
  *       200:
  *         description: Cliente desactivado
  */
-router.delete('/:id', eliminarClienteController);
+router.delete('/:id', requireRole('admin'), eliminarClienteController);
 
 /**
  * @swagger
