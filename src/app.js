@@ -67,8 +67,8 @@ const areaRoutes = require('@routes/area/area.routes'); // [B-F1]
 app.use('/api/clientes', clienteRoutes); // [B-F1]
 app.use('/api/contratos', contratoRoutes); // [B-F1]
 app.use('/api/areas', areaRoutes); // [B-F1]
-// const instalacionRoutes = require('@routes/instalacion/instalacion.routes'); // [C-F1]
-// app.use('/api/instalacion', instalacionRoutes); // [C-F1]
+const instalacionRoutes = require('@routes/instalacion/instalacion.routes'); // [C-F1]
+app.use('/api/instalacion', instalacionRoutes); // [C-F1]
 
 // --- Fase 2
 // const notificacionesRoutes = require('@routes/notificaciones/notificaciones.routes'); // [A-F2]
