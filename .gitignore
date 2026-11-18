@@ -8,3 +8,7 @@ node_modules
 .DS_Store
 coverage
 backups/
+
+# Correos generados por el simulador (se regeneran con generar-correos.js)
+simulador/buzon/**/*.eml
+simulador/buzon/**/*.motivo.txt
