@@ -8,6 +8,26 @@ const getPeriodoAnterior = (periodoActual) => {
   return `${prevYear}-${prevMonth}`;
 };
 
+// Asignación de la máquina EN EL PERÍODO del reporte, no solo la vigente hoy: así un mes ya
+// cerrado sigue mostrando su área y su forma de contar aunque después la máquina se haya
+// retirado o reemplazado (caja 4). Prefiere la del cliente del reporte; si ninguna cubre el
+// período, usa la vigente, como antes.
+const INSTALACION_DEL_PERIODO = `
+  LEFT JOIN LATERAL (
+    SELECT i2.id_instalacion, i2.area_id, i2.contador_acumulativo
+    FROM instalaciones i2
+    JOIN areas a2 ON a2.id_area = i2.area_id
+    WHERE i2.maquina_id = ro.maquina_id
+    ORDER BY
+      (a2.cliente_id = ro.cliente_id) DESC NULLS LAST,
+      (i2.fecha_instalacion < TO_DATE(ro.periodo || '-01', 'YYYY-MM-DD') + INTERVAL '1 month'
+        AND (i2.fecha_retiro IS NULL OR i2.fecha_retiro >= TO_DATE(ro.periodo || '-01', 'YYYY-MM-DD'))) DESC NULLS LAST,
+      (i2.activo AND i2.fecha_retiro IS NULL) DESC NULLS LAST,
+      i2.fecha_instalacion DESC,
+      i2.id_instalacion DESC
+    LIMIT 1
+  ) i ON TRUE`;
+
 const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaId = null) => {
   try {
     const periodoAnterior = getPeriodoAnterior(periodo);
@@ -16,7 +36,7 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
       WITH unique_reports AS (
         SELECT DISTINCT ro.id_reporte
         FROM reportes_oficiales ro
-        LEFT JOIN instalaciones i ON ro.maquina_id = i.maquina_id AND i.activo = true
+        ${INSTALACION_DEL_PERIODO}
         LEFT JOIN areas a ON i.area_id = a.id_area
         
         WHERE ro.cliente_id = $1
@@ -143,7 +163,7 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
       JOIN maquinas m ON ro.maquina_id = m.id_maquina
       LEFT JOIN tipos_impresion ti ON m.tipo_impresion_id = ti.id_tipo_impresion
       LEFT JOIN modelos mod ON m.modelo_id = mod.id_modelo
-      LEFT JOIN instalaciones i ON ro.maquina_id = i.maquina_id AND i.activo = true
+      ${INSTALACION_DEL_PERIODO}
       LEFT JOIN areas a ON i.area_id = a.id_area
       
       -- Reporte Anterior (General)
