@@ -16,6 +16,7 @@ app.use(cors({
   origin: allowedOrigins,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   credentials: true,
+  exposedHeaders: ['X-Nuevo-Token'],
 }));
 
 app.use(express.json());
