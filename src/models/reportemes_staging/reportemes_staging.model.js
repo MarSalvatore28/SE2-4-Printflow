@@ -571,18 +571,23 @@ const approveStagingBatch = async (loteId, periodo = null) => {
           fecha_transaccion, 
           cuenta_id,
           usuario_trabajo,
-          cnt_impresion_bn, 
+          cnt_impresion_bn,
           cnt_impresion_color,
+          cnt_copia_bn,
+          cnt_copia_color,
           print_total,
           copy_total
         )
-        SELECT 
+        SELECT
           $1,
           fecha_lectura,
           CAST(cuenta_id AS TEXT),
           nombre_cuenta,
           impresion_bn,
           impresion_color,
+          -- Las copias también se facturan: el consolidado suma cnt_copia_* por usuario
+          COALESCE(copia_bn, 0),
+          COALESCE(copia_color, 0),
           print_total,
           copy_total
         FROM reportes_detalle_staging
