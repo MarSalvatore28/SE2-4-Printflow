@@ -444,6 +444,24 @@ const getContratoById = async (contratoId) => {
   return rows[0] || null;
 };
 
+// Otro contrato ACTIVO del mismo cliente cuyas fechas se cruzan (fecha_fin NULL = sin fin).
+const getContratoSuperpuesto = async (clienteId, fechaInicio, fechaFin, excluirId = null) => {
+  const query = `
+    SELECT id_contrato
+    FROM contratos
+    WHERE cliente_id = $1
+      AND activo = true
+      AND ($4::int IS NULL OR id_contrato <> $4::int)
+      AND fecha_inicio <= COALESCE($3::date, 'infinity'::date)
+      AND COALESCE(fecha_fin, 'infinity'::date) >= $2::date
+    ORDER BY id_contrato
+    LIMIT 1
+  `;
+
+  const { rows } = await pool.query(query, [clienteId, fechaInicio, fechaFin || null, excluirId]);
+  return rows[0] || null;
+};
+
 const createContrato = async (contratoData) => {
   const {
     cliente_id,
@@ -710,6 +728,7 @@ module.exports = {
   getContratosByCliente,
   getAllContratos,
   getContratoById,
+  getContratoSuperpuesto,
   createContrato,
   updateContrato,
   desactivarContrato,

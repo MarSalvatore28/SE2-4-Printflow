@@ -21,9 +21,32 @@ const {
   getHistorialCliente,
   tieneHistorial,
   getUltimoCambioCliente,
-  getClientesConHistorialBatch
-  
+  getClientesConHistorialBatch,
+  getContratoSuperpuesto
+
 } = require('@models/cliente/cliente.model');
+
+// --- Reglas de negocio (caja 5, mejoras 3.1 y 3.3) ---
+
+const RUC_VALIDO = /^\d{13}$/;
+const PG_UNIQUE_VIOLATION = '23505';
+
+// Devuelve el mensaje de error del contrato o null si es válido.
+const validarContrato = (data) => {
+  if (!data.fecha_inicio) return 'Fecha de inicio es obligatoria';
+  if (data.fecha_fin && new Date(data.fecha_fin) < new Date(data.fecha_inicio)) {
+    return 'La fecha fin no puede ser anterior a la de inicio';
+  }
+  if (!(Number(data.costo_impresion_bn) > 0) && !(Number(data.costo_impresion_color) > 0)) {
+    return 'Al menos un costo (B/N o color) debe ser mayor que 0';
+  }
+  return null;
+};
+
+const advertenciaSuperposicion = async (clienteId, data, excluirId = null) => {
+  const otro = await getContratoSuperpuesto(clienteId, data.fecha_inicio, data.fecha_fin, excluirId);
+  return otro ? `Se superpone con el contrato #${otro.id_contrato}` : undefined;
+};
 
 const fetchAllClientes = async (req, res) => {
   try {
@@ -180,6 +203,10 @@ const crearClienteController = async (req, res) => {
       });
     }
 
+    if (!RUC_VALIDO.test(ruc)) {
+      return res.status(400).json({ success: false, message: 'El RUC debe tener 13 dígitos' });
+    }
+
     const clienteExistente = await getClienteByRuc(ruc);
     if (clienteExistente) {
       return res.status(409).json({
@@ -196,6 +223,9 @@ const crearClienteController = async (req, res) => {
       data: { id_cliente: nuevoId }
     });
   } catch (error) {
+    if (error.code === PG_UNIQUE_VIOLATION) {
+      return res.status(409).json({ success: false, message: 'Ya existe un cliente con ese RUC' });
+    }
     console.error('Error al crear cliente:', error);
     res.status(500).json({
       success: false,
@@ -209,6 +239,10 @@ const actualizarClienteController = async (req, res) => {
   try {
     const { id } = req.params;
     const { nombre, ruc, razon_social, activo } = req.body;
+
+    if (ruc !== undefined && !RUC_VALIDO.test(ruc)) {
+      return res.status(400).json({ success: false, message: 'El RUC debe tener 13 dígitos' });
+    }
 
     const affectedRows = await updateCliente(id, { nombre, ruc, razon_social, activo });
 
@@ -224,6 +258,9 @@ const actualizarClienteController = async (req, res) => {
       message: 'Cliente actualizado exitosamente'
     });
   } catch (error) {
+    if (error.code === PG_UNIQUE_VIOLATION) {
+      return res.status(409).json({ success: false, message: 'Ya existe un cliente con ese RUC' });
+    }
     console.error('Error al actualizar cliente:', error);
     res.status(500).json({
       success: false,
@@ -355,18 +392,18 @@ const crearContratoController = async (req, res) => {
     const { id: cliente_id } = req.params;
     const contratoData = { ...req.body, cliente_id };
 
-    if (!contratoData.fecha_inicio) {
-      return res.status(400).json({
-        success: false,
-        message: 'Fecha de inicio es obligatoria'
-      });
+    const error = validarContrato(contratoData);
+    if (error) {
+      return res.status(400).json({ success: false, message: error });
     }
 
+    const advertencia = await advertenciaSuperposicion(cliente_id, contratoData);
     const nuevoId = await createContrato(contratoData);
 
     res.status(201).json({
       success: true,
       message: 'Contrato creado exitosamente',
+      advertencia,
       data: { id_contrato: nuevoId }
     });
   } catch (error) {
@@ -384,6 +421,17 @@ const actualizarContratoController = async (req, res) => {
     const { id } = req.params;
     const contratoData = req.body;
 
+    const actual = await getContratoById(id);
+    if (!actual) {
+      return res.status(404).json({ success: false, message: 'Contrato no encontrado' });
+    }
+
+    const error = validarContrato(contratoData);
+    if (error) {
+      return res.status(400).json({ success: false, message: error });
+    }
+
+    const advertencia = await advertenciaSuperposicion(actual.cliente_id, contratoData, Number(id));
     const affectedRows = await updateContrato(id, contratoData);
 
     if (affectedRows === 0) {
@@ -395,7 +443,8 @@ const actualizarContratoController = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'Contrato actualizado exitosamente'
+      message: 'Contrato actualizado exitosamente',
+      advertencia
     });
   } catch (error) {
     console.error('Error al actualizar contrato:', error);
