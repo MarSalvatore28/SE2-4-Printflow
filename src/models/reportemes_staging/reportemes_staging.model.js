@@ -513,7 +513,7 @@ const getEstadisticasStaging = async () => {
   return rows;
 };
 
-const approveStagingBatch = async (loteId, periodo = null) => {
+const approveStagingBatch = async (loteId, periodo = null, usuarioId = null) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -601,7 +601,7 @@ const approveStagingBatch = async (loteId, periodo = null) => {
 
     await client.query(
       `UPDATE lotes_carga SET fecha_aprobacion = NOW(), usuario_aprobacion_id = $1 WHERE id_lote = $2`,
-      [null, loteId]
+      [usuarioId, loteId]
     );
 
     await client.query(

@@ -57,9 +57,9 @@ const authRoutes = require('@routes/usuario/usuario.routes'); // [C-F0]
 app.use('/api/auth', authRoutes); // [C-F0]
 
 // --- Fase 1
-// const maquinaRoutes = require('@routes/maquina/maquina.routes'); // [A-F1]
+const maquinaRoutes = require('@routes/maquina/maquina.routes'); // [A-F1]
 // const maquinasCambioRoutes = require('@routes/cambio/maquinasCambio.routes'); // [A-F1]
-// app.use('/api/maquinas', maquinaRoutes); // [A-F1]
+app.use('/api/maquinas', maquinaRoutes); // [A-F1]
 // app.use('/api/maquinas-cambio', maquinasCambioRoutes); // [A-F1]
 const clienteRoutes = require('@routes/cliente/cliente.routes'); // [B-F1]
 const contratoRoutes = require('@routes/contrato/contrato.routes'); // [B-F1]
@@ -71,8 +71,8 @@ const instalacionRoutes = require('@routes/instalacion/instalacion.routes'); // 
 app.use('/api/instalacion', instalacionRoutes); // [C-F1]
 
 // --- Fase 2
-// const notificacionesRoutes = require('@routes/notificaciones/notificaciones.routes'); // [A-F2]
-// app.use('/api/notificaciones', notificacionesRoutes); // [A-F2]
+const notificacionesRoutes = require('@routes/notificaciones/notificaciones.routes'); // [A-F2]
+app.use('/api/notificaciones', notificacionesRoutes); // [A-F2]
 const ingestaRoutes = require('@routes/ingesta/ingesta.routes'); // [C-F2]
 const stagingRoutes = require('@routes/reportemes_staging/reportemes_staging.routes'); // [C-F2]
 app.use('/api/ingesta', ingestaRoutes); // [C-F2]

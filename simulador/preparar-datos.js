@@ -4,7 +4,7 @@
 //
 //   docker compose run --rm -T simulador preparar-datos.js | docker compose exec -T db psql -U postgres -d printflow
 //
-// Las máquinas van por SQL porque su pantalla y su API llegan con la caja 4.
+// Va por SQL para que los datos coincidan siempre con los correos que genera el simulador.
 
 const { cargarEscenario } = require('./lib/escenario');
 
