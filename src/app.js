@@ -87,4 +87,15 @@ app.use((req, res) => {
   res.status(404).json({ success: false, message: `Ruta no encontrada: ${req.method} ${req.originalUrl}` });
 });
 
+// Error no controlado (por ejemplo, un JSON mal formado): responde JSON, nunca la página HTML de Express
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  const status = err.status || err.statusCode || 500;
+  if (status >= 500) console.error('Error no controlado:', err);
+  const message = err.type === 'entity.parse.failed'
+    ? 'El cuerpo de la petición no es un JSON válido'
+    : status >= 500 ? 'Error interno del servidor' : err.message;
+  res.status(status).json({ success: false, message });
+});
+
 module.exports = app;

@@ -217,6 +217,8 @@ router.get('/serie/:serie', getInstalacionCompletaBySerieController);
  *       200:
  *         description: Detalle de instalación
  */
+// Antes de /:id_instalacion; si no, Express nunca llega a esta ruta
+router.get('/renta/cliente/:cliente_id', getRentaByClienteController);
 router.get('/:id_instalacion', getInstalacionByIdController);
 
 /**
@@ -254,7 +256,6 @@ router.post('/', createInstalacionController);
  *         description: Instalación retirada
  */
 router.patch('/:id_instalacion/retirar', deleteInstalacionController);
-router.get('/renta/cliente/:cliente_id', getRentaByClienteController);
 router.patch('/:id_instalacion', updateInstalacionController);
 
 module.exports = router;

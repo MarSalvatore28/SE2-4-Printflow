@@ -52,7 +52,7 @@ const getAreaById = async (id_area) => {
             'maquina_serie', m.serie,
             'maquina_modelo', mo.nombre,
             'ip_address', i.ip_address,
-            'ubicacion_fisica', i.ubicacion_fisica,
+            'ubicacion_fisica', NULL, -- la columna no existe en el esquema; se mantiene la clave para el frontend
             'fecha_instalacion', i.fecha_instalacion
           )
         )
