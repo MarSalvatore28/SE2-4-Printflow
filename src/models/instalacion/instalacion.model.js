@@ -1,5 +1,8 @@
 const pool = require('../../config/db');
 
+// Error de regla de negocio: el controller responde con este status en lugar de 500.
+const errorNegocio = (status, message) => Object.assign(new Error(message), { status });
+
 /**
  * @function getInstalacionCompletaByMaquina
  * @desc     Obtiene información completa de una máquina incluyendo su instalación activa,
@@ -324,7 +327,7 @@ const createInstalacion = async (
     await client.query('BEGIN');
 
     if (!ip_address || ip_address.trim() === '') {
-      throw new Error('La dirección IP es obligatoria');
+      throw errorNegocio(400, 'La dirección IP es obligatoria');
     }
 
     const { rows: maquina } = await client.query(
@@ -333,7 +336,7 @@ const createInstalacion = async (
     );
 
     if (maquina.length === 0) {
-      throw new Error('Máquina no encontrada o está inactiva');
+      throw errorNegocio(400, 'Máquina no encontrada o está inactiva');
     }
 
     const { rows: instalacionExistente } = await client.query(
@@ -342,7 +345,7 @@ const createInstalacion = async (
     );
 
     if (instalacionExistente.length > 0) {
-      throw new Error('La máquina ya tiene una instalación activa. Debe retirarla primero.');
+      throw errorNegocio(409, 'La máquina ya tiene una asignación activa');
     }
 
     const { rows: area } = await client.query(
@@ -351,16 +354,25 @@ const createInstalacion = async (
     );
 
     if (area.length === 0) {
-      throw new Error('Área no encontrada');
+      throw errorNegocio(400, 'Área no encontrada');
     }
 
+    // Caja 6, mejora 3.2: el área debe ser del cliente del contrato y el contrato debe estar vigente
     const { rows: contrato } = await client.query(
-      'SELECT id_contrato FROM contratos WHERE id_contrato = $1 AND cliente_id = $2 AND activo = TRUE',
-      [contrato_id, area[0].id_cliente]
+      `SELECT id_contrato, cliente_id,
+              COALESCE($2::date, CURRENT_DATE) BETWEEN fecha_inicio AND COALESCE(fecha_fin, 'infinity'::date) AS vigente
+       FROM contratos WHERE id_contrato = $1 AND activo = TRUE`,
+      [contrato_id, fecha_instalacion || null]
     );
 
     if (contrato.length === 0) {
-      throw new Error('Contrato no encontrado, inactivo o no pertenece al cliente del área');
+      throw errorNegocio(400, 'Contrato no encontrado o inactivo');
+    }
+    if (contrato[0].cliente_id !== area[0].id_cliente) {
+      throw errorNegocio(400, 'El área no pertenece al cliente del contrato');
+    }
+    if (!contrato[0].vigente) {
+      throw errorNegocio(400, 'El contrato no está vigente en la fecha de instalación');
     }
 
     const { rows: ipCheck } = await client.query(
@@ -372,7 +384,7 @@ const createInstalacion = async (
     );
 
     if (ipCheck.length > 0) {
-      throw new Error(`La IP ${ip_address} ya está siendo usada por la máquina ${ipCheck[0].serie} (ID: ${ipCheck[0].id_maquina})`);
+      throw errorNegocio(409, `La IP ${ip_address} ya está siendo usada por la máquina ${ipCheck[0].serie} (ID: ${ipCheck[0].id_maquina})`);
     }
 
     // INSERT ACTUALIZADO CON LOS NUEVOS CAMPOS
@@ -413,35 +425,40 @@ const createInstalacion = async (
   }
 };
 
-const deleteInstalacion = async (id_instalacion, observaciones_retiro = null) => {
+const deleteInstalacion = async (id_instalacion, observaciones_retiro = null, fecha_retiro = null) => {
   const client = await pool.connect();
 
   try {
     await client.query('BEGIN');
 
     const { rows: instalacion } = await client.query(
-      `SELECT i.id_instalacion, m.serie, a.nombre as area_nombre, c.nombre as cliente_nombre
+      `SELECT i.id_instalacion, i.fecha_instalacion, m.serie, a.nombre as area_nombre, c.nombre as cliente_nombre,
+              COALESCE($2::date, CURRENT_DATE) >= i.fecha_instalacion AS fecha_valida
        FROM instalaciones i
        INNER JOIN maquinas m ON i.maquina_id = m.id_maquina
        INNER JOIN areas a ON i.area_id = a.id_area
        INNER JOIN clientes c ON a.cliente_id = c.id_cliente
        WHERE i.id_instalacion = $1 AND i.activo = TRUE AND i.fecha_retiro IS NULL`,
-      [id_instalacion]
+      [id_instalacion, fecha_retiro || null]
     );
 
     if (instalacion.length === 0) {
-      throw new Error('Instalación no encontrada o ya fue retirada');
+      throw errorNegocio(404, 'Instalación no encontrada o ya fue retirada');
+    }
+    // Caja 6, mejora 3.3: el retiro no puede ser anterior a la instalación (y no se borra el registro)
+    if (!instalacion[0].fecha_valida) {
+      throw errorNegocio(400, 'La fecha de retiro no puede ser anterior a la de instalación');
     }
 
     const observacionesFinal = observaciones_retiro || 'Retiro sin observaciones';
 
     await client.query(
-      `UPDATE instalaciones 
-       SET fecha_retiro = CURRENT_DATE, 
+      `UPDATE instalaciones
+       SET fecha_retiro = COALESCE($3::date, CURRENT_DATE),
            activo = FALSE,
            observaciones = COALESCE(observaciones, '') || ' | RETIRO: ' || $1
        WHERE id_instalacion = $2`,
-      [observacionesFinal, id_instalacion]
+      [observacionesFinal, id_instalacion, fecha_retiro || null]
     );
 
     await client.query('COMMIT');
@@ -589,7 +606,7 @@ const updateIpInstalacion = async (id_instalacion, nueva_ip) => {
     );
 
     if (ipCheck.length > 0) {
-      throw new Error(`La IP ${nueva_ip} ya está siendo usada por otra máquina (Serie: ${ipCheck[0].serie})`);
+      throw errorNegocio(409, `La IP ${nueva_ip} ya está siendo usada por otra máquina (Serie: ${ipCheck[0].serie})`);
     }
 
     await client.query(

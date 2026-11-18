@@ -188,6 +188,13 @@ const createInstalacionController = async (req, res) => {
       data: resultado
     });
   } catch (error) {
+    // Caja 6, mejora 3.1: el índice instalaciones_una_activa_por_maquina también lo impide
+    if (error.code === '23505') {
+      return res.status(409).json({ success: false, message: 'La máquina ya tiene una asignación activa' });
+    }
+    if (error.status) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
     console.error('Error al crear instalación:', error);
     res.status(500).json({
       success: false,
@@ -200,9 +207,9 @@ const createInstalacionController = async (req, res) => {
 const deleteInstalacionController = async (req, res) => {
   try {
     const { id_instalacion } = req.params;
-    const { observaciones_retiro } = req.body;
+    const { observaciones_retiro, fecha_retiro } = req.body;
 
-    const resultado = await deleteInstalacion(id_instalacion, observaciones_retiro);
+    const resultado = await deleteInstalacion(id_instalacion, observaciones_retiro, fecha_retiro);
 
     res.status(200).json({
       success: true,
@@ -210,6 +217,9 @@ const deleteInstalacionController = async (req, res) => {
       data: resultado
     });
   } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
     console.error('Error al retirar instalación:', error);
     res.status(500).json({
       success: false,
@@ -315,6 +325,9 @@ const updateInstalacionController = async (req, res) => {
       data: resultado
     });
   } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
     console.error('Error al actualizar instalación:', error);
     res.status(500).json({
       success: false,
