@@ -16,6 +16,7 @@ app.use(cors({
   origin: allowedOrigins,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   credentials: true,
+  exposedHeaders: ['X-Nuevo-Token'],
 }));
 
 app.use(express.json());
@@ -52,8 +53,8 @@ app.get('/health', async (_req, res) => {
 // app.use('/api', (req, res, next) => (RUTAS_PUBLICAS.includes(req.path) || req.path.startsWith('/ingesta') ? next() : protect(req, res, next))); // [C-F2]
 
 // --- Fase 0
-// const authRoutes = require('@routes/usuario/usuario.routes'); // [C-F0]
-// app.use('/api/auth', authRoutes); // [C-F0]
+const authRoutes = require('@routes/usuario/usuario.routes'); // [C-F0]
+app.use('/api/auth', authRoutes); // [C-F0]
 
 // --- Fase 1
 // const maquinaRoutes = require('@routes/maquina/maquina.routes'); // [A-F1]
