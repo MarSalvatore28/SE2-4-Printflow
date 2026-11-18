@@ -2,6 +2,7 @@ const { Server } = require('socket.io');
 const { Client } = require('pg'); 
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+const { verifyToken } = require('./utils/jwt.util');
 
 let io;
 let pgClient;
@@ -19,6 +20,18 @@ module.exports = {
                 origin: allowedOrigins,
                 methods: ['GET', 'POST'],
                 credentials: true
+            }
+        });
+
+        // Solo se conecta quien tiene sesión: el frontend manda su JWT en auth.token
+        io.use((socket, next) => {
+            const token = socket.handshake.auth && socket.handshake.auth.token;
+            if (!token) return next(new Error('No hay token, autorización denegada'));
+            try {
+                socket.data.usuario = verifyToken(token);
+                next();
+            } catch {
+                next(new Error('Token inválido'));
             }
         });
 

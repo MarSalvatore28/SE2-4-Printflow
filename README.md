@@ -142,11 +142,10 @@ Se definen en `.env`, a partir de [`.env.example`](.env.example). El archivo `.e
 │   ├── app.js               # Express: middlewares y rutas
 │   ├── socket.js            # notificaciones en tiempo real
 │   ├── config/              # base de datos y Swagger
-│   ├── routes/              # rutas por módulo
+│   ├── routes/              # rutas por módulo, con su documentación Swagger
 │   ├── controllers/         # lógica de cada endpoint
 │   ├── models/              # consultas SQL
-│   ├── middlewares/         # autenticación, roles y token de ingesta
-│   └── documentation/       # definiciones de Swagger
+│   └── middlewares/         # autenticación, roles y token de ingesta
 ├── db/
 │   ├── migrations/          # esquema, en orden numérico
 │   └── seeds/               # catálogos y usuarios de prueba
