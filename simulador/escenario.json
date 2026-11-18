@@ -105,5 +105,27 @@
         }
       ]
     }
+  ],
+  "_nota_reemplazos": "Solo se aplican con generar-correos.js --reemplazos. Desde 'periodo', el correo del cliente trae a la entrante (con el área y la IP de la saliente) en lugar de la saliente. 'registro' son los datos para registrar el reemplazo en Máquinas → Reemplazos ANTES de generar los correos de ese mes.",
+  "reemplazos": [
+    {
+      "periodo": "2026-11",
+      "saliente": "SIMB0002",
+      "entrante": {
+        "serie": "SIMF0006",
+        "modelo": "Impresora láser B/N (demo)",
+        "tipo": "BN",
+        "formato": "texto-contadores",
+        "contador_inicial": { "impresion_bn": 15000, "impresion_color": 0, "copia_bn": 3000, "copia_color": 0 },
+        "consumo_mensual": { "impresion_bn": 4000, "impresion_color": 0, "copia_bn": 800, "copia_color": 0 }
+      },
+      "registro": {
+        "fecha_danio": "2026-11-12",
+        "fecha_instalacion_entrante": "2026-11-13",
+        "tipo_cambio": "Daño",
+        "razon_cambio": "Falla del fusor: la impresora dejó de imprimir",
+        "contador_final_saliente": { "bn": 376850, "color": 0 }
+      }
+    }
   ]
 }

@@ -42,6 +42,9 @@ docker compose run --rm simulador generar-correos.js --periodo 2026-11 --errores
 # Con un equipo que reporta una falla
 docker compose run --rm simulador generar-correos.js --periodo 2026-11 --falla SIMB0002
 
+# Con los reemplazos de escenario.json (ver «Reemplazo de una máquina a mitad de mes»)
+docker compose run --rm simulador generar-correos.js --periodo 2026-11 --reemplazos
+
 # El n8n simulado procesa el buzón (una vez, o vigilando cada 10 s)
 docker compose run --rm simulador procesar-buzon.js
 docker compose run --rm simulador procesar-buzon.js --vigilar
@@ -104,13 +107,47 @@ Los contadores son **acumulados**, como los de una impresora real, y **reproduci
 | Equipo no registrado | `--errores` agrega un correo de `SIMX9999` | La lectura queda en **ERROR** («Máquina no autorizada») y el lote **no se puede aprobar** |
 | Equipo con falla | `--falla SERIE` | La lectura queda **bloqueada** con el motivo, y el lote de ese cliente no se aprueba hasta resolverlo |
 
+## Reemplazo de una máquina a mitad de mes (caja 4)
+
+`escenario.json` trae en `reemplazos` un ejemplo: **SIMB0002** (Colegio Horizonte) se daña el 12 de noviembre de 2026 y la reemplaza **SIMF0006**, instalada el 13. Solo se aplica si se pide con `--reemplazos`; sin esa opción los correos y la demo son los de siempre.
+
+- `preparar-datos.js` registra SIMF0006 como máquina **libre** (sin asignación).
+- Con `--reemplazos`, desde el período del reemplazo el correo del cliente trae a la **entrante** en lugar de la saliente, con la misma área e IP. Sus contadores parten de su `contador_inicial` (el primer mes suma un consumo mensual completo).
+- La saliente **no** vuelve a reportar: su lectura hasta el daño es el contador final que se anota al registrar el reemplazo.
+
+```powershell
+# 0. Datos y meses anteriores (si no se hicieron ya)
+docker compose run --rm -T simulador preparar-datos.js | docker compose exec -T db psql -U postgres -d printflow
+docker compose run --rm simulador demo.js --desde 2026-08 --hasta 2026-10 --sin-errores
+
+# 1. Registrar el reemplazo en PrintFlow como admin: Máquinas → Reemplazos (o POST /api/maquinas-cambio)
+#    Saliente SIMB0002 · entrante SIMF0006 · daño 2026-11-12 · instalación 2026-11-13 · período 2026-11
+#    Tipo «Daño» · contador final de SIMB0002: B/N 376850, color 0 · contador inicial de SIMF0006: B/N 18000, color 0
+
+# 2. Correos de noviembre con el reemplazo (al final imprime los datos del paso 1)
+docker compose run --rm simulador generar-correos.js --periodo 2026-11 --reemplazos
+docker compose run --rm simulador procesar-buzon.js
+
+# 3. Aprobar el lote SIM-2026-11-horizonte (Notificaciones → Lotes) y ver Informes → Colegio Horizonte → 2026-11
+```
+
+En el consolidado de noviembre la fila del cambio (con el botón **Cambio**) suma, por B/N y por color:
+
+```text
+consumo = (contador final de SIMB0002 − su lectura de octubre) + (lectura de noviembre de SIMF0006 − su contador inicial)
+```
+
+Los meses anteriores no cambian. Si el reemplazo no se registra antes de aprobar, el lote de noviembre no pasa la validación (SIMF0006 no está asignada y falta SIMB0002). Un período ya aprobado no admite reemplazos.
+
+Para otro caso, agregar un objeto a `reemplazos` con `periodo`, `saliente` (serie del escenario), `entrante` (como una máquina del escenario; `ip` es opcional) y `registro` (los datos que se anotan en PrintFlow).
+
 ## Archivos
 
 | Archivo | Qué hace |
 |---|---|
-| `escenario.json` | Clientes, contratos, áreas y máquinas ficticias, con su formato, IP, contadores iniciales y consumo promedio |
+| `escenario.json` | Clientes, contratos, áreas y máquinas ficticias, con su formato, IP, contadores iniciales y consumo promedio; y los reemplazos opcionales |
 | `preparar-datos.js` | Escribe el SQL que registra el escenario en PrintFlow (se puede repetir sin duplicar) |
-| `generar-correos.js` | Arma los correos de un mes y los deja en `buzon/entrada/` |
+| `generar-correos.js` | Arma los correos de un mes y los deja en `buzon/entrada/` (con `--reemplazos`, aplica los de `escenario.json`) |
 | `procesar-buzon.js` | El «n8n»: lee el buzón, convierte y llama a `POST /api/ingesta/cargar` con `Authorization: Bearer <INGESTA_TOKEN>`; si falla, reintenta y avisa al administrador (S3-08) |
 | `demo.js` | Todo junto: varios meses, aprobación y consolidado |
 | `lib/formatos.js` | Generador y lector de cada formato |

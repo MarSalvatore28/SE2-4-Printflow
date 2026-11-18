@@ -17,7 +17,8 @@ function generarSql(escenario) {
     'BEGIN;',
   ];
 
-  const modelos = [...new Set(escenario.clientes.flatMap((c) => c.maquinas.map((m) => m.modelo)))];
+  const entrantes = (escenario.reemplazos || []).map((r) => r.entrante);
+  const modelos = [...new Set([...escenario.clientes.flatMap((c) => c.maquinas), ...entrantes].map((m) => m.modelo))];
   modelos.forEach((modelo) => sql.push(
     `INSERT INTO modelos (nombre) VALUES (${q(modelo)}) ON CONFLICT (nombre) DO NOTHING;`,
   ));
@@ -62,6 +63,15 @@ function generarSql(escenario) {
       );
     }
   }
+
+  // Máquinas de escenario.reemplazos: se registran LIBRES (sin asignación). La asignación la
+  // crea PrintFlow cuando se registra el reemplazo en Máquinas → Reemplazos.
+  if (entrantes.length > 0) sql.push('', '-- Máquinas para los reemplazos (quedan sin asignar)');
+  entrantes.forEach((m) => sql.push(
+    `INSERT INTO maquinas (serie, tipo_impresion_id, modelo_id) VALUES (${q(m.serie)},` +
+    ` (SELECT id_tipo_impresion FROM tipos_impresion WHERE nombre = ${q(m.tipo)} LIMIT 1),` +
+    ` (SELECT id_modelo FROM modelos WHERE nombre = ${q(m.modelo)})) ON CONFLICT (serie) DO NOTHING;`,
+  ));
 
   sql.push('', 'COMMIT;', '');
   sql.push("SELECT 'Simulación lista: ' || count(*) || ' máquinas asignadas' AS resultado FROM instalaciones i JOIN maquinas m ON m.id_maquina = i.maquina_id WHERE m.serie LIKE 'SIM%' AND i.activo;");

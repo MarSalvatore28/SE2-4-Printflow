@@ -89,8 +89,39 @@ function repartirPorUsuario(contadores, usuarios) {
   return filas;
 }
 
+// --- Reemplazos de máquina (escenario.reemplazos, opcionales) ---
+
+// Total B/N y total color (impresiones + copias): lo que se anota al registrar el reemplazo
+const totalesBnColor = (c) => ({
+  bn: (c.impresion_bn || 0) + (c.copia_bn || 0),
+  color: (c.impresion_color || 0) + (c.copia_color || 0),
+});
+
+// Máquinas que reportan en el correo del cliente ese mes. Con reemplazos, desde su período la
+// entrante toma el lugar de la saliente (misma área e IP, salvo que traiga la suya) y sus
+// contadores parten de su contador_inicial: el primer mes suma un consumo mensual completo.
+function maquinasDelPeriodo(cliente, periodo, escenario, { reemplazos = false } = {}) {
+  if (!reemplazos) return cliente.maquinas;
+  let maquinas = cliente.maquinas;
+  for (const r of escenario.reemplazos || []) {
+    const i = maquinas.findIndex((m) => m.serie === r.saliente);
+    if (i === -1 || indiceMes(periodo) < indiceMes(r.periodo)) continue;
+    const saliente = maquinas[i];
+    const entrante = {
+      area: saliente.area,
+      ip: saliente.ip,
+      ...r.entrante,
+      periodo_base: sumarMeses(r.periodo, -1),
+    };
+    maquinas = [...maquinas.slice(0, i), entrante, ...maquinas.slice(i + 1)];
+  }
+  return maquinas;
+}
+
 module.exports = {
   CAMPOS,
+  totalesBnColor,
+  maquinasDelPeriodo,
   cargarEscenario,
   validarPeriodo,
   sumarMeses,
