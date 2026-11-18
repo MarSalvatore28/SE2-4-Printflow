@@ -34,3 +34,15 @@ test('la documentación de Swagger carga', async () => {
   const res = await fetch(`${base}/api-docs/`);
   assert.equal(res.status, 200);
 });
+
+test('un JSON mal formado responde 400 en JSON, sin la página de error de Express', async () => {
+  const res = await fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{"email": ',
+  });
+  assert.equal(res.status, 400);
+  const body = await res.json();
+  assert.equal(body.success, false);
+  assert.match(body.message, /JSON válido/);
+});
