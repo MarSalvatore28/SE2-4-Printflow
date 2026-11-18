@@ -17,10 +17,26 @@ const processIngestaController = async (req, res) => {
     const loteCache = {};
     const maquinaCache = {};
     const conteoPorLote = {};
+    const descartados = [];
+    const messageIdsDeEstaPeticion = new Set();
 
     for (const item of payload) {
       const { lote_info, consolidado, detalles } = item;
       let idLote;
+
+      // Caja 9, mejora 3.2: si el correo (Message-ID) ya se procesó en otra petición, se descarta
+      const messageId = lote_info.message_id ? String(lote_info.message_id).trim() : null;
+      if (messageId && !messageIdsDeEstaPeticion.has(messageId)) {
+        const yaProcesado = await client.query(
+          'SELECT id_lote FROM public.lotes_carga WHERE message_id = $1',
+          [messageId]
+        );
+        if (yaProcesado.rows.length > 0) {
+          descartados.push({ message_id: messageId, estado: 'DESCARTADO', motivo: 'Correo ya procesado' });
+          continue;
+        }
+        messageIdsDeEstaPeticion.add(messageId);
+      }
 
       if (loteCache[lote_info.codigo_referencia]) {
         idLote = loteCache[lote_info.codigo_referencia];
@@ -34,11 +50,11 @@ const processIngestaController = async (req, res) => {
           idLote = buscarLote.rows[0].id_lote;
         } else {
           const crearLote = await client.query(
-            `INSERT INTO public.lotes_carga 
-             (codigo_referencia, fecha_carga, total_registros_cargados, periodo)
-             VALUES ($1, NOW(), 0, $2)
+            `INSERT INTO public.lotes_carga
+             (codigo_referencia, fecha_carga, total_registros_cargados, periodo, message_id)
+             VALUES ($1, NOW(), 0, $2, $3)
              RETURNING id_lote`,
-            [lote_info.codigo_referencia, lote_info.periodo || null]
+            [lote_info.codigo_referencia, lote_info.periodo || null, messageId]
           );
           idLote = crearLote.rows[0].id_lote;
         }
@@ -247,12 +263,22 @@ const processIngestaController = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'Ingesta procesada correctamente',
-      data: { total_procesados: totalProcesados }
+      message: totalProcesados > 0 ? 'Ingesta procesada correctamente' : 'Correo ya procesado: no se registró nada',
+      estado: totalProcesados > 0 ? 'PROCESADO' : 'DESCARTADO',
+      data: { total_procesados: totalProcesados, total_descartados: descartados.length, descartados }
     });
 
   } catch (error) {
     await client.query('ROLLBACK');
+    // Dos peticiones con el mismo Message-ID a la vez: el índice único frena la segunda
+    if (error.code === '23505' && error.constraint === 'lotes_carga_message_id_uq') {
+      return res.status(200).json({
+        success: true,
+        message: 'Correo ya procesado: no se registró nada',
+        estado: 'DESCARTADO',
+        data: { total_procesados: 0 }
+      });
+    }
     console.error('Error en ingesta controller:', error);
     res.status(500).json({
       success: false,
