@@ -48,9 +48,9 @@ app.get('/health', async (_req, res) => {
 
 // --- Seguridad de la API (Equipo C, Fase 2): todo /api exige token, salvo login y la ingesta,
 //     que usa su propio token. Va ANTES de las rutas.
-// const { protect } = require('@middlewares/auth.middleware'); // [C-F2]
-// const RUTAS_PUBLICAS = ['/auth/login', '/auth/validate-token']; // [C-F2]
-// app.use('/api', (req, res, next) => (RUTAS_PUBLICAS.includes(req.path) || req.path.startsWith('/ingesta') ? next() : protect(req, res, next))); // [C-F2]
+const { protect } = require('@middlewares/auth.middleware'); // [C-F2]
+const RUTAS_PUBLICAS = ['/auth/login', '/auth/validate-token']; // [C-F2]
+app.use('/api', (req, res, next) => (RUTAS_PUBLICAS.includes(req.path) || req.path.startsWith('/ingesta') ? next() : protect(req, res, next))); // [C-F2]
 
 // --- Fase 0
 const authRoutes = require('@routes/usuario/usuario.routes'); // [C-F0]
@@ -73,12 +73,10 @@ app.use('/api/instalacion', instalacionRoutes); // [C-F1]
 // --- Fase 2
 // const notificacionesRoutes = require('@routes/notificaciones/notificaciones.routes'); // [A-F2]
 // app.use('/api/notificaciones', notificacionesRoutes); // [A-F2]
-// const ingestaRoutes = require('@routes/ingesta/ingesta.routes'); // [C-F2]
-// const lotesRoutes = require('@routes/lotes_carga/lotes_carga.routes'); // [C-F2]
-// const stagingRoutes = require('@routes/reportemes_staging/reportemes_staging.routes'); // [C-F2]
-// app.use('/api/ingesta', ingestaRoutes); // [C-F2]
-// app.use('/api/lotes', lotesRoutes); // [C-F2]
-// app.use('/api/staging', stagingRoutes); // [C-F2]
+const ingestaRoutes = require('@routes/ingesta/ingesta.routes'); // [C-F2]
+const stagingRoutes = require('@routes/reportemes_staging/reportemes_staging.routes'); // [C-F2]
+app.use('/api/ingesta', ingestaRoutes); // [C-F2]
+app.use('/api/staging', stagingRoutes); // [C-F2]
 
 // --- Fase 3
 // const reportemesRoutes = require('@routes/reportemes/reportemes.routes'); // [C-F3]
