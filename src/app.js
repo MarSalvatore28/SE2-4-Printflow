@@ -74,10 +74,8 @@ app.use('/api/instalacion', instalacionRoutes); // [C-F1]
 // const notificacionesRoutes = require('@routes/notificaciones/notificaciones.routes'); // [A-F2]
 // app.use('/api/notificaciones', notificacionesRoutes); // [A-F2]
 const ingestaRoutes = require('@routes/ingesta/ingesta.routes'); // [C-F2]
-const lotesRoutes = require('@routes/lotes_carga/lotes_carga.routes'); // [C-F2]
 const stagingRoutes = require('@routes/reportemes_staging/reportemes_staging.routes'); // [C-F2]
 app.use('/api/ingesta', ingestaRoutes); // [C-F2]
-app.use('/api/lotes', lotesRoutes); // [C-F2]
 app.use('/api/staging', stagingRoutes); // [C-F2]
 
 // --- Fase 3
