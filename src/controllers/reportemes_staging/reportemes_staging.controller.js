@@ -216,7 +216,8 @@ const approveStagingBatchController = async (req, res) => {
         errores: validacion.errores
       });
     }
-    const result = await approveStagingBatch(loteId, periodo);
+    // Queda registrado quién aprobó el lote
+    const result = await approveStagingBatch(loteId, periodo, req.user?.id ?? null);
     res.status(200).json({ success: true, message: result.message || 'Lote aprobado correctamente' });
   } catch (err) {
     console.error('Error aprobando lote:', err);
