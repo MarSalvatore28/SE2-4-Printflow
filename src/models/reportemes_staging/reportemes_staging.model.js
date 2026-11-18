@@ -596,6 +596,25 @@ const approveStagingBatch = async (loteId, periodo = null, usuarioId = null) => 
       await client.query(moveDetailsQuery, [newOficial.id_reporte, row.id_staging_consolidado]);
     }
 
+    // Reemplazo de máquina (caja 4): los reportes de la saliente y de la entrante del período
+    // afectado quedan enlazados al cambio. Con eso el consolidado arma una sola fila con el
+    // consumo de las dos máquinas (saliente hasta el daño + entrante desde su instalación).
+    await client.query(
+      `UPDATE reportes_oficiales ro
+       SET maquina_cambio_id = mc.id_maquina_cambio,
+           tiene_cambio_maquina = TRUE,
+           es_parte_cambio = TRUE,
+           es_maquina_reemplazo = (ro.maquina_id = mc.maquina_entrante_id)
+       FROM maquinas_cambio mc
+       JOIN areas a ON a.id_area = mc.area_id
+       WHERE ro.lote_origen_id = $1
+         AND mc.activo = TRUE
+         AND mc.periodo_afectado = ro.periodo
+         AND a.cliente_id = ro.cliente_id
+         AND ro.maquina_id IN (mc.maquina_saliente_id, mc.maquina_entrante_id)`,
+      [loteId]
+    );
+
     await client.query(`DELETE FROM reportes_detalle_staging WHERE lote_id = $1`, [loteId]);
     await client.query(`DELETE FROM reportes_consolidado_staging WHERE lote_id = $1`, [loteId]);
 
