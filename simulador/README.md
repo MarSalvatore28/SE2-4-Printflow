@@ -112,6 +112,7 @@ Los contadores son **acumulados**, como los de una impresora real, y **reproduci
 | `preparar-datos.js` | Escribe el SQL que registra el escenario en PrintFlow (se puede repetir sin duplicar) |
 | `generar-correos.js` | Arma los correos de un mes y los deja en `buzon/entrada/` |
 | `procesar-buzon.js` | El «n8n»: lee el buzón, convierte y llama a `POST /api/ingesta/cargar` con `Authorization: Bearer <INGESTA_TOKEN>`; si falla, reintenta y avisa al administrador (S3-08) |
+| `demo.js` | Todo junto: varios meses, aprobación y consolidado |
 | `lib/formatos.js` | Generador y lector de cada formato |
 | `lib/correo.js` | Crea y lee correos `.eml` con adjuntos |
 | `lib/n8n.js` | Convierte un correo en el cuerpo de la ingesta |
