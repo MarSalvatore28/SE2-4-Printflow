@@ -1,5 +1,6 @@
 require('module-alias/register');
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
+require('./config/validarEnv').validarEnv();
 const app = require('./app');
 
 const http = require('http');
