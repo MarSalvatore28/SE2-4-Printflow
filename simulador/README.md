@@ -96,5 +96,5 @@ Los tests están en `test/simulador.test.js` y corren con `npm test`.
 
 - **Los formatos son inventados.** Representan los casos típicos, pero no son los de las impresoras de DOX. Cuando el PO entregue correos de muestra, se agrega su formato en `lib/formatos.js` (un objeto con `generar`, `reconocer` y `leer`) sin tocar lo demás.
 - **El monto del consolidado sale en $0.** Cobrar según el contrato (incluidas, excedente, «Todo como color») es la historia **S3-06**, del Equipo C.
-- **La aprobación se hace por la API** dentro de `demo.js`, mientras la pantalla de lotes (cajas 7 y 8) no esté en `develop`.
-- **Las máquinas se registran por SQL** porque su pantalla y su API llegan con la caja 4.
+- **`demo.js` aprueba los lotes por la API** para que la demo corra sola. En la aplicación, el operador también puede aprobarlos o rechazarlos desde **Notificaciones → Lotes → Ver detalle**.
+- **Los datos del escenario se cargan por SQL** (`preparar-datos.js`) para que siempre coincidan con los correos. Las máquinas también se pueden crear desde la pantalla **Máquinas**.

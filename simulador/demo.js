@@ -4,8 +4,8 @@
 //   node demo.js --desde 2026-06 --hasta 2026-10
 //   node demo.js --sin-errores
 //
-// La aprobación la hace aquí el operador por la API, mientras la pantalla de lotes (cajas 7 y 8)
-// no esté en develop. Requiere haber cargado antes los datos (preparar-datos.js).
+// La aprobación la hace aquí el operador por la API para que la demo corra sola (en la aplicación
+// se puede hacer desde Notificaciones → Lotes). Requiere haber cargado antes los datos (preparar-datos.js).
 
 const { generarCorreos } = require('./generar-correos');
 const { procesarBuzon } = require('./procesar-buzon');
