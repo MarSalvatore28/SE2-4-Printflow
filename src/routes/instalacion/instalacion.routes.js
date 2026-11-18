@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { requireRole } = require('@middlewares/role.middleware');
 const {
   getInstalacionCompletaByMaquinaController,
   getInstalacionCompletaByIPController,
@@ -217,6 +218,8 @@ router.get('/serie/:serie', getInstalacionCompletaBySerieController);
  *       200:
  *         description: Detalle de instalación
  */
+// Antes de /:id_instalacion; si no, Express nunca llega a esta ruta
+router.get('/renta/cliente/:cliente_id', getRentaByClienteController);
 router.get('/:id_instalacion', getInstalacionByIdController);
 
 /**
@@ -235,7 +238,7 @@ router.get('/:id_instalacion', getInstalacionByIdController);
  *       201:
  *         description: Instalación creada
  */
-router.post('/', createInstalacionController);
+router.post('/', requireRole('admin'), createInstalacionController);
 
 /**
  * @swagger
@@ -253,9 +256,8 @@ router.post('/', createInstalacionController);
  *       200:
  *         description: Instalación retirada
  */
-router.patch('/:id_instalacion/retirar', deleteInstalacionController);
-router.get('/renta/cliente/:cliente_id', getRentaByClienteController);
-router.patch('/:id_instalacion', updateInstalacionController);
+router.patch('/:id_instalacion/retirar', requireRole('admin'), deleteInstalacionController);
+router.patch('/:id_instalacion', requireRole('admin'), updateInstalacionController);
 
 module.exports = router;
 

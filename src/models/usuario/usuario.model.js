@@ -1,6 +1,7 @@
 const pool = require('@config/db');
 const bcrypt = require('bcrypt');
 
+// El correo no distingue mayúsculas (la gestión de usuarios lo guarda en minúsculas)
 const findByEmail = async (email) => {
   const query = `
     SELECT 
@@ -12,7 +13,7 @@ const findByEmail = async (email) => {
       rol_id,
       activo
     FROM usuarios
-    WHERE email = $1
+    WHERE LOWER(email) = LOWER(TRIM($1))
   `;
   const result = await pool.query(query, [email]);
   return result.rows[0];

@@ -68,3 +68,123 @@ test('un correo se convierte en un lote con su message_id y el detalle por usuar
   assert.equal(items[1].detalles.length, 0);
   assert.equal(items[1].consolidado.procesar_lectura, false, 'un equipo con falla no debe procesar su lectura');
 });
+
+// --- S3-08: reintentos y alerta al administrador ---
+const entrega = require('../simulador/lib/entrega');
+
+test('la espera entre reintentos crece: 1 s, 2 s, 4 s', () => {
+  assert.deepEqual([1, 2, 3].map((n) => entrega.esperaParaReintento(n, 1000)), [1000, 2000, 4000]);
+});
+
+test('se reintenta si la API no responde o falla (0, 429, 5xx), no ante un 4xx', () => {
+  for (const s of [0, 429, 500, 502, 503]) assert.equal(entrega.esReintentable(s), true, `status ${s}`);
+  for (const s of [200, 400, 401, 403, 409]) assert.equal(entrega.esReintentable(s), false, `status ${s}`);
+});
+
+test('reintenta hasta lograrlo y cuenta los intentos', async () => {
+  const respuestas = [{ status: 0 }, { status: 503 }, { status: 200, cuerpo: { success: true } }];
+  const esperas = [];
+  const r = await entrega.enviarConReintentos(async () => respuestas.shift(), {
+    reintentos: 3, esperaBaseMs: 10, esperar: async (ms) => esperas.push(ms),
+  });
+  assert.equal(r.status, 200);
+  assert.equal(r.intentos, 3);
+  assert.equal(r.agotado, false);
+  assert.deepEqual(esperas, [10, 20]);
+});
+
+test('si la API sigue caída, se agota sin lanzar error', async () => {
+  const r = await entrega.enviarConReintentos(async () => ({ status: 0, error: 'caída' }), {
+    reintentos: 2, esperaBaseMs: 1, esperar: async () => {},
+  });
+  assert.equal(r.agotado, true);
+  assert.equal(r.intentos, 3);
+});
+
+test('un 401 no se reintenta', async () => {
+  let llamadas = 0;
+  const r = await entrega.enviarConReintentos(async () => { llamadas++; return { status: 401 }; }, {
+    reintentos: 3, esperaBaseMs: 1, esperar: async () => {},
+  });
+  assert.equal(llamadas, 1);
+  assert.equal(r.agotado, false);
+});
+
+test('la alerta al administrador es un correo legible con el motivo', () => {
+  const eml = entrega.crearAlerta({
+    archivo: '2026-10_andina.eml', asunto: 'Reporte de contadores', motivo: 'La API no responde',
+    fallos: 3, pendientes: 2, para: 'admin@printflow.local', fecha: new Date(Date.UTC(2026, 10, 18)),
+  });
+  const correo = leerCorreo(eml);
+  assert.match(correo.asunto, /no se pudo registrar «2026-10_andina\.eml»/);
+  assert.match(correo.cuerpo, /La API no responde/);
+  assert.match(correo.cuerpo, /no se perdió/i);
+});
+
+// --- Reemplazos de máquina (escenario.reemplazos, solo con --reemplazos) ---
+
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { cargarEscenario, maquinasDelPeriodo, totalesBnColor } = require('../simulador/lib/escenario');
+const { generarCorreos, reemplazosPorRegistrar } = require('../simulador/generar-correos');
+const { generarSql } = require('../simulador/preparar-datos');
+
+const escenario = cargarEscenario();
+const horizonte = escenario.clientes.find((c) => c.codigo === 'horizonte');
+const reemplazo = escenario.reemplazos[0];
+
+test('sin --reemplazos los correos no cambian (la demo da los mismos totales)', () => {
+  for (const periodo of ['2026-10', '2026-11', '2027-01']) {
+    assert.deepEqual(maquinasDelPeriodo(horizonte, periodo, escenario), horizonte.maquinas);
+  }
+});
+
+test('con --reemplazos, desde su período la entrante reporta en lugar de la saliente', () => {
+  assert.deepEqual(maquinasDelPeriodo(horizonte, '2026-10', escenario, { reemplazos: true }), horizonte.maquinas);
+  const nov = maquinasDelPeriodo(horizonte, '2026-11', escenario, { reemplazos: true });
+  const series = nov.map((m) => m.serie);
+  assert.deepEqual(series, ['SIMA0001', 'SIMF0006']);
+  const entrante = nov[1];
+  const saliente = horizonte.maquinas.find((m) => m.serie === reemplazo.saliente);
+  assert.equal(entrante.ip, saliente.ip, 'la entrante hereda la IP de la saliente');
+  assert.equal(entrante.area, saliente.area);
+  // Sus contadores parten del inicial: el primer mes suma un consumo mensual (85 % a 115 %)
+  const alCierre = contadoresAlCierre(entrante, '2026-11', entrante.periodo_base);
+  const inicial = totalesBnColor(reemplazo.entrante.contador_inicial).bn;
+  const promedio = totalesBnColor(reemplazo.entrante.consumo_mensual).bn;
+  const consumo = totalesBnColor(alCierre).bn - inicial;
+  assert.ok(consumo >= promedio * 0.85 - 2 && consumo <= promedio * 1.15 + 2, `consumo de noviembre ${consumo}`);
+  // Y siguen acumulando los meses siguientes
+  assert.ok(totalesBnColor(contadoresAlCierre(entrante, '2026-12', entrante.periodo_base)).bn > totalesBnColor(alCierre).bn);
+});
+
+test('generar-correos --reemplazos arma el adjunto de la entrante con la IP de la saliente', () => {
+  const buzon = fs.mkdtempSync(path.join(os.tmpdir(), 'pf-reemplazo-'));
+  try {
+    generarCorreos({ periodo: '2026-11', reemplazos: true, buzon });
+    const { items } = correoAIngesta(leerCorreo(fs.readFileSync(path.join(buzon, '2026-11_horizonte.eml'), 'utf8')));
+    assert.deepEqual(items.map((i) => i.consolidado.serie_maquina), ['SIMA0001', 'SIMF0006']);
+    assert.equal(items[1].consolidado.ip_detectada, '10.20.1.12');
+
+    generarCorreos({ periodo: '2026-11', buzon });
+    const sinReemplazo = correoAIngesta(leerCorreo(fs.readFileSync(path.join(buzon, '2026-11_horizonte.eml'), 'utf8')));
+    assert.deepEqual(sinReemplazo.items.map((i) => i.consolidado.serie_maquina), ['SIMA0001', 'SIMB0002']);
+  } finally {
+    fs.rmSync(buzon, { recursive: true, force: true });
+  }
+});
+
+test('los datos para registrar el reemplazo salen del escenario', () => {
+  const [r] = reemplazosPorRegistrar(escenario, '2026-11');
+  assert.equal(r.saliente, 'SIMB0002');
+  assert.equal(r.entrante, 'SIMF0006');
+  assert.deepEqual(r.contador_inicial_entrante, { bn: 18000, color: 0 });
+  assert.deepEqual(reemplazosPorRegistrar(escenario, '2026-12'), []);
+});
+
+test('preparar-datos registra la entrante libre (sin asignación)', () => {
+  const sql = generarSql(escenario);
+  assert.match(sql, /INSERT INTO maquinas \(serie, tipo_impresion_id, modelo_id\) VALUES \('SIMF0006'/);
+  assert.doesNotMatch(sql, /INSERT INTO instalaciones[^\n]*'SIMF0006'/);
+});

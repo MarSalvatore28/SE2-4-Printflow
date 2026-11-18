@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { requireRole } = require('@middlewares/role.middleware');
 
 const {
   getReporteConsolidadoController,
@@ -245,7 +246,7 @@ router.get('/:id', getReportemeByIdController);
  *       201:
  *         description: Reporte creado
  */
-router.post('/', crearReportemeController);
+router.post('/', requireRole('admin'), crearReportemeController);
 
 /**
  * @swagger
@@ -269,7 +270,7 @@ router.post('/', crearReportemeController);
  *       200:
  *         description: Reporte actualizado
  */
-router.put('/:id', actualizarReportemeController);
+router.put('/:id', requireRole('admin'), actualizarReportemeController);
 
 /**
  * @swagger
@@ -296,7 +297,7 @@ router.put('/:id', actualizarReportemeController);
  *       200:
  *         description: Comentario actualizado
  */
-router.patch('/:id/comentario', actualizarComentarioController);
+router.patch('/:id/comentario', requireRole('admin'), actualizarComentarioController);
 
 /**
  * @swagger
@@ -314,7 +315,7 @@ router.patch('/:id/comentario', actualizarComentarioController);
  *       200:
  *         description: Reporte eliminado
  */
-router.delete('/:id', eliminarReportemeController);
+router.delete('/:id', requireRole('admin'), eliminarReportemeController);
 
 module.exports = router;
 

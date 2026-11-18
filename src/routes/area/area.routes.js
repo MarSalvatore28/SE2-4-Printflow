@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { requireRole } = require('@middlewares/role.middleware');
 
 const {
   fetchAllAreas,
@@ -201,7 +202,7 @@ router.get('/:id/historial-cambios', getHistorialCambiosAreaController);
  *       201:
  *         description: Área creada
  */
-router.post('/', crearAreaController);
+router.post('/', requireRole('admin'), crearAreaController);
 
 /**
  * @swagger
@@ -225,7 +226,7 @@ router.post('/', crearAreaController);
  *       200:
  *         description: Área actualizada
  */
-router.put('/:id', actualizarAreaController);
+router.put('/:id', requireRole('admin'), actualizarAreaController);
 
 /**
  * @swagger
@@ -243,7 +244,7 @@ router.put('/:id', actualizarAreaController);
  *       200:
  *         description: Área activada
  */
-router.patch('/:id/activar', activarAreaController);
+router.patch('/:id/activar', requireRole('admin'), activarAreaController);
 
 /**
  * @swagger
@@ -261,7 +262,7 @@ router.patch('/:id/activar', activarAreaController);
  *       200:
  *         description: Área desactivada
  */
-router.delete('/:id', eliminarAreaController);
+router.delete('/:id', requireRole('admin'), eliminarAreaController);
 
 /**
  * @swagger
@@ -279,7 +280,7 @@ router.delete('/:id', eliminarAreaController);
  *       200:
  *         description: Área eliminada permanentemente
  */
-router.delete('/:id/permanente', eliminarAreaPermanenteController);
+router.delete('/:id/permanente', requireRole('admin'), eliminarAreaPermanenteController);
 
 
 module.exports = router;

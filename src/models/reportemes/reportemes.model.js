@@ -1,4 +1,5 @@
 const pool = require('@config/db');
+const { consumoDelCambio } = require('@utils/maquinasCambio.consumo');
 
 const getPeriodoAnterior = (periodoActual) => {
   const [year, month] = periodoActual.split('-').map(Number);
@@ -8,6 +9,26 @@ const getPeriodoAnterior = (periodoActual) => {
   return `${prevYear}-${prevMonth}`;
 };
 
+// Asignación de la máquina EN EL PERÍODO del reporte, no solo la vigente hoy: así un mes ya
+// cerrado sigue mostrando su área y su forma de contar aunque después la máquina se haya
+// retirado o reemplazado (caja 4). Prefiere la del cliente del reporte; si ninguna cubre el
+// período, usa la vigente, como antes.
+const INSTALACION_DEL_PERIODO = `
+  LEFT JOIN LATERAL (
+    SELECT i2.id_instalacion, i2.area_id, i2.contador_acumulativo
+    FROM instalaciones i2
+    JOIN areas a2 ON a2.id_area = i2.area_id
+    WHERE i2.maquina_id = ro.maquina_id
+    ORDER BY
+      (a2.cliente_id = ro.cliente_id) DESC NULLS LAST,
+      (i2.fecha_instalacion < TO_DATE(ro.periodo || '-01', 'YYYY-MM-DD') + INTERVAL '1 month'
+        AND (i2.fecha_retiro IS NULL OR i2.fecha_retiro >= TO_DATE(ro.periodo || '-01', 'YYYY-MM-DD'))) DESC NULLS LAST,
+      (i2.activo AND i2.fecha_retiro IS NULL) DESC NULLS LAST,
+      i2.fecha_instalacion DESC,
+      i2.id_instalacion DESC
+    LIMIT 1
+  ) i ON TRUE`;
+
 const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaId = null) => {
   try {
     const periodoAnterior = getPeriodoAnterior(periodo);
@@ -16,7 +37,7 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
       WITH unique_reports AS (
         SELECT DISTINCT ro.id_reporte
         FROM reportes_oficiales ro
-        LEFT JOIN instalaciones i ON ro.maquina_id = i.maquina_id AND i.activo = true
+        ${INSTALACION_DEL_PERIODO}
         LEFT JOIN areas a ON i.area_id = a.id_area
         
         WHERE ro.cliente_id = $1
@@ -125,10 +146,10 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
         ccc_entrante.contador_actual_imp_bn as entrante_imp_bn_inicial_snap,
         ccc_entrante.contador_actual_imp_col as entrante_imp_col_inicial_snap,
         
-        -- ========== CONTADORES REPORTADOS ANTERIORES DE LA MÁQUINA SALIENTE ==========
-        COALESCE(prev_saliente.total_servicio, 0) as saliente_contador_inicio_real_global,
-        COALESCE(prev_saliente.contador_impresiones_bn, 0) as saliente_imp_bn_inicio_real,
-        COALESCE(prev_saliente.contador_impresiones_color, 0) as saliente_imp_col_inicio_real,
+        -- ========== ÚLTIMA LECTURA APROBADA DE LA SALIENTE (B/N y color, impresiones + copias) ==========
+        COALESCE(prev_saliente.bn, 0) + COALESCE(prev_saliente.color, 0) as saliente_contador_inicio_real_global,
+        COALESCE(prev_saliente.bn, 0) as saliente_imp_bn_inicio_real,
+        COALESCE(prev_saliente.color, 0) as saliente_imp_col_inicio_real,
 
         -- ========== ÁREA DEL CAMBIO ==========
         area_cambio.nombre as cambio_area_nombre,
@@ -143,9 +164,9 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
       JOIN maquinas m ON ro.maquina_id = m.id_maquina
       LEFT JOIN tipos_impresion ti ON m.tipo_impresion_id = ti.id_tipo_impresion
       LEFT JOIN modelos mod ON m.modelo_id = mod.id_modelo
-      LEFT JOIN instalaciones i ON ro.maquina_id = i.maquina_id AND i.activo = true
+      ${INSTALACION_DEL_PERIODO}
       LEFT JOIN areas a ON i.area_id = a.id_area
-      
+
       -- Reporte Anterior (General)
       LEFT JOIN reportes_oficiales prev 
         ON ro.maquina_id = prev.maquina_id 
@@ -156,12 +177,25 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
       LEFT JOIN maquinas_cambio mc 
         ON ro.maquina_cambio_id = mc.id_maquina_cambio
 
-      -- Reporte Anterior ESPECÍFICO de la Saliente
-      LEFT JOIN reportes_oficiales prev_saliente
-        ON prev_saliente.maquina_id = mc.maquina_saliente_id
-        AND prev_saliente.periodo = $3
-        AND prev_saliente.cliente_id = $1
-      
+      -- Última lectura aprobada de la Saliente antes del período: de ahí parte su consumo
+      LEFT JOIN LATERAL (
+        SELECT ps.fecha_corte,
+               COALESCE(dps.bn, COALESCE(ps.contador_impresiones_bn, 0) + COALESCE(ps.contador_copias_bn, 0)) AS bn,
+               COALESCE(dps.color, COALESCE(ps.contador_impresiones_color, 0) + COALESCE(ps.contador_copias_color, 0)) AS color
+        FROM reportes_oficiales ps
+        LEFT JOIN LATERAL (
+          SELECT SUM(d.cnt_impresion_bn + d.cnt_copia_bn) AS bn,
+                 SUM(d.cnt_impresion_color + d.cnt_copia_color) AS color
+          FROM reportes_detalle_oficial d
+          WHERE d.reporte_oficial_id = ps.id_reporte
+        ) dps ON TRUE
+        WHERE ps.maquina_id = mc.maquina_saliente_id
+          AND ps.cliente_id = $1
+          AND ps.periodo < ro.periodo
+        ORDER BY ps.periodo DESC, ps.id_reporte DESC
+        LIMIT 1
+      ) prev_saliente ON TRUE
+
       -- Contadores Snapshot
       LEFT JOIN cabecera_contadores_cambio ccc_saliente
         ON ccc_saliente.maquina_cambio_id = mc.id_maquina_cambio
@@ -174,25 +208,26 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
       LEFT JOIN areas area_cambio
         ON mc.area_id = area_cambio.id_area
       
+      -- Las asignaciones que el registro del reemplazo retiró y creó
       LEFT JOIN instalaciones inst_saliente
-        ON inst_saliente.id_instalacion = (
-          SELECT id_instalacion 
-          FROM instalaciones 
-          WHERE maquina_id = mc.maquina_saliente_id 
+        ON inst_saliente.id_instalacion = COALESCE(mc.instalacion_saliente_id, (
+          SELECT id_instalacion
+          FROM instalaciones
+          WHERE maquina_id = mc.maquina_saliente_id
             AND fecha_retiro IS NOT NULL
-          ORDER BY fecha_retiro DESC 
+          ORDER BY fecha_retiro DESC
           LIMIT 1
-        )
-      
+        ))
+
       LEFT JOIN instalaciones inst_entrante
-        ON inst_entrante.id_instalacion = (
-          SELECT id_instalacion 
-          FROM instalaciones 
-          WHERE maquina_id = mc.maquina_entrante_id 
+        ON inst_entrante.id_instalacion = COALESCE(mc.instalacion_entrante_id, (
+          SELECT id_instalacion
+          FROM instalaciones
+          WHERE maquina_id = mc.maquina_entrante_id
             AND activo = true
-          ORDER BY fecha_instalacion ASC 
+          ORDER BY fecha_instalacion ASC
           LIMIT 1
-        )
+        ))
       
       -- DETALLES ACTUALES
       LEFT JOIN (
@@ -233,54 +268,25 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
       return diffDays > 0 ? diffDays : 0;
     }
 
-    const detalles = rows.map(row => {
+    // Los reportes de un mismo reemplazo (caja 4) se agrupan: el consolidado muestra UNA fila por
+    // cambio (la de la entrante, o la de la saliente si la entrante no reportó) con el consumo
+    // de las dos máquinas. Los demás reportes se calculan como siempre.
+    const filasPorCambio = new Map();
+    rows.forEach((row) => {
+      if (row.maquina_cambio_id === null) return;
+      if (!filasPorCambio.has(row.maquina_cambio_id)) filasPorCambio.set(row.maquina_cambio_id, []);
+      filasPorCambio.get(row.maquina_cambio_id).push(row);
+    });
+    const cambios = new Map([...filasPorCambio].map(([id, filas]) => [id, consumoDelCambio(filas)]));
+    const filasVisibles = rows.filter((row) => row.maquina_cambio_id === null || cambios.get(row.maquina_cambio_id).filaRepresentante === row);
+
+    const detalles = filasVisibles.map(row => {
       const tieneCambio = row.maquina_cambio_id !== null;
-      const tieneDetalle = (row.det_cur_imp_bn !== null && row.det_cur_imp_bn !== undefined) || 
+      const tieneDetalle = (row.det_cur_imp_bn !== null && row.det_cur_imp_bn !== undefined) ||
                            (row.det_cur_cop_bn !== null && row.det_cur_cop_bn !== undefined);
 
-      let consumoFinal;
-
-      if (tieneCambio) {
-        const esSaliente = row.maquina_id === row.maquina_saliente_id;
-        const esEntrante = row.maquina_id === row.maquina_entrante_id;
-
-        if (esSaliente) {
-          const final_imp_bn = parseInt(row.saliente_imp_bn_final_snap || 0);
-          const final_imp_col = parseInt(row.saliente_imp_col_final_snap || 0);
-
-          const inicio_imp_bn = parseInt(row.saliente_imp_bn_inicio_real || 0);
-          const inicio_imp_col = parseInt(row.saliente_imp_col_inicio_real || 0);
-
-          const consumo_imp_bn = final_imp_bn - inicio_imp_bn;
-          const consumo_imp_col = final_imp_col - inicio_imp_col;
-
-          consumoFinal = {
-            total_bn: Math.max(0, consumo_imp_bn),
-            total_color: Math.max(0, consumo_imp_col),
-            gran_total: Math.max(0, consumo_imp_bn + consumo_imp_col)
-          };
-
-        } else if (esEntrante) {
-          const final_imp_bn = parseInt(row.cur_imp_bn || 0);
-          const final_imp_col = parseInt(row.cur_imp_col || 0);
-
-          const inicio_imp_bn = parseInt(row.entrante_imp_bn_inicial_snap || 0);
-          const inicio_imp_col = parseInt(row.entrante_imp_col_inicial_snap || 0);
-
-          const consumo_imp_bn = final_imp_bn - inicio_imp_bn;
-          const consumo_imp_col = final_imp_col - inicio_imp_col;
-
-          consumoFinal = {
-            total_bn: Math.max(0, consumo_imp_bn),
-            total_color: Math.max(0, consumo_imp_col),
-            gran_total: Math.max(0, consumo_imp_bn + consumo_imp_col)
-          };
-        } else {
-          consumoFinal = calcularConsumoNormal(row);
-        }
-      } else {
-        consumoFinal = calcularConsumoNormal(row);
-      }
+      const cambioCalculado = tieneCambio ? cambios.get(row.maquina_cambio_id) : null;
+      const consumoFinal = cambioCalculado ? cambioCalculado.total : calcularConsumoNormal(row);
 
       const dineroTotal = consumoFinal.gran_total * parseFloat(row.snap_costo_impresion_bn || 0);
       const tipoNombre = row.tipo_impresion_nombre || 'BN';
@@ -297,13 +303,15 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
         fechaFinSaliente = row.fecha_danio;
 
         fechaInicioEntrante = row.fecha_instalacion_entrante;
-        const dateCorte = new Date(row.fecha_corte_actual);
+        // Sin reporte de la entrante en el período, su tramo termina donde empieza
+        const corteEntrante = cambioCalculado.filaEntrante ? cambioCalculado.filaEntrante.fecha_corte_actual : null;
+        const dateCorte = new Date(corteEntrante);
         const dateInstalacion = new Date(fechaInicioEntrante);
 
-        if (dateCorte < dateInstalacion) {
+        if (!corteEntrante || dateCorte < dateInstalacion) {
           fechaFinEntrante = fechaInicioEntrante;
         } else {
-          fechaFinEntrante = row.fecha_corte_actual;
+          fechaFinEntrante = corteEntrante;
         }
       }
 
@@ -344,22 +352,19 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
               fecha_fin_operacion: fechaFinSaliente,
               fecha_instalacion: row.saliente_fecha_instalacion,
               fecha_retiro: row.saliente_fecha_retiro,
+              // B/N y color = impresiones + copias; global = B/N + color
               contadores: {
                 anterior: {
-                  global: parseInt(row.saliente_contador_inicio_real_global || 0),
-                  impresion_bn: parseInt(row.saliente_imp_bn_inicio_real || 0),
-                  impresion_color: parseInt(row.saliente_imp_col_inicio_real || 0)
+                  global: cambioCalculado.saliente.anterior.bn + cambioCalculado.saliente.anterior.color,
+                  impresion_bn: cambioCalculado.saliente.anterior.bn,
+                  impresion_color: cambioCalculado.saliente.anterior.color
                 },
                 actual: {
-                  global: parseInt(row.saliente_contador_final_snap || 0),
-                  impresion_bn: parseInt(row.saliente_imp_bn_final_snap || 0),
-                  impresion_color: parseInt(row.saliente_imp_col_final_snap || 0)
+                  global: cambioCalculado.saliente.actual.bn + cambioCalculado.saliente.actual.color,
+                  impresion_bn: cambioCalculado.saliente.actual.bn,
+                  impresion_color: cambioCalculado.saliente.actual.color
                 },
-                consumo: {
-                  global: (parseInt(row.saliente_contador_final_snap || 0) - parseInt(row.saliente_contador_inicio_real_global || 0)),
-                  total_bn: Math.max(0, parseInt(row.saliente_imp_bn_final_snap || 0) - parseInt(row.saliente_imp_bn_inicio_real || 0)),
-                  total_color: Math.max(0, parseInt(row.saliente_imp_col_final_snap || 0) - parseInt(row.saliente_imp_col_inicio_real || 0))
-                }
+                consumo: cambioCalculado.saliente.consumo
               }
             },
 
@@ -372,20 +377,16 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
               fecha_instalacion: row.entrante_fecha_instalacion,
               contadores: {
                 anterior: {
-                  global: parseInt(row.entrante_contador_inicial_snap || 0),
-                  impresion_bn: parseInt(row.entrante_imp_bn_inicial_snap || 0),
-                  impresion_color: parseInt(row.entrante_imp_col_inicial_snap || 0)
+                  global: cambioCalculado.entrante.anterior.bn + cambioCalculado.entrante.anterior.color,
+                  impresion_bn: cambioCalculado.entrante.anterior.bn,
+                  impresion_color: cambioCalculado.entrante.anterior.color
                 },
                 actual: {
-                  global: parseInt(row.cur_total_servicio || 0),
-                  impresion_bn: parseInt(row.cur_imp_bn || 0),
-                  impresion_color: parseInt(row.cur_imp_col || 0)
+                  global: cambioCalculado.entrante.actual.bn + cambioCalculado.entrante.actual.color,
+                  impresion_bn: cambioCalculado.entrante.actual.bn,
+                  impresion_color: cambioCalculado.entrante.actual.color
                 },
-                consumo: {
-                  global: (parseInt(row.cur_total_servicio || 0) - parseInt(row.entrante_contador_inicial_snap || 0)),
-                  total_bn: Math.max(0, parseInt(row.cur_imp_bn || 0) - parseInt(row.entrante_imp_bn_inicial_snap || 0)),
-                  total_color: Math.max(0, parseInt(row.cur_imp_col || 0) - parseInt(row.entrante_imp_col_inicial_snap || 0))
-                }
+                consumo: cambioCalculado.entrante.consumo
               }
             },
 

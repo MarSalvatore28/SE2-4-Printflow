@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { requireRole } = require('@middlewares/role.middleware');
 
 const {
   fetchAllMaquinas,
@@ -201,7 +202,7 @@ router.get('/search', searchMaquinasController);
  *         description: Ya existe un modelo con ese nombre
  */
 router.get('/modelos', fetchModelosController);
-router.post('/modelos', crearModeloController);
+router.post('/modelos', requireRole('admin'), crearModeloController);
 
 /**
  * @swagger
@@ -259,7 +260,7 @@ router.get('/formatos', fetchFormatosImpresionController);
  *       409:
  *         description: Ya existe una máquina con esa serie
  */
-router.post('/', crearMaquinaController);
+router.post('/', requireRole('admin'), crearMaquinaController);
 
 /**
  * @swagger
@@ -315,7 +316,7 @@ router.post('/', crearMaquinaController);
  *         description: Ya existe otra máquina con esa serie
  */
 router.get('/:id', getMaquinaByIdController);
-router.put('/:id', actualizarMaquinaController);
+router.put('/:id', requireRole('admin'), actualizarMaquinaController);
 
 /**
  * @swagger
@@ -351,6 +352,6 @@ router.put('/:id', actualizarMaquinaController);
  *       409:
  *         description: La máquina tiene una asignación vigente
  */
-router.patch('/:id/activo', cambiarEstadoMaquinaController);
+router.patch('/:id/activo', requireRole('admin'), cambiarEstadoMaquinaController);
 
 module.exports = router;
