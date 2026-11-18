@@ -58,9 +58,9 @@ app.use('/api/auth', authRoutes); // [C-F0]
 
 // --- Fase 1
 const maquinaRoutes = require('@routes/maquina/maquina.routes'); // [A-F1]
-// const maquinasCambioRoutes = require('@routes/cambio/maquinasCambio.routes'); // [A-F1]
+const maquinasCambioRoutes = require('@routes/cambio/maquinasCambio.routes'); // [A-F1]
 app.use('/api/maquinas', maquinaRoutes); // [A-F1]
-// app.use('/api/maquinas-cambio', maquinasCambioRoutes); // [A-F1]
+app.use('/api/maquinas-cambio', maquinasCambioRoutes); // [A-F1]
 const clienteRoutes = require('@routes/cliente/cliente.routes'); // [B-F1]
 const contratoRoutes = require('@routes/contrato/contrato.routes'); // [B-F1]
 const areaRoutes = require('@routes/area/area.routes'); // [B-F1]
