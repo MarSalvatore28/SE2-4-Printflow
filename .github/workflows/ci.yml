@@ -37,3 +37,44 @@ jobs:
       - uses: actions/checkout@v4
       - name: Construye la imagen de la API
         run: docker build -t printflow-api .
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Crea un .env de prueba
+        run: |
+          cp .env.example .env
+          sed -i 's/^DB_PASSWORD=$/DB_PASSWORD=ci-clave/; s/^SECRET_KEY=$/SECRET_KEY=ci-secreto/' .env
+          echo "FRONTEND_PATH=." >> .env
+
+      - name: Levanta la base y la API
+        run: docker compose up -d --build db api
+
+      - name: La API responde /health
+        run: |
+          for i in $(seq 1 30); do
+            if docker compose exec -T api node -e "fetch('http://localhost:9000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"; then
+              echo "OK: la API responde"; exit 0
+            fi
+            sleep 2
+          done
+          docker compose logs api db
+          exit 1
+
+      - name: Login con el usuario de prueba (migraciones y seeds cargados)
+        run: |
+          docker compose exec -T api node -e "
+            fetch('http://localhost:9000/api/auth/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: 'admin@printflow.local', password: 'Printflow2026*' }),
+            })
+              .then(async (r) => { const b = await r.json(); console.log(r.status, b.message || ''); process.exit(r.ok && b.token ? 0 : 1); })
+              .catch((e) => { console.error(e); process.exit(1); });
+          " || { docker compose logs api db; exit 1; }
+
+      - name: Apaga todo
+        if: always()
+        run: docker compose down -v
