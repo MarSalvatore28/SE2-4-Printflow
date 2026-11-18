@@ -91,8 +91,6 @@ const processIngestaController = async (req, res) => {
             const row = buscarDatos.rows[0];
             maquinaIdTentativa = row.id_maquina;
             clienteIdTentativo = row.cliente_id || null;
-          } else {
-            console.warn(`⚠️ Serie no encontrada en DB: ${serieLimpia}`);
           }
 
           maquinaCache[serieLimpia] = {
@@ -104,9 +102,20 @@ const processIngestaController = async (req, res) => {
 
       const totalServicio = consolidado.print_total || 0;
 
-      const estadoMaquina = consolidado.estado_maquina || 'Desconocido';
-      const procesarLectura = consolidado.procesar_lectura !== undefined ? consolidado.procesar_lectura : true;
-      const mensajeAviso = consolidado.mensaje_aviso || null;
+      let estadoMaquina = consolidado.estado_maquina || 'Desconocido';
+      let procesarLectura = consolidado.procesar_lectura !== undefined ? consolidado.procesar_lectura : true;
+      let mensajeAviso = consolidado.mensaje_aviso || null;
+
+      // Caja 9, mejora 3.3: serie no registrada o sin asignación vigente → ERROR, sin lectura.
+      // procesar_lectura = false hace que la aprobación la salte y que aparezca en las alertas del lote.
+      const maquinaAutorizada = maquinaIdTentativa !== null && clienteIdTentativo !== null;
+      if (!maquinaAutorizada) {
+        estadoMaquina = 'ERROR';
+        procesarLectura = false;
+        mensajeAviso = maquinaIdTentativa === null
+          ? `Máquina no autorizada: la serie ${serieLimpia || '(vacía)'} no está registrada`
+          : `Máquina no autorizada: la serie ${serieLimpia} no tiene una asignación vigente`;
+      }
       // Función para extraer YYYY-MM-DD seguro
       const extractDate = (dateStr) => {
         if (!dateStr) return null;
@@ -199,7 +208,8 @@ const processIngestaController = async (req, res) => {
       const resConsolidado = await client.query(queryConsolidado, valuesConsolidado);
       const idPadre = resConsolidado.rows[0].id_staging_consolidado;
 
-      if (detalles && detalles.length > 0) {
+      // Una máquina no autorizada no registra los contadores por usuario
+      if (maquinaAutorizada && detalles && detalles.length > 0) {
         for (const det of detalles) {
 
           let fechaLecturaDetalle = new Date();
