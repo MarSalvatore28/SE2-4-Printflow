@@ -335,7 +335,12 @@ const rechazarLote = async (loteId, req, res) => {
   }
 
   await Staging.rejectStagingBatch(loteId);
-  await Notificaciones.registrarRechazo(loteId, req.user.id, typeof motivo === 'string' ? motivo.trim() : null);
+  await Notificaciones.registrarRechazo(
+    loteId,
+    req.user.id,
+    typeof motivo === 'string' ? motivo.trim() : null,
+    (lote.clientes || []).map((c) => c.id_cliente)
+  );
   avisarCambio({ lote_id: loteId, estado: 'DESCARTADO' });
 
   const data = await Notificaciones.obtenerLote(loteId);

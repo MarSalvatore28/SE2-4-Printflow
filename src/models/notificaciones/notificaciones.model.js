@@ -230,6 +230,11 @@ const SELECT_LOTES = `
         SELECT s.cliente_id_tentativo FROM reportes_consolidado_staging s WHERE s.lote_id = l.id_lote
         UNION
         SELECT o.cliente_id FROM reportes_oficiales o WHERE o.lote_origen_id = l.id_lote
+        UNION
+        -- Un lote rechazado ya no tiene staging: su cliente quedó guardado en el rechazo
+        SELECT jsonb_array_elements_text(nc.datos_adicionales->'cliente_ids')::int
+        FROM notificaciones nc
+        WHERE nc.lote_id = l.id_lote AND jsonb_typeof(nc.datos_adicionales->'cliente_ids') = 'array'
       )
     ) cli ON true
   )
@@ -305,8 +310,9 @@ const registrarAprobador = async (loteId, usuarioId) => {
   );
 };
 
-// rejectStagingBatch (staging) no deja rastro en lotes_carga: el rechazo queda en sus notificaciones
-const registrarRechazo = async (loteId, usuarioId, motivo) => {
+// rejectStagingBatch (staging) no deja rastro en lotes_carga: el rechazo queda en sus notificaciones,
+// con los clientes que tenía el lote (el staging se borra y si no se perderían)
+const registrarRechazo = async (loteId, usuarioId, motivo, clienteIds = []) => {
   await pool.query(
     `UPDATE notificaciones
      SET leida = true,
@@ -315,10 +321,11 @@ const registrarRechazo = async (loteId, usuarioId, motivo) => {
            'estado_lote', 'DESCARTADO',
            'motivo_rechazo', $3::text,
            'usuario_rechazo_id', $2::int,
-           'fecha_rechazo', NOW()
+           'fecha_rechazo', NOW(),
+           'cliente_ids', to_jsonb($4::int[])
          )
      WHERE lote_id = $1`,
-    [loteId, usuarioId, motivo || null]
+    [loteId, usuarioId, motivo || null, clienteIds]
   );
 };
 

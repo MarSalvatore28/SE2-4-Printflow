@@ -150,11 +150,13 @@ test('no se aprueba ni se rechaza un lote ya procesado o descartado', async (t) 
   assert.equal((await llamar(controller.rechazarLoteController, { params: { loteId: '5' } })).statusCode, 409);
 });
 
-test('rechazar guarda el motivo y el usuario', async (t) => {
+test('rechazar guarda el motivo, el usuario y los clientes del lote', async (t) => {
   const llamadas = [];
   let consultas = 0;
   reemplazar(t, Notificaciones, {
-    obtenerLote: async () => (consultas++ === 0 ? lote('PENDIENTE') : lote('DESCARTADO')),
+    obtenerLote: async () => (consultas++ === 0
+      ? lote('PENDIENTE', { clientes: [{ id_cliente: 4, nombre: 'Demo' }] })
+      : lote('DESCARTADO')),
     registrarRechazo: async (...args) => llamadas.push(['registrar', ...args]),
   });
   reemplazar(t, Staging, { rejectStagingBatch: async (id) => llamadas.push(['rechazar', id]) });
@@ -162,7 +164,7 @@ test('rechazar guarda el motivo y el usuario', async (t) => {
     params: { loteId: '5' }, body: { motivo: '  Correo de prueba  ' }, user: { id: 2 },
   });
   assert.equal(res.statusCode, 200);
-  assert.deepEqual(llamadas, [['rechazar', 5], ['registrar', 5, 2, 'Correo de prueba']]);
+  assert.deepEqual(llamadas, [['rechazar', 5], ['registrar', 5, 2, 'Correo de prueba', [4]]]);
 });
 
 test('aprobar por notificación exige que la notificación tenga lote', async (t) => {
