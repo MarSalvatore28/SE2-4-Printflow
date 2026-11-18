@@ -1,13 +1,12 @@
-import jwt from 'jsonwebtoken';
-import dotenv from 'dotenv';
-dotenv.config()
+const jwt = require('jsonwebtoken');
 
-const SECRET_KEY = process.env.SECRET_KEY;
-
-export function generateToken(payload, expiresIn = '2h') {
-  return jwt.sign(payload, SECRET_KEY, { expiresIn });
+// La sesión dura 30 min sin actividad: protect renueva el token en cada petición (X-Nuevo-Token).
+function generateToken(payload, expiresIn = '30m') {
+  return jwt.sign(payload, process.env.SECRET_KEY, { expiresIn });
 }
 
-export function verifyToken(token) {
-  return jwt.verify(token, SECRET_KEY);
+function verifyToken(token) {
+  return jwt.verify(token, process.env.SECRET_KEY);
 }
+
+module.exports = { generateToken, verifyToken };
