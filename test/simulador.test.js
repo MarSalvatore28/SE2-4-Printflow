@@ -68,3 +68,55 @@ test('un correo se convierte en un lote con su message_id y el detalle por usuar
   assert.equal(items[1].detalles.length, 0);
   assert.equal(items[1].consolidado.procesar_lectura, false, 'un equipo con falla no debe procesar su lectura');
 });
+
+// --- S3-08: reintentos y alerta al administrador ---
+const entrega = require('../simulador/lib/entrega');
+
+test('la espera entre reintentos crece: 1 s, 2 s, 4 s', () => {
+  assert.deepEqual([1, 2, 3].map((n) => entrega.esperaParaReintento(n, 1000)), [1000, 2000, 4000]);
+});
+
+test('se reintenta si la API no responde o falla (0, 429, 5xx), no ante un 4xx', () => {
+  for (const s of [0, 429, 500, 502, 503]) assert.equal(entrega.esReintentable(s), true, `status ${s}`);
+  for (const s of [200, 400, 401, 403, 409]) assert.equal(entrega.esReintentable(s), false, `status ${s}`);
+});
+
+test('reintenta hasta lograrlo y cuenta los intentos', async () => {
+  const respuestas = [{ status: 0 }, { status: 503 }, { status: 200, cuerpo: { success: true } }];
+  const esperas = [];
+  const r = await entrega.enviarConReintentos(async () => respuestas.shift(), {
+    reintentos: 3, esperaBaseMs: 10, esperar: async (ms) => esperas.push(ms),
+  });
+  assert.equal(r.status, 200);
+  assert.equal(r.intentos, 3);
+  assert.equal(r.agotado, false);
+  assert.deepEqual(esperas, [10, 20]);
+});
+
+test('si la API sigue caída, se agota sin lanzar error', async () => {
+  const r = await entrega.enviarConReintentos(async () => ({ status: 0, error: 'caída' }), {
+    reintentos: 2, esperaBaseMs: 1, esperar: async () => {},
+  });
+  assert.equal(r.agotado, true);
+  assert.equal(r.intentos, 3);
+});
+
+test('un 401 no se reintenta', async () => {
+  let llamadas = 0;
+  const r = await entrega.enviarConReintentos(async () => { llamadas++; return { status: 401 }; }, {
+    reintentos: 3, esperaBaseMs: 1, esperar: async () => {},
+  });
+  assert.equal(llamadas, 1);
+  assert.equal(r.agotado, false);
+});
+
+test('la alerta al administrador es un correo legible con el motivo', () => {
+  const eml = entrega.crearAlerta({
+    archivo: '2026-10_andina.eml', asunto: 'Reporte de contadores', motivo: 'La API no responde',
+    fallos: 3, pendientes: 2, para: 'admin@printflow.local', fecha: new Date(Date.UTC(2026, 10, 18)),
+  });
+  const correo = leerCorreo(eml);
+  assert.match(correo.asunto, /no se pudo registrar «2026-10_andina\.eml»/);
+  assert.match(correo.cuerpo, /La API no responde/);
+  assert.match(correo.cuerpo, /no se perdió/i);
+});
