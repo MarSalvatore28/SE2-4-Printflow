@@ -1,0 +1,580 @@
+const {
+  getAllClientesConDatos,
+  getClientesInactivos,
+  getClienteById,
+  getClienteCompleto,
+  getClienteByRuc,
+  searchClientes,
+  createCliente,
+  updateCliente,
+  deleteCliente,
+  activarCliente, 
+
+  getContratosByCliente,
+  getAllContratos,
+  getContratoById,
+  createContrato,
+  updateContrato,
+  desactivarContrato,
+
+  getInstalacionesByCliente,
+  getHistorialCliente,
+  tieneHistorial,
+  getUltimoCambioCliente,
+  getClientesConHistorialBatch
+  
+} = require('@models/cliente/cliente.model');
+
+const fetchAllClientes = async (req, res) => {
+  try {
+    const clientes = await getAllClientesConDatos();
+
+    res.status(200).json({
+      success: true,
+      data: clientes,
+      count: clientes.length
+    });
+  } catch (err) {
+    console.error('Error fetching clientes:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener clientes',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+};
+
+const getClientesInactivosController = async (req, res) => {
+  try {
+    const clientes = await getClientesInactivos();
+
+    res.status(200).json({
+      success: true,
+      data: clientes,
+      count: clientes.length
+    });
+  } catch (err) {
+    console.error('Error fetching clientes inactivos:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener clientes inactivos',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+};
+
+const getClienteByIdController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const cliente = await getClienteById(id);
+
+    if (!cliente) {
+      return res.status(404).json({
+        success: false,
+        message: 'Cliente no encontrado'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: cliente
+    });
+  } catch (err) {
+    console.error('Error fetching cliente by ID:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener cliente',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+};
+
+const getClienteCompletoController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const cliente = await getClienteCompleto(id);
+
+    if (!cliente) {
+      return res.status(404).json({
+        success: false,
+        message: 'Cliente no encontrado'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: cliente
+    });
+  } catch (err) {
+    console.error('Error fetching cliente completo:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener datos completos del cliente',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+};
+
+const getClienteByRucController = async (req, res) => {
+  try {
+    const { ruc } = req.params;
+    const cliente = await getClienteByRuc(ruc);
+
+    if (!cliente) {
+      return res.status(404).json({
+        success: false,
+        message: 'Cliente no encontrado con ese RUC'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: cliente
+    });
+  } catch (err) {
+    console.error('Error fetching cliente by RUC:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Error al buscar cliente por RUC',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+};
+
+const searchClientesController = async (req, res) => {
+  try {
+    const { q } = req.query;
+
+    if (!q || q.trim().length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: 'El término de búsqueda debe tener al menos 2 caracteres'
+      });
+    }
+
+    const clientes = await searchClientes(q);
+
+    res.json({
+      success: true,
+      data: clientes,
+      count: clientes.length
+    });
+  } catch (error) {
+    console.error('Error buscando clientes:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al buscar clientes',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+const crearClienteController = async (req, res) => {
+  try {
+    const { nombre, ruc, razon_social } = req.body;
+
+    if (!nombre || !ruc) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nombre y RUC son obligatorios'
+      });
+    }
+
+    const clienteExistente = await getClienteByRuc(ruc);
+    if (clienteExistente) {
+      return res.status(409).json({
+        success: false,
+        message: 'Ya existe un cliente con ese RUC'
+      });
+    }
+
+    const nuevoId = await createCliente({ nombre, ruc, razon_social });
+
+    res.status(201).json({
+      success: true,
+      message: 'Cliente creado exitosamente',
+      data: { id_cliente: nuevoId }
+    });
+  } catch (error) {
+    console.error('Error al crear cliente:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al crear cliente',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+const actualizarClienteController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nombre, ruc, razon_social, activo } = req.body;
+
+    const affectedRows = await updateCliente(id, { nombre, ruc, razon_social, activo });
+
+    if (affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Cliente no encontrado'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Cliente actualizado exitosamente'
+    });
+  } catch (error) {
+    console.error('Error al actualizar cliente:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al actualizar cliente',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+const eliminarClienteController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const affectedRows = await deleteCliente(id);
+
+    if (affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Cliente no encontrado'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Cliente desactivado exitosamente'
+    });
+  } catch (error) {
+    console.error('Error al desactivar cliente:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al desactivar cliente',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+const activarClienteController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const affectedRows = await activarCliente(id);
+
+    if (affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Cliente no encontrado'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Cliente activado exitosamente'
+    });
+  } catch (error) {
+    console.error('Error al activar cliente:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al activar cliente',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+const fetchAllContratos = async (req, res) => {
+  try {
+    const contratos = await getAllContratos();
+
+    res.json({
+      success: true,
+      data: contratos,
+      count: contratos.length
+    });
+  } catch (error) {
+    console.error('Error obteniendo todos los contratos:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener contratos',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+const getContratosController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const contratos = await getContratosByCliente(id);
+
+    res.json({
+      success: true,
+      data: contratos,
+      count: contratos.length
+    });
+  } catch (error) {
+    console.error('Error obteniendo contratos:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener contratos',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+const getContratoByIdController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const contrato = await getContratoById(id);
+
+    if (!contrato) {
+      return res.status(404).json({
+        success: false,
+        message: 'Contrato no encontrado'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: contrato
+    });
+  } catch (error) {
+    console.error('Error obteniendo contrato:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener contrato',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+const crearContratoController = async (req, res) => {
+  try {
+    const { id: cliente_id } = req.params;
+    const contratoData = { ...req.body, cliente_id };
+
+    if (!contratoData.fecha_inicio) {
+      return res.status(400).json({
+        success: false,
+        message: 'Fecha de inicio es obligatoria'
+      });
+    }
+
+    const nuevoId = await createContrato(contratoData);
+
+    res.status(201).json({
+      success: true,
+      message: 'Contrato creado exitosamente',
+      data: { id_contrato: nuevoId }
+    });
+  } catch (error) {
+    console.error('Error al crear contrato:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al crear contrato',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+const actualizarContratoController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const contratoData = req.body;
+
+    const affectedRows = await updateContrato(id, contratoData);
+
+    if (affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Contrato no encontrado'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Contrato actualizado exitosamente'
+    });
+  } catch (error) {
+    console.error('Error al actualizar contrato:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al actualizar contrato',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+const desactivarContratoController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const affectedRows = await desactivarContrato(id);
+
+    if (affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Contrato no encontrado'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Contrato desactivado exitosamente'
+    });
+  } catch (error) {
+    console.error('Error al desactivar contrato:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al desactivar contrato',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+const getInstalacionesController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const instalaciones = await getInstalacionesByCliente(id);
+
+    res.json({
+      success: true,
+      data: instalaciones,
+      count: instalaciones.length
+    });
+  } catch (error) {
+    console.error('Error obteniendo instalaciones:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener instalaciones',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+const getHistorialClienteController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const historial = await getHistorialCliente(id);
+
+    res.json({
+      success: true,
+      data: historial,
+      count: historial.length
+    });
+  } catch (error) {
+    console.error('Error al obtener historial del cliente:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener historial del cliente',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+const tieneHistorialController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const tiene = await tieneHistorial(id);
+
+    res.json({
+      success: true,
+      tiene_historial: tiene
+    });
+  } catch (error) {
+    console.error('Error al verificar historial del cliente:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al verificar historial del cliente',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+const getUltimoCambioController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const ultimoCambio = await getUltimoCambioCliente(id);
+
+    if (!ultimoCambio) {
+      return res.json({
+        success: true,
+        data: null,
+        message: 'Este cliente no tiene historial de cambios'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: ultimoCambio
+    });
+  } catch (error) {
+    console.error('Error al obtener último cambio:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener último cambio',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+const getHistorialBatchController = async (req, res) => {
+  try {
+    const { cliente_ids } = req.body;
+
+    if (!Array.isArray(cliente_ids) || cliente_ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Se requiere un array de cliente_ids'
+      });
+    }
+
+    if (cliente_ids.length > 50) {
+      return res.status(400).json({
+        success: false,
+        message: 'Máximo 50 clientes por petición'
+      });
+    }
+
+    const resultado = await getClientesConHistorialBatch(cliente_ids);
+
+    res.json({
+      success: true,
+      data: resultado
+    });
+  } catch (error) {
+    console.error('Error al obtener historial batch:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener historial batch',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+module.exports = {
+  fetchAllClientes,
+  getClientesInactivosController,
+  getClienteByIdController,
+  getClienteCompletoController,
+  getClienteByRucController,
+  searchClientesController,
+  crearClienteController,
+  actualizarClienteController,
+  eliminarClienteController,
+  activarClienteController,
+
+  fetchAllContratos,
+  getContratosController,
+  getContratoByIdController,
+  crearContratoController,
+  actualizarContratoController,
+  desactivarContratoController,
+
+  getInstalacionesController,
+  
+  getHistorialClienteController,
+  tieneHistorialController,
+  getUltimoCambioController,
+  getHistorialBatchController
+};
