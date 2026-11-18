@@ -3,13 +3,16 @@
 //   node generar-correos.js --periodo 2026-10
 //   node generar-correos.js --periodo 2026-10 --errores          (+ casos de error)
 //   node generar-correos.js --periodo 2026-10 --falla SIMB0002   (equipo con falla)
+//   node generar-correos.js --periodo 2026-11 --reemplazos       (aplica escenario.reemplazos)
 //
 // Un correo por cliente y mes, con un adjunto por impresora en el formato de su marca.
 // El Message-ID es fijo por cliente y mes: generar dos veces el mismo mes simula un reenvío.
 
 const fs = require('fs');
 const path = require('path');
-const { cargarEscenario, validarPeriodo, fechaCorte, contadoresAlCierre, repartirPorUsuario } = require('./lib/escenario');
+const {
+  cargarEscenario, validarPeriodo, fechaCorte, contadoresAlCierre, repartirPorUsuario, maquinasDelPeriodo, totalesBnColor,
+} = require('./lib/escenario');
 const { FORMATOS } = require('./lib/formatos');
 const { crearCorreo } = require('./lib/correo');
 
@@ -19,7 +22,8 @@ const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', '
 const nombreMes = (periodo) => `${MESES[Number(periodo.slice(5)) - 1]} de ${periodo.slice(0, 4)}`;
 
 function adjuntoDe(maquina, periodo, periodoBase, fallas) {
-  const contadores = contadoresAlCierre(maquina, periodo, periodoBase);
+  // Una máquina entrante (reemplazo) cuenta desde el mes en que se instaló
+  const contadores = contadoresAlCierre(maquina, periodo, maquina.periodo_base || periodoBase);
   const formato = FORMATOS[maquina.formato];
   if (!formato) throw new Error(`La máquina ${maquina.serie} tiene un formato desconocido: ${maquina.formato}`);
   return {
@@ -49,9 +53,23 @@ function correoDe({ remitente, nombre, codigo, maquinas }, periodo, escenario, f
   });
 }
 
-function generarCorreos({ periodo, errores = false, fallas = [], buzon = BUZON } = {}) {
+// Datos con los que se registra en PrintFlow cada reemplazo que empieza ese mes
+function reemplazosPorRegistrar(escenario, periodo) {
+  return (escenario.reemplazos || [])
+    .filter((r) => r.periodo === periodo)
+    .map((r) => ({
+      saliente: r.saliente,
+      entrante: r.entrante.serie,
+      periodo_afectado: r.periodo,
+      ...r.registro,
+      contador_inicial_entrante: totalesBnColor(r.entrante.contador_inicial),
+    }));
+}
+
+function generarCorreos({ periodo, errores = false, fallas = [], reemplazos = false, buzon = BUZON, escenario = cargarEscenario() } = {}) {
   validarPeriodo(periodo);
-  const escenario = cargarEscenario();
+  // Con --reemplazos, desde su período la entrante reporta en lugar de la saliente
+  const conMaquinasDelMes = (cliente) => ({ ...cliente, maquinas: maquinasDelPeriodo(cliente, periodo, escenario, { reemplazos }) });
   fs.mkdirSync(buzon, { recursive: true });
   const archivos = [];
   const guardar = (nombreArchivo, contenido) => {
@@ -61,7 +79,7 @@ function generarCorreos({ periodo, errores = false, fallas = [], buzon = BUZON }
   };
 
   for (const cliente of escenario.clientes) {
-    guardar(`${periodo}_${cliente.codigo}.eml`, correoDe(cliente, periodo, escenario, fallas));
+    guardar(`${periodo}_${cliente.codigo}.eml`, correoDe(conMaquinasDelMes(cliente), periodo, escenario, fallas));
   }
 
   if (errores) {
@@ -78,14 +96,14 @@ function generarCorreos({ periodo, errores = false, fallas = [], buzon = BUZON }
     }, periodo, escenario, fallas));
 
     // 2. El mismo correo del primer cliente llega dos veces → la segunda se descarta
-    const primero = escenario.clientes[0];
+    const primero = conMaquinasDelMes(escenario.clientes[0]);
     guardar(`${periodo}_${primero.codigo}_reenvio.eml`, correoDe(primero, periodo, escenario, fallas));
   }
 
   return archivos;
 }
 
-module.exports = { generarCorreos };
+module.exports = { generarCorreos, reemplazosPorRegistrar };
 
 if (require.main === module) {
   const args = process.argv.slice(2);
@@ -94,13 +112,26 @@ if (require.main === module) {
     return i === -1 ? undefined : args[i + 1];
   };
   try {
+    const periodo = valor('--periodo');
+    const reemplazos = args.includes('--reemplazos');
     const archivos = generarCorreos({
-      periodo: valor('--periodo'),
+      periodo,
       errores: args.includes('--errores'),
       fallas: (valor('--falla') || '').split(',').map((s) => s.trim()).filter(Boolean),
+      reemplazos,
     });
     console.log(`Correos generados en simulador/buzon/entrada (${archivos.length}):`);
     archivos.forEach((a) => console.log(`  ✉  ${a}`));
+    if (reemplazos) {
+      for (const r of reemplazosPorRegistrar(cargarEscenario(), periodo)) {
+        console.log(`
+Reemplazo ${r.saliente} → ${r.entrante} desde ${r.periodo_afectado}. Debe estar registrado en Máquinas → Reemplazos` +
+          ' antes de aprobar el lote, con estos datos:');
+        console.log(`  Fecha del daño ${r.fecha_danio} · instalación de la entrante ${r.fecha_instalacion_entrante} · tipo «${r.tipo_cambio}»`);
+        console.log(`  Contador final de ${r.saliente}: B/N ${r.contador_final_saliente.bn}, color ${r.contador_final_saliente.color}`);
+        console.log(`  Contador inicial de ${r.entrante}: B/N ${r.contador_inicial_entrante.bn}, color ${r.contador_inicial_entrante.color}`);
+      }
+    }
   } catch (error) {
     console.error(`Error: ${error.message}`);
     process.exit(1);
