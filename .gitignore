@@ -12,3 +12,4 @@ backups/
 # Correos generados por el simulador (se regeneran con generar-correos.js)
 simulador/buzon/**/*.eml
 simulador/buzon/**/*.motivo.txt
+simulador/buzon/estado.json

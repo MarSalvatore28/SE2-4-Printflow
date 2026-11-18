@@ -54,6 +54,33 @@ Los correos son archivos `.eml` normales: se pueden abrir con Outlook o Thunderb
 | `buzon/entrada/` | Correos que llegaron y aún no se procesan |
 | `buzon/procesados/` | Correos que la ingesta aceptó (o descartó por repetidos) |
 | `buzon/con-error/` | Correos ilegibles o rechazados, con un `.motivo.txt` al lado |
+| `buzon/alertas/` | Avisos al administrador (correos `.eml`) cuando algo no se pudo registrar |
+
+## Si la API no responde: reintentos y alerta (S3-08)
+
+Igual que el n8n de DOX, el simulador no pierde correos cuando PrintFlow está caído:
+
+1. Cada envío se **reintenta** con espera creciente (1 s, 2 s, 4 s) si la API no responde, está saturada (429) o falla (5xx).
+2. Si sigue caída, el correo **se queda en `buzon/entrada`** para el próximo ciclo y se cuentan los ciclos fallidos en `buzon/estado.json`.
+3. Al llegar a 3 ciclos fallidos, se **avisa al administrador** con un correo en `buzon/alertas/` (lo que n8n enviaría por SMTP).
+4. Un correo ilegible o **rechazado por la API** (por ejemplo, token de ingesta incorrecto → 401) va a `buzon/con-error` y también genera alerta. Un 4xx no se reintenta.
+
+Para mostrarlo:
+
+```powershell
+docker compose run --rm simulador generar-correos.js --periodo 2026-12
+docker compose stop api
+docker compose run --rm --no-deps simulador procesar-buzon.js   # 3 veces: al tercer ciclo aparece la alerta
+docker compose start api
+docker compose run --rm simulador procesar-buzon.js            # los correos se procesan; no se perdió ninguno
+```
+
+| Variable | Por defecto | Qué controla |
+|---|---|---|
+| `REINTENTOS` | 3 | Reintentos por envío |
+| `ESPERA_BASE_MS` | 1000 | Espera del primer reintento (luego se duplica) |
+| `FALLOS_PARA_ALERTA` | 3 | Ciclos fallidos antes de avisar |
+| `ALERTA_PARA` | admin@printflow.local | Destinatario de la alerta |
 
 ## Qué simula
 
@@ -84,11 +111,12 @@ Los contadores son **acumulados**, como los de una impresora real, y **reproduci
 | `escenario.json` | Clientes, contratos, áreas y máquinas ficticias, con su formato, IP, contadores iniciales y consumo promedio |
 | `preparar-datos.js` | Escribe el SQL que registra el escenario en PrintFlow (se puede repetir sin duplicar) |
 | `generar-correos.js` | Arma los correos de un mes y los deja en `buzon/entrada/` |
-| `procesar-buzon.js` | El «n8n»: lee el buzón, convierte y llama a `POST /api/ingesta/cargar` con `Authorization: Bearer <INGESTA_TOKEN>` |
+| `procesar-buzon.js` | El «n8n»: lee el buzón, convierte y llama a `POST /api/ingesta/cargar` con `Authorization: Bearer <INGESTA_TOKEN>` | · Reintenta y avisa al administrador si falla (S3-08) |
 | `demo.js` | Todo junto: varios meses, aprobación y consolidado |
 | `lib/formatos.js` | Generador y lector de cada formato |
 | `lib/correo.js` | Crea y lee correos `.eml` con adjuntos |
 | `lib/n8n.js` | Convierte un correo en el cuerpo de la ingesta |
+| `lib/entrega.js` | Reintentos con espera creciente, estado entre ciclos y alertas al administrador |
 
 Los tests están en `test/simulador.test.js` y corren con `npm test`.
 
