@@ -79,7 +79,7 @@ app.use('/api/ingesta', ingestaRoutes); // [C-F2]
 app.use('/api/staging', stagingRoutes); // [C-F2]
 
 // --- Fase 3
-// const reportemesRoutes = require('@routes/reportemes/reportemes.routes'); // [C-F3]
-// app.use('/api/reportes', reportemesRoutes); // [C-F3]
+const reportemesRoutes = require('@routes/reportemes/reportemes.routes'); // [C-F3]
+app.use('/api/reportes', reportemesRoutes); // [C-F3]
 
 module.exports = app;
