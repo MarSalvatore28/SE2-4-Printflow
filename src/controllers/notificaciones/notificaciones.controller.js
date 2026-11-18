@@ -2,11 +2,19 @@ const Notificaciones = require('@models/notificaciones/notificaciones.model');
 const Staging = require('@models/reportemes_staging/reportemes_staging.model');
 
 const PERIODO_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
+const FECHA_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 // Entero positivo o null (evita que PostgreSQL responda 500 con "invalid input syntax")
 const aEntero = (valor) => {
   const n = Number(valor);
   return Number.isInteger(n) && n > 0 && n <= 2147483647 ? n : null;
+};
+
+// AAAA-MM-DD que existe en el calendario (2026-02-31 no)
+const esFechaValida = (texto) => {
+  if (!FECHA_REGEX.test(texto)) return false;
+  const fecha = new Date(`${texto}T00:00:00Z`);
+  return !Number.isNaN(fecha.getTime()) && fecha.toISOString().slice(0, 10) === texto;
 };
 
 const error500 = (res, mensaje, err) => {
@@ -217,7 +225,56 @@ const limpiarAntiguasController = async (req, res) => {
   }
 };
 
-// ------------------------- Aprobar y rechazar lotes ------------------------
+// --------------------------------- Lotes ----------------------------------
+
+const listarLotesController = async (req, res) => {
+  const { estado, cliente_id, desde, hasta } = req.query;
+  const filtros = {};
+
+  if (estado !== undefined && estado !== '') {
+    filtros.estado = String(estado).toUpperCase();
+    if (!Notificaciones.ESTADOS_LOTE.includes(filtros.estado)) {
+      return res.status(400).json({
+        success: false,
+        message: `estado debe ser uno de: ${Notificaciones.ESTADOS_LOTE.join(', ')}`,
+      });
+    }
+  }
+  if (cliente_id !== undefined && cliente_id !== '') {
+    filtros.clienteId = aEntero(cliente_id);
+    if (!filtros.clienteId) return res.status(400).json({ success: false, message: 'cliente_id inválido' });
+  }
+  for (const [nombre, valor] of [['desde', desde], ['hasta', hasta]]) {
+    if (valor !== undefined && valor !== '') {
+      if (!esFechaValida(String(valor))) {
+        return res.status(400).json({ success: false, message: `${nombre} debe tener el formato AAAA-MM-DD` });
+      }
+      filtros[nombre] = String(valor);
+    }
+  }
+  if (filtros.desde && filtros.hasta && filtros.desde > filtros.hasta) {
+    return res.status(400).json({ success: false, message: 'La fecha desde no puede ser posterior a la fecha hasta' });
+  }
+
+  try {
+    const data = await Notificaciones.listarLotes(filtros);
+    res.json({ success: true, data, total: data.length });
+  } catch (err) {
+    error500(res, 'Error al obtener los lotes', err);
+  }
+};
+
+const obtenerLoteController = async (req, res) => {
+  const loteId = aEntero(req.params.loteId);
+  if (!loteId) return res.status(400).json({ success: false, message: 'ID de lote inválido' });
+  try {
+    const data = await Notificaciones.obtenerLote(loteId);
+    if (!data) return res.status(404).json({ success: false, message: 'Lote no encontrado' });
+    res.json({ success: true, data });
+  } catch (err) {
+    error500(res, 'Error al obtener el lote', err);
+  }
+};
 
 // Aprueba el lote con la validación de staging. Responde 409 con `errores` si no se puede.
 const aprobarLote = async (loteId, req, res) => {
@@ -285,7 +342,17 @@ const rechazarLote = async (loteId, req, res) => {
   res.json({ success: true, data, message: 'Lote rechazado correctamente' });
 };
 
-// Aprobar o rechazar el lote de una notificación
+const accionLotePorId = (accion, mensajeError) => async (req, res) => {
+  const loteId = aEntero(req.params.loteId);
+  if (!loteId) return res.status(400).json({ success: false, message: 'ID de lote inválido' });
+  try {
+    await accion(loteId, req, res);
+  } catch (err) {
+    error500(res, mensajeError, err);
+  }
+};
+
+// Mismas acciones, pero a partir de la notificación del lote
 const accionLotePorNotificacion = (accion, mensajeError) => async (req, res) => {
   const id = aEntero(req.params.id);
   if (!id) return res.status(400).json({ success: false, message: 'ID de notificación inválido' });
@@ -315,6 +382,10 @@ module.exports = {
   marcarTodasLeidasController,
   eliminarController,
   limpiarAntiguasController,
+  listarLotesController,
+  obtenerLoteController,
+  aprobarLoteController: accionLotePorId(aprobarLote, 'Error al aprobar el lote'),
+  rechazarLoteController: accionLotePorId(rechazarLote, 'Error al rechazar el lote'),
   aprobarPorNotificacionController: accionLotePorNotificacion(aprobarLote, 'Error al aprobar el lote'),
   rechazarPorNotificacionController: accionLotePorNotificacion(rechazarLote, 'Error al rechazar el lote'),
 };

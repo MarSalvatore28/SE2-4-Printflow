@@ -160,7 +160,7 @@ const eliminarLeidasAntiguas = async (dias) => {
 };
 
 // ---------------------------------------------------------------------------
-// Lotes: estado de un lote para decidir si se puede aprobar o rechazar.
+// Lotes (lo que antes daba /api/lotes, que ya no existe)
 //
 // Estado de un lote, con las palabras del plan (PLAN.md, sección 7):
 //   PROCESADO  -> tiene fecha_aprobacion.
@@ -253,6 +253,42 @@ const SELECT_LOTES = `
   FROM base
 `;
 
+const ESTADOS_LOTE = ['PENDIENTE', 'PROCESADO', 'DESCARTADO', 'ERROR'];
+
+// filtros: { estado, clienteId, desde: 'YYYY-MM-DD', hasta: 'YYYY-MM-DD' } (todos opcionales).
+// Las fechas filtran por la fecha de recepción (fecha_carga), ambas inclusive.
+const listarLotes = async ({ estado, clienteId, desde, hasta } = {}) => {
+  const valores = [];
+  const condiciones = [];
+
+  if (estado) {
+    valores.push(estado);
+    condiciones.push(`lotes.estado = $${valores.length}`);
+  }
+  if (clienteId) {
+    valores.push(clienteId);
+    condiciones.push(`EXISTS (
+      SELECT 1 FROM json_array_elements(lotes.clientes) c
+      WHERE (c->>'id_cliente')::int = $${valores.length}
+    )`);
+  }
+  if (desde) {
+    valores.push(desde);
+    condiciones.push(`lotes.fecha_carga >= $${valores.length}::date`);
+  }
+  if (hasta) {
+    valores.push(hasta);
+    condiciones.push(`lotes.fecha_carga < ($${valores.length}::date + 1)`);
+  }
+
+  let sql = `SELECT * FROM (${SELECT_LOTES}) lotes`;
+  if (condiciones.length) sql += ` WHERE ${condiciones.join(' AND ')}`;
+  sql += ' ORDER BY lotes.fecha_carga DESC, lotes.id_lote DESC';
+
+  const { rows } = await pool.query(sql, valores);
+  return rows;
+};
+
 const obtenerLote = async (loteId) => {
   const { rows } = await pool.query(
     `SELECT * FROM (${SELECT_LOTES}) lotes WHERE lotes.id_lote = $1`,
@@ -299,6 +335,8 @@ module.exports = {
   marcarTodasLeidas,
   eliminarNotificacion,
   eliminarLeidasAntiguas,
+  ESTADOS_LOTE,
+  listarLotes,
   obtenerLote,
   registrarAprobador,
   registrarRechazo,

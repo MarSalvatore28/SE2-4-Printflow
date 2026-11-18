@@ -15,6 +15,10 @@ const {
   marcarTodasLeidasController,
   eliminarController,
   limpiarAntiguasController,
+  listarLotesController,
+  obtenerLoteController,
+  aprobarLoteController,
+  rechazarLoteController,
   aprobarPorNotificacionController,
   rechazarPorNotificacionController,
 } = require('@controllers/notificaciones/notificaciones.controller');
@@ -26,7 +30,7 @@ const {
  * @swagger
  * tags:
  *   - name: Notificaciones
- *     description: Notificaciones en tiempo real
+ *     description: Notificaciones en tiempo real y lotes recibidos por la ingesta
  * components:
  *   schemas:
  *     Notificacion:
@@ -48,6 +52,37 @@ const {
  *         total_registros: { type: integer, nullable: true }
  *         fecha_aprobacion: { type: string, format: date-time, nullable: true }
  *         usuario_nombre: { type: string, nullable: true, description: Quién aprobó el lote }
+ *     Lote:
+ *       type: object
+ *       properties:
+ *         id_lote: { type: integer }
+ *         codigo_referencia: { type: string }
+ *         periodo: { type: string, nullable: true }
+ *         estado:
+ *           type: string
+ *           enum: [PENDIENTE, PROCESADO, DESCARTADO, ERROR]
+ *           description: >
+ *             PROCESADO = aprobado; DESCARTADO = rechazado (sin reportes en staging);
+ *             ERROR = en staging con reportes bloqueados (procesar_lectura = false);
+ *             PENDIENTE = en staging esperando aprobación.
+ *         motivo: { type: string, nullable: true, description: Motivo del error o del rechazo }
+ *         fecha_carga: { type: string, format: date-time, description: Fecha de recepción }
+ *         fecha_procesamiento: { type: string, format: date-time, nullable: true, description: Fecha de aprobación o rechazo }
+ *         fecha_aprobacion: { type: string, format: date-time, nullable: true }
+ *         fecha_corte: { type: string, format: date-time, nullable: true }
+ *         total_registros_cargados: { type: integer }
+ *         reportes_staging: { type: integer }
+ *         reportes_con_error: { type: integer }
+ *         reportes_oficiales: { type: integer }
+ *         notificaciones_no_leidas: { type: integer }
+ *         usuario_aprobacion_nombre: { type: string, nullable: true }
+ *         clientes:
+ *           type: array
+ *           items:
+ *             type: object
+ *             properties:
+ *               id_cliente: { type: integer }
+ *               nombre: { type: string }
  *     ErroresAprobacion:
  *       type: object
  *       properties:
@@ -194,6 +229,115 @@ router.delete('/limpiar-antiguas', limpiarAntiguasController);
 
 /**
  * @swagger
+ * /api/notificaciones/lotes:
+ *   get:
+ *     summary: Lotes recibidos, con su estado (más recientes primero)
+ *     description: Reemplaza al antiguo /api/lotes. Ordena por fecha de recepción descendente.
+ *     tags: [Notificaciones]
+ *     parameters:
+ *       - in: query
+ *         name: estado
+ *         schema: { type: string, enum: [PENDIENTE, PROCESADO, DESCARTADO, ERROR] }
+ *       - in: query
+ *         name: cliente_id
+ *         schema: { type: integer }
+ *         description: Lotes con reportes de ese cliente
+ *       - in: query
+ *         name: desde
+ *         schema: { type: string, format: date }
+ *         description: Fecha de recepción desde (inclusive)
+ *       - in: query
+ *         name: hasta
+ *         schema: { type: string, format: date }
+ *         description: Fecha de recepción hasta (inclusive)
+ *     responses:
+ *       200:
+ *         description: Lista de lotes
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 total: { type: integer }
+ *                 data:
+ *                   type: array
+ *                   items: { $ref: '#/components/schemas/Lote' }
+ *       400: { description: Filtros inválidos }
+ * /api/notificaciones/lotes/{loteId}:
+ *   get:
+ *     summary: Un lote con su estado
+ *     tags: [Notificaciones]
+ *     parameters:
+ *       - in: path
+ *         name: loteId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Lote
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data: { $ref: '#/components/schemas/Lote' }
+ *       404: { description: Lote no encontrado }
+ * /api/notificaciones/lotes/{loteId}/aprobar:
+ *   post:
+ *     summary: Aprueba un lote (pasa sus reportes de staging a oficiales)
+ *     description: Valida el lote como /api/staging/approve-batch y guarda quién lo aprobó.
+ *     tags: [Notificaciones]
+ *     parameters:
+ *       - in: path
+ *         name: loteId
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               periodo: { type: string, example: '2026-10', description: 'AAAA-MM. Si falta, se usa el del lote' }
+ *     responses:
+ *       200: { description: Lote aprobado; data trae el lote actualizado }
+ *       400: { description: Período inválido }
+ *       404: { description: Lote no encontrado }
+ *       409:
+ *         description: No se puede aprobar (ya aprobado, rechazado o con errores de validación)
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErroresAprobacion' }
+ * /api/notificaciones/lotes/{loteId}/rechazar:
+ *   post:
+ *     summary: Rechaza un lote (borra su staging; queda DESCARTADO con el motivo)
+ *     tags: [Notificaciones]
+ *     parameters:
+ *       - in: path
+ *         name: loteId
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               motivo: { type: string, maxLength: 500 }
+ *     responses:
+ *       200: { description: Lote rechazado; data trae el lote actualizado }
+ *       404: { description: Lote no encontrado }
+ *       409: { description: El lote ya estaba aprobado o rechazado }
+ */
+router.get('/lotes', listarLotesController);
+router.get('/lotes/:loteId', obtenerLoteController);
+router.post('/lotes/:loteId/aprobar', aprobarLoteController);
+router.post('/lotes/:loteId/rechazar', rechazarLoteController);
+
+/**
+ * @swagger
  * /api/notificaciones/lote/{loteId}:
  *   get:
  *     summary: Notificaciones de un lote
@@ -250,7 +394,7 @@ router.get('/lote/:loteId', listarPorLoteController);
  * /api/notificaciones/{id}/aprobar:
  *   post:
  *     summary: Aprueba el lote de una notificación
- *     description: Valida el lote como /api/staging/approve-batch y guarda quién lo aprobó (el usuario del token).
+ *     description: Igual que /api/notificaciones/lotes/{loteId}/aprobar. El aprobador es el usuario del token.
  *     tags: [Notificaciones]
  *     parameters:
  *       - in: path
