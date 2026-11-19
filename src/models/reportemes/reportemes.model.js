@@ -1,5 +1,6 @@
 const pool = require('@config/db');
 const { consumoDelCambio } = require('@utils/maquinasCambio.consumo');
+const { consumoDeCuenta } = require('@utils/consumoPorCuenta');
 
 const getPeriodoAnterior = (periodoActual) => {
   const [year, month] = periodoActual.split('-').map(Number);
@@ -526,27 +527,32 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
   }
 };
 
+// Informe por usuario: lo que imprimió y copió cada cuenta EN EL PERÍODO. Las cuentas traen
+// contadores acumulados, así que se resta su lectura del período anterior (consumoPorCuenta).
 const getReporteDetallado = async (clienteId, periodo, areaId = null, maquinaId = null) => {
   try {
     let queryText = `
-      SELECT DISTINCT
+      SELECT
         -- DATOS DEL DETALLE (Hijo)
         rd.id_detalle,
         rd.fecha_transaccion,
         rd.cuenta_id,
         rd.usuario_trabajo,
-        
-        -- Los contadores específicos
+
+        -- Lectura acumulada de la cuenta al corte del período
         rd.cnt_impresion_bn,
         rd.cnt_impresion_color,
         rd.cnt_copia_bn,
         rd.cnt_copia_color,
-        
-        -- Totales calculados de la fila (BN vs Color)
-        (rd.cnt_impresion_bn + rd.cnt_copia_bn) as total_bn,
-        (rd.cnt_impresion_color + rd.cnt_copia_color) as total_color,
-        (rd.cnt_impresion_bn + rd.cnt_impresion_color + rd.cnt_copia_bn + rd.cnt_copia_color) as gran_total,
-        
+
+        -- Lectura de la misma cuenta y máquina en el período anterior (null si no hay)
+        rd_prev.cnt_impresion_bn as prev_impresion_bn,
+        rd_prev.cnt_impresion_color as prev_impresion_color,
+        rd_prev.cnt_copia_bn as prev_copia_bn,
+        rd_prev.cnt_copia_color as prev_copia_color,
+        (rd_prev.id_detalle IS NOT NULL) as tiene_anterior,
+        COALESCE(i.contador_acumulativo, false) as contador_acumulativo,
+
         rd.monto_detalle,
 
         -- DATOS DEL CONTEXTO (Padre - Reporte Oficial)
@@ -554,32 +560,45 @@ const getReporteDetallado = async (clienteId, periodo, areaId = null, maquinaId 
         ro.snap_maquina_serie as serie,
         COALESCE(mod.nombre, 'No disponible') as modelo,
         ro.snap_maquina_ip as ip,
-        
+
         COALESCE(ro.snap_costo_impresion_bn, 0) as costo_imp_bn,
         COALESCE(ro.snap_costo_impresion_color, 0) as costo_imp_col,
-        
-        -- Área: Priorizamos el snapshot histórico, si es nulo ponemos 'Sin Área'
-        COALESCE(ro.snap_area_nombre, 'Sin Área') as area
+
+        -- Área: el snapshot histórico; si no lo tiene, la de la asignación del período
+        COALESCE(ro.snap_area_nombre, a.nombre, 'Sin Área') as area
 
       FROM reportes_detalle_oficial rd
-      
+
       -- UNIÓN CON EL PADRE (Necesaria para filtrar por Cliente y Periodo)
       JOIN reportes_oficiales ro ON rd.reporte_oficial_id = ro.id_reporte
-      
+
       -- JOINS PARA OBTENER EL MODELO
       LEFT JOIN maquinas m ON ro.maquina_id = m.id_maquina
       LEFT JOIN modelos mod ON m.modelo_id = mod.id_modelo
 
-      -- JOINS OPCIONALES (Solo para aplicar el filtro de area_id si se envía)
-      LEFT JOIN instalaciones i ON ro.maquina_id = i.maquina_id AND i.activo = true
+      -- Asignación de la máquina en el período (área y forma de contar), como el consolidado
+      ${INSTALACION_DEL_PERIODO}
       LEFT JOIN areas a ON i.area_id = a.id_area
 
-      WHERE ro.cliente_id = $1 
+      -- Última lectura de la misma cuenta en esa máquina y cliente en el período anterior
+      LEFT JOIN LATERAL (
+        SELECT d2.id_detalle, d2.cnt_impresion_bn, d2.cnt_impresion_color, d2.cnt_copia_bn, d2.cnt_copia_color
+        FROM reportes_detalle_oficial d2
+        JOIN reportes_oficiales r2 ON r2.id_reporte = d2.reporte_oficial_id
+        WHERE r2.maquina_id = ro.maquina_id
+          AND r2.cliente_id = ro.cliente_id
+          AND r2.periodo = $3
+          AND d2.cuenta_id IS NOT DISTINCT FROM rd.cuenta_id
+        ORDER BY d2.fecha_transaccion DESC NULLS LAST, d2.id_detalle DESC
+        LIMIT 1
+      ) rd_prev ON TRUE
+
+      WHERE ro.cliente_id = $1
         AND ro.periodo = $2
     `;
 
-    const params = [clienteId, periodo];
-    let paramCounter = 3;
+    const params = [clienteId, periodo, getPeriodoAnterior(periodo)];
+    let paramCounter = 4;
 
     if (areaId) {
       queryText += ` AND a.id_area = $${paramCounter}`;
@@ -596,10 +615,25 @@ const getReporteDetallado = async (clienteId, periodo, areaId = null, maquinaId 
     const { rows } = await pool.query(queryText, params);
 
     const detalles = rows.map(row => {
-      const montoImpBN = row.cnt_impresion_bn * parseFloat(row.costo_imp_bn || 0);
-      const montoImpCol = row.cnt_impresion_color * parseFloat(row.costo_imp_col || 0);
-      const montoCopBN = row.cnt_copia_bn * parseFloat(row.costo_imp_bn || 0);
-      const montoCopCol = row.cnt_copia_color * parseFloat(row.costo_imp_col || 0);
+      const lectura = {
+        print_bn: row.cnt_impresion_bn,
+        print_color: row.cnt_impresion_color,
+        copia_bn: row.cnt_copia_bn,
+        copia_color: row.cnt_copia_color
+      };
+      const anterior = row.tiene_anterior ? {
+        print_bn: row.prev_impresion_bn,
+        print_color: row.prev_impresion_color,
+        copia_bn: row.prev_copia_bn,
+        copia_color: row.prev_copia_color
+      } : null;
+      // contadores = consumo del período (lo que suman la pantalla, el Excel y el PDF)
+      const consumo = consumoDeCuenta(lectura, anterior, row.contador_acumulativo);
+
+      const montoImpBN = consumo.print_bn * parseFloat(row.costo_imp_bn || 0);
+      const montoImpCol = consumo.print_color * parseFloat(row.costo_imp_col || 0);
+      const montoCopBN = consumo.copia_bn * parseFloat(row.costo_imp_bn || 0);
+      const montoCopCol = consumo.copia_color * parseFloat(row.costo_imp_col || 0);
 
       const montoTotalImpresiones = montoImpBN + montoImpCol;
       const montoTotalCopias = montoCopBN + montoCopCol;
@@ -620,16 +654,17 @@ const getReporteDetallado = async (clienteId, periodo, areaId = null, maquinaId 
           ip: row.ip,
           area: row.area
         },
-        contadores: {
-          print_bn: row.cnt_impresion_bn,
-          print_color: row.cnt_impresion_color,
-          copia_bn: row.cnt_copia_bn,
-          copia_color: row.cnt_copia_color
+        contadores: consumo,
+        // Lecturas acumuladas de la cuenta, por si se quieren mostrar o auditar
+        lectura: {
+          actual: lectura,
+          anterior,
+          acumulativo: row.contador_acumulativo
         },
         totales: {
-          bn: parseInt(row.total_bn),
-          color: parseInt(row.total_color),
-          general: parseInt(row.gran_total)
+          bn: consumo.print_bn + consumo.copia_bn,
+          color: consumo.print_color + consumo.copia_color,
+          general: consumo.print_bn + consumo.print_color + consumo.copia_bn + consumo.copia_color
         },
         costos: {
           monto: parseFloat(montoTotal.toFixed(2)),
