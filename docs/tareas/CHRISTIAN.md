@@ -1,14 +1,22 @@
 # Tareas de Christian · Equipo C
 
-Te toca **lo que se factura**: que el consolidado deje de salir en $0 (S3-06), que una tarifa nueva no cambie los meses ya cerrados, poder anular un reemplazo y que el informe responda en menos de 5 segundos con 500 máquinas (S4-05). Nada depende de otra persona: el formato de la respuesta del importe ya está acordado con Gabriela (ver `README.md`).
+Te toca **lo que se factura**: que el consolidado deje de salir en $0 (S3-06), que una tarifa nueva no cambie los meses ya cerrados, poder anular un reemplazo que el informe responda en menos de 5 segundos con 500 máquinas (S4-05) y, con Samuel, **publicar el sistema en internet y que se actualice solo** (S4-04). Nada depende de otra persona: el formato de la respuesta del importe ya está acordado con Gabriela (ver `README.md`).
 
-| # | Tarea | Puntos | Para cuándo | Rama |
-|---|---|---|---|---|
-| 1 | **S3-06 · Cálculo del importe del consolidado** | 8 | 10 dic | `feature/f3-importe` |
-| 2 | Congelar las tarifas al aprobar | 1 | 13 dic | `feature/f3-tarifas-congeladas` |
-| 3 | **Anular un reemplazo de máquina** | 3 | 13 dic | `feature/f3-anular-reemplazo` |
-| 4 | **S4-05 · Rendimiento: menos de 5 s con 500 máquinas** | 2 | 20 dic | `feature/f4-rendimiento` |
-| 5 | Endpoints 501 de reportes y limpieza | 1 | 20 dic | `fix/reportes-pendientes` |
+> **Prioridad: URGENTE (medio parcial). Empieza hoy por la tarea 1.**
+> Una tarea está **terminada** solo cuando tiene las 4 cosas:
+> 1. **Tus commits** en tu rama (uno por mejora, a tu nombre).
+> 2. Un **PR a `develop`** con «Cómo probarlo» completo.
+> 3. El **CI en verde** (`test`, `docker` y `smoke`).
+> 4. Una **prueba de que funciona** con datos del simulador: la salida de los tests y una captura o un video corto en el PR.
+
+| # | Tarea | Puntos | Rama |
+|---|---|---|---|
+| 1 | **S3-06 · Cálculo del importe del consolidado** | 8 | `feature/f3-importe` |
+| 2 | Congelar las tarifas al aprobar | 1 | `feature/f3-tarifas-congeladas` |
+| 3 | **Anular un reemplazo de máquina** | 3 | `feature/f3-anular-reemplazo` |
+| 4 | **S4-05 · Rendimiento: menos de 5 s con 500 máquinas** | 2 | `feature/f4-rendimiento` |
+| 5 | Endpoints 501 de reportes y limpieza | 1 | `fix/reportes-pendientes` |
+| 6 | **S4-04 · Despliegue automático, respaldos fuera de la VM y monitoreo** (con Samuel) | 3 | `feature/f4-despliegue-automatico` |
 
 Tus migraciones van de `020` a `029`.
 
@@ -81,3 +89,18 @@ Hoy no se puede deshacer un reemplazo registrado por error.
 - `GET /api/reportes/periodo/:periodo` y `GET /api/reportes/cliente/:id` responden **501**. Impleméntalos o bórralos, junto con sus rutas y su Swagger.
 - **Borra** `src/services/maquina_asignacion/` y `src/types/maquina_asignacion/` del **frontend**: nadie los importa (caja 6, mejora 3.4). Comprueba con `npm run build`.
 - `src/config/swagger.js`: el título dice «BackContadores API» y el servidor, `http://localhost:3000`. Pon «PrintFlow API» y quita el servidor fijo.
+
+## 6. S4-04 · Despliegue automático, respaldos fuera de la VM y monitoreo (con Samuel)
+
+El despliegue es **del Equipo C**. Samuel pone la VM en marcha con `docs/despliegue.md`; tú haces que se mantenga sola:
+
+1. **Despliegue automático** con `.github/workflows/deploy.yml` en el backend: al mergear en `main`, y solo si el CI pasa, entra a la VM por SSH y ejecuta:
+   - respaldo previo (`backup.sh --una-vez`);
+   - `git pull` de los dos repos;
+   - migraciones pendientes (el script de Samuel);
+   - `up -d --build`.
+
+   Secretos en GitHub (`DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`); **nunca** en el repo. Que se pueda lanzar también a mano (`workflow_dispatch`). Si el despliegue falla, el workflow termina en rojo y muestra el log.
+2. **Respaldos fuera de la VM:** si se pierde la VM, se pierden los respaldos de `./backups`. Copia cada respaldo nuevo a un **Azure Blob Storage** de la cuenta de estudiante (`azcopy` o `az storage blob upload`) o a otro destino gratuito, con la misma retención de 30 días. Comprueba que **un respaldo bajado de ahí se restaura** (sección 5 de `docs/despliegue.md`).
+3. **Monitoreo:** un chequeo de `https://DOMINIO/api` (o de `/health` dentro de la red) cada 5 minutos que avise al grupo si la API no responde. Puede ser un workflow programado de GitHub Actions (`schedule`) o UptimeRobot (gratuito). Documéntalo en `docs/despliegue.md`.
+4. **Prueba:** un PR pequeño mergeado a `main` aparece en producción sin entrar a la VM. Deja en el PR el enlace a la ejecución del workflow.

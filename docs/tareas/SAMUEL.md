@@ -1,14 +1,22 @@
 # Tareas de Samuel · Equipo C (líder técnico backend)
 
-Te toca **lo más delicado del backend**: que el sistema rechace las lecturas malas (S3-01), que quede registro de quién cambió qué (S3-02) y la prueba de punta a punta con el PO (S4-06). Ninguna depende de otra persona: el contrato de `validarLectura` ya está fijado (ver `README.md`).
+Te toca **lo más delicado del backend**: que el sistema rechace las lecturas malas (S3-01), que quede registro de quién cambió qué (S3-02), la prueba de punta a punta con el PO (S4-06) y, con Christian, **publicar el sistema en internet** (S4-04). Ninguna depende de otra persona: el contrato de `validarLectura` ya está fijado (ver `README.md`).
 
-| # | Tarea | Puntos | Para cuándo | Rama |
-|---|---|---|---|---|
-| 1 | **S3-01 · Validaciones de lecturas** | 5 | 5 dic | `feature/f3-validaciones` |
-| 2 | **S3-02 · Auditoría** | 3 | 13 dic | `feature/f3-auditoria` |
-| 3 | Tests de login y seguridad (caja 3, mejora 3.5) | 2 | 28 nov | `test/f0-login` |
-| 4 | Cuatro fallos del backend (abajo) | 2 | 13 dic | `fix/staging-ingesta` |
-| 5 | **S4-06 · Prueba E2E y defectos de la UAT con el PO** | 3 | 8 ene | `feature/f4-e2e` |
+> **Prioridad: URGENTE (medio parcial). Empieza hoy por la tarea 1.**
+> Una tarea está **terminada** solo cuando tiene las 4 cosas:
+> 1. **Tus commits** en tu rama (uno por mejora, a tu nombre).
+> 2. Un **PR a `develop`** con «Cómo probarlo» completo.
+> 3. El **CI en verde** (`test`, `docker` y `smoke`).
+> 4. Una **prueba de que funciona** con datos del simulador: la salida de los tests y una captura o un video corto en el PR.
+
+| # | Tarea | Puntos | Rama |
+|---|---|---|---|
+| 1 | **S3-01 · Validaciones de lecturas** | 5 | `feature/f3-validaciones` |
+| 2 | **S3-02 · Auditoría** | 3 | `feature/f3-auditoria` |
+| 3 | Tests de login y seguridad (caja 3, mejora 3.5) | 2 | `test/f0-login` |
+| 4 | Cuatro fallos del backend (abajo) | 2 | `fix/staging-ingesta` |
+| 5 | **S4-06 · Prueba E2E y defectos de la UAT con el PO** | 3 | `feature/f4-e2e` |
+| 6 | **S4-04 · Despliegue en Azure: puesta en marcha y migraciones** (con Christian) | 3 | `feature/f4-migraciones-produccion` |
 
 Tus migraciones van de `010` a `019`.
 
@@ -77,4 +85,22 @@ Encontrados al integrar. Cada uno va en su commit:
    - el reemplazo de noviembre.
 
    Que se pueda correr con un comando y documentarlo en `docs/`.
-2. **UAT con el PO** (primera semana de enero): recorrido guiado y lista de defectos encontrados como issues. Corrige los que sean del backend.
+2. **UAT con el PO**: recorrido guiado y lista de defectos encontrados como issues. Corrige los que sean del backend.
+
+## 6. S4-04 · Despliegue en Azure: puesta en marcha y migraciones (con Christian)
+
+El despliegue es **del Equipo C**. Ya existe la configuración base, probada en local (`deploy/docker-compose.prod.yml`, `deploy/Caddyfile` y `deploy/backup.sh`), y la guía `docs/despliegue.md`. Tú la pones en marcha y resuelves lo que falta para mantenerla.
+
+1. **Poner el sistema en internet** siguiendo `docs/despliegue.md`:
+   - VM B2s Ubuntu en Azure for Students, con su etiqueta DNS;
+   - `.env` de producción con claves nuevas;
+   - `up -d --build` con el archivo de producción;
+   - datos de la demo y **contraseñas nuevas** para los 3 usuarios.
+
+   Si algo de la guía no funciona tal cual en la VM, **corrígelo en un commit**.
+2. **Migraciones sobre una base que ya existe.** Hoy `docker/postgres/init.sh` solo aplica `db/migrations` y `db/seeds` al **crear** el volumen. En producción, tus migraciones `010`/`011` y las de Christian y Roberto **no se aplicarían**.
+   - Crea una tabla `schema_migrations (nombre, aplicada_en)` y un script `db/migrar.sh` (o `npm run migrar`) que aplique en orden **solo las migraciones pendientes**, cada una en su transacción. Si una falla, se detiene.
+   - Que `init.sh` registre también las que aplica, para que una base nueva y una migrada queden iguales.
+   - Pruébalo: base creada con las migraciones de hoy, agregas una nueva, corres el script y se aplica solo esa. Si lo corres otra vez, no hace nada.
+   - Documenta en `docs/despliegue.md`, sección 6, cómo actualizar con el script.
+3. **Comprobación en producción:** la lista de la sección 7 de `docs/despliegue.md`, con capturas en el PR (candado HTTPS, login con los 3 roles, `/api/ingesta` → 403 y un respaldo restaurado).

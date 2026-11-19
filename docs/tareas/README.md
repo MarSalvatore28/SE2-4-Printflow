@@ -2,24 +2,18 @@
 
 Estado al 18/11/2026: las Fases 0, 1 y 2 están en `main`, con máquinas y reemplazos, notificaciones en vivo, lotes, informes, usuarios, roles y el simulador del correo. Este documento reparte **todo lo que falta** para cerrar el proyecto.
 
+**Todo es urgente: es lo que falta para el medio parcial.** Lo más pesado del backend es de **Samuel** y **Christian**. Las tareas de Roberto, Gabriela y Marlo las está haciendo Marlo.
+
 **Cada tarea se puede hacer sin esperar a otra persona.** Donde había una dependencia, el contrato se fijó por adelantado (ver «Contratos compartidos»).
 
-| Persona | Documento | Qué le toca | Puntos |
-|---|---|---|---|
-| **Samuel** (líder técnico backend) | [SAMUEL.md](SAMUEL.md) | **S3-01 validaciones**, **S3-02 auditoría**, tests de login y seguridad, 4 fallos del backend, **S4-06 prueba E2E y UAT** | ~15 |
-| **Christian** | [CHRISTIAN.md](CHRISTIAN.md) | **S3-06 cálculo del importe**, congelar tarifas al aprobar, **anular un reemplazo**, **S4-05 rendimiento con 500 máquinas**, endpoints 501 y limpieza | ~15 |
-| **Roberto** | [ROBERTO.md](ROBERTO.md) | S3-04 lectura manual, S3-05 reprocesar y un fallo de áreas | ~7 |
-| **Gabriela** | [GABRIELA.md](GABRIELA.md) | S4-01 PDF, informes con el importe del backend y limpieza del frontend | ~7 |
-| **Kiara** | [KIARA.md](KIARA.md) | S3-03 aviso por correo (SMTP), S4-02 Excel y QA de los PR | ~6 |
-| **Marlo** | [MARLO.md](MARLO.md) | S4-04 despliegue, revisión e integración de los PR, decisiones con el PO | ~6 |
-
-## Calendario
-
-| Hito | Fecha |
-|---|---|
-| Sprint 3: S3-01, S3-02, S3-03, S3-04, S3-05, S3-06 | hasta el **13 de diciembre** |
-| Sprint 4: S4-01, S4-02, S4-04, S4-05, S4-06 | 14 de diciembre al **8 de enero** |
-| Vacaciones | 24 de diciembre al 1 de enero: terminar el Sprint 4 **antes del 23** |
+| Persona | Documento | Qué le toca | Puntos | Estado |
+|---|---|---|---|---|
+| **Samuel** (líder técnico backend) | [SAMUEL.md](SAMUEL.md) | **S3-01 validaciones**, **S3-02 auditoría**, tests de login y seguridad, 4 fallos del backend, **S4-06 prueba E2E y UAT**, **S4-04 despliegue: puesta en marcha y migraciones en producción** | ~18 | **URGENTE · le toca a él** |
+| **Christian** | [CHRISTIAN.md](CHRISTIAN.md) | **S3-06 cálculo del importe**, congelar tarifas al aprobar, **anular un reemplazo**, **S4-05 rendimiento con 500 máquinas**, endpoints 501 y limpieza, **S4-04 despliegue automático, respaldos fuera de la VM y monitoreo** | ~18 | **URGENTE · le toca a él** |
+| **Roberto** | [ROBERTO.md](ROBERTO.md) | S3-04 lectura manual, S3-05 reprocesar y un fallo de áreas | ~7 | Lo hace Marlo (medio parcial) |
+| **Gabriela** | [GABRIELA.md](GABRIELA.md) | S4-01 PDF, informes con el importe del backend y limpieza del frontend | ~7 | Lo hace Marlo (medio parcial) |
+| **Kiara** | [KIARA.md](KIARA.md) | S3-03 aviso por correo (SMTP), S4-02 Excel y QA de los PR | ~6 | Le toca a ella |
+| **Marlo** | [MARLO.md](MARLO.md) | Revisión e integración de los PR, decisiones con el PO (la base del despliegue ya la dejó lista) | ~3 | En curso |
 
 ## Contratos compartidos (lo que hace que cada uno sea independiente)
 

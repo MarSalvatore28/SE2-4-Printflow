@@ -2,11 +2,11 @@
 
 Te toca que lo que se entrega al cliente se vea bien y sea correcto: el **PDF del consolidado** (S4-01), la **pantalla de informes con el importe** que calcula el backend, y dejar el frontend limpio. **No esperas a Christian:** el formato de la respuesta del importe ya está acordado (`README.md`, «Contratos compartidos», punto 2). Mientras él no termine vendrá en $0, y tu pantalla y tu PDF deben verse bien igual.
 
-| # | Tarea | Puntos | Para cuándo | Rama |
-|---|---|---|---|---|
-| 1 | **Informes: mostrar la facturación que calcula el backend** | 2 | 6 dic | `feature/f3-informes-facturacion` |
-| 2 | **S4-01 · PDF del consolidado** | 3 | 20 dic | `feature/f4-pdf` |
-| 3 | Limpieza del frontend: lint, textos y una etiqueta | 2 | 20 dic | `fix/web-limpieza` |
+| # | Tarea | Puntos | Rama |
+|---|---|---|---|
+| 1 | **Informes: mostrar la facturación que calcula el backend** | 2 | `feature/f3-informes-facturacion` |
+| 2 | **S4-01 · PDF del consolidado** | 3 | `feature/f4-pdf` |
+| 3 | Limpieza del frontend: lint, textos y una etiqueta | 2 | `fix/web-limpieza` |
 
 Todo es del repo **frontend**.
 

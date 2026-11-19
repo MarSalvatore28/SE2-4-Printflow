@@ -1,0 +1,17 @@
+# PrintFlow · proxy de producción (S4-04).
+# Caddy obtiene y renueva solo el certificado de Let's Encrypt para {$DOMINIO} y redirige
+# HTTP → HTTPS. Con DOMINIO=localhost usa un certificado local (para probar en la PC).
+{$DOMINIO} {
+	encode gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	# El nginx del frontend sirve la SPA y reenvía /api, /api-docs y /socket.io a la API
+	# (y sigue bloqueando /api/ingesta desde fuera).
+	reverse_proxy web:80
+}
