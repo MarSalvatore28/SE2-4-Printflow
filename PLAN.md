@@ -159,10 +159,18 @@ Regla: **en cada fase va primero A, luego B y al final C** (C cierra cada fase y
 - [ ] Cambiar la contraseña del admin de producción (sigue en la de prueba)
 - [ ] Revisar que ningún PR traiga `.env`, dumps con datos o el `chat-widget.js`
 
-## 9. Decisiones pendientes del Product Owner
+## 9. Decisiones del equipo para la demo
 
-1. ¿Se mantiene la aprobación manual de lotes o se pasa a ingesta automática con estados?
-2. ¿La máquina se identifica por serie, por correo emisor o por ambos?
-3. ¿Contrato con código, tipo de servicio y día de corte (campos nuevos)?
-4. ¿El rol `auditor` se renombra a «Facturación»?
-5. ¿El cambio de máquinas entra en la demo final?
+Las tomó el equipo, sin esperar al PO: es una demo y nos quedamos con lo que el sistema ya hace. Si DOX pide otra cosa más adelante, se cambia.
+
+| # | Pregunta | Decisión |
+|---|---|---|
+| 1 | ¿Aprobación manual de lotes o ingesta automática? | **Aprobación manual.** El lote llega, el operador lo revisa y lo aprueba o rechaza. |
+| 2 | ¿La máquina se identifica por serie, por correo emisor o por ambos? | **Por serie.** Una serie no registrada o sin asignación vigente deja el reporte en error. |
+| 3 | ¿Contrato con código, tipo de servicio y día de corte? | **No se agregan.** El período es el mes calendario. |
+| 4 | ¿El rol `auditor` se renombra a «Facturación»? | **No.** Se queda como «Auditor», de solo lectura. |
+| 5 | ¿El cambio de máquinas entra en la demo final? | **Sí.** Ya funciona: Máquinas → Reemplazos y el consumo del cambio en Informes. |
+| 6 | Regla de cobro (S3-06) | **Cuota fija + excedente, por contrato y por mes**, separado para B/N y color. Detalle en `TAREAS-CHRISTIAN.md`. |
+| 7 | ¿Notificaciones leídas por usuario o para todos? | **Por usuario.** Un lote aprobado o rechazado queda resuelto para todos. |
+| 8 | ¿Se puede anular un reemplazo con el período aprobado? | **No.** Solo se anula si el período no tiene lecturas aprobadas con ese cambio; si las tiene, responde 409. |
+| 9 | Formatos de correo de las impresoras | Los **3 formatos del simulador** (`simulador/`). Los formatos reales se agregan cuando DOX mande correos de muestra. |
