@@ -8,6 +8,14 @@ const path = require('path');
 const { armarAvisoLote, avisarSiEsLoteNuevo } = require('../src/services/avisos.service');
 const { enviarCorreo } = require('../src/services/correo.service');
 
+// El servicio escribe en consola («✉ Aviso de lote … enviado»). En el CI, node --test lee el
+// resultado de cada archivo por la salida estándar del proceso hijo, y esa salida con
+// caracteres no ASCII rompió una vez la lectura («Unable to deserialize cloned data»).
+// Las pruebas no necesitan ese texto: se silencia mientras corren.
+const consolaOriginal = { log: console.log, error: console.error };
+test.before(() => { console.log = () => {}; console.error = () => {}; });
+test.after(() => { Object.assign(console, consolaOriginal); });
+
 const conDirTemporal = async (fn) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pf-correo-'));
   const antes = { modo: process.env.CORREO_MODO, dir: process.env.CORREO_DIR };
