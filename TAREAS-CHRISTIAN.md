@@ -2,6 +2,11 @@
 
 Te toca **lo que se factura**: que el consolidado deje de salir en $0 (S3-06), que una tarifa nueva no cambie los meses ya cerrados, poder anular un reemplazo, que el informe responda en menos de 5 segundos con 500 máquinas (S4-05) y, con Samuel, **publicar el sistema en internet y que se actualice solo** (S4-04). Nada depende de otra persona: el formato de la respuesta del importe ya está acordado con el frontend (informes y PDF) (ver `docs/tareas/README.md`).
 
+> **Antes de empezar:**
+> - El repo es **`MarSalvatore28/SE2-4-Printflow`** (y el frontend, `MarSalvatore28/SE2-4-Printflow-Frontend`). Acepta las invitaciones que te llegaron por correo; si no, no podrás hacer push.
+> - Actualiza tu copia (`git checkout develop && git pull`) y crea cada rama desde ahí. `reportemes.model.js` cambió hace poco: el informe por usuario ahora calcula el consumo del período.
+> - El backend ahora también tiene SonarCloud: tu PR mostrará su revisión.
+
 > **Necesitamos dejar esto listo ya. Lo hacemos ahora, empezando por la tarea 1.** No hay fecha de entrega: es urgente para el medio parcial.
 > Una tarea está **terminada** solo cuando tiene las 4 cosas:
 > 1. **Tus commits** en tu rama (uno por mejora, a tu nombre).
@@ -24,7 +29,7 @@ Tus migraciones van de `020` a `029`.
 
 ## 1. S3-06 · Cálculo del importe
 
-**Dónde:** `src/models/reportemes/reportemes.model.js` (`getReporteConsolidado`). Hoy el importe es `gran_total × snap_costo_impresion_bn` (cerca de la línea 285): está mal y sale en $0. El **consumo ya está bien** y verificado a mano, incluidos los reemplazos. No lo cambies.
+**Dónde:** `src/models/reportemes/reportemes.model.js` (`getReporteConsolidado`). Hoy el importe es `gran_total × snap_costo_impresion_bn` (cerca de la línea 292): está mal y sale en $0. El **consumo ya está bien** y verificado a mano, incluidos los reemplazos. No lo cambies.
 
 **Regla** (decidida por el equipo, `PLAN.md` sección 9): **cuota fija + excedente, por contrato y por mes.**
 - **Cuota fija:** `incluidas × costo`. Se cobra completa aunque no se usen las páginas.
@@ -38,7 +43,7 @@ Tus migraciones van de `020` a `029`.
 
 Columnas en `contratos`: `impresiones_bn_incluidas`, `impresiones_color_incluidas`, `costo_impresion_bn`, `costo_impresion_color`, `costo_x_excedente_impresion_bn`, `costo_x_excedente_impresion_color` y `facturacion_de_impresora`.
 
-**Respuesta (acordada con el frontend de informes y PDF; no la cambies sin avisar a Marlo):** `resumen.facturacion[]` (un elemento por contrato), `resumen.monto_total_general` y, por máquina, `financiero.monto_referencial` (= consumo × tarifa por página, solo informativo). La forma exacta está en `docs/tareas/README.md`, «Contratos compartidos», punto 2. Los montos van como texto con 2 decimales.
+**Respuesta (acordada con el frontend de informes y PDF; no la cambies sin avisar a Marlo):** `resumen.facturacion[]` (un elemento por contrato), `resumen.monto_total_general` y, por máquina, `financiero.monto_referencial` (= consumo × tarifa por página, solo informativo). La forma exacta está en `docs/tareas/README.md`, «Contratos compartidos», punto 2. Los montos van como texto con 2 decimales. **La pantalla de Informes y el PDF con la facturación ya están hechos y esperan esta respuesta:** en cuanto se mergee tu PR, se integran.
 
 **Cómo hacerlo bien:**
 - Pon el cálculo en una **función pura** (por ejemplo `src/utils/facturacion.js`) que reciba consumos y contrato y devuelva el desglose. Así se prueba sin base de datos, como `src/utils/maquinasCambio.consumo.js`.

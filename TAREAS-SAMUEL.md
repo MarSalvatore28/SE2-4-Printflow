@@ -2,6 +2,11 @@
 
 Te toca **lo más delicado del backend**: que el sistema rechace las lecturas malas (S3-01), que quede registro de quién cambió qué (S3-02), la prueba de punta a punta con el PO (S4-06) y, con Christian, **publicar el sistema en internet** (S4-04). Ninguna depende de otra persona: el contrato de `validarLectura` ya está fijado (ver `docs/tareas/README.md`).
 
+> **Antes de empezar:**
+> - El repo es **`MarSalvatore28/SE2-4-Printflow`**. Acepta la invitación que te llegó por correo; si no, no podrás hacer push.
+> - Actualiza tu copia (`git checkout develop && git pull`) y crea cada rama desde ahí.
+> - El backend ahora también tiene SonarCloud: tu PR mostrará su revisión.
+
 > **Necesitamos dejar esto listo ya. Lo hacemos ahora, empezando por la tarea 1.** No hay fecha de entrega: es urgente para el medio parcial.
 > Una tarea está **terminada** solo cuando tiene las 4 cosas:
 > 1. **Tus commits** en tu rama (uno por mejora, a tu nombre).
@@ -24,7 +29,7 @@ Tus migraciones van de `010` a `019`.
 
 ## 1. S3-01 · Validaciones de lecturas
 
-**Qué existe:** `src/services/validacionLecturas.js` con la firma y el contrato (léelo entero). Hoy devuelve `null`. La lectura manual y el reprocesar (los hace Marlo) ya lo llaman. **No cambies la firma.**
+**Qué existe:** `src/services/validacionLecturas.js` con la firma y el contrato (léelo entero). Hoy devuelve `null`. La lectura manual (`POST /api/lecturas/manual`) y el reprocesar (`POST /api/staging/:id/reprocesar`) ya están en `develop` y lo llaman: en cuanto implementes las reglas, empiezan a rechazar sin tocar nada más. **No cambies la firma.**
 
 **Qué hacer:**
 1. **Implementa las 3 reglas en `validarLectura(db, lectura)`.** Las lecturas aprobadas están en `reportes_oficiales`, con `contador_impresiones_bn` y `contador_impresiones_color`, que son los totales B/N y color acumulados.
@@ -53,7 +58,7 @@ Tus migraciones van de `010` a `019`.
    - **reemplazos**;
    - **aprobación y rechazo de lotes**;
    - alta, cambio y activación de **usuarios**;
-   - alta de **lectura manual**: cuando se mergee la lectura manual, agrégale la línea en un PR aparte.
+   - alta de **lectura manual** (`src/controllers/lectura/lectura.controller.js`) y **reprocesar** (`src/controllers/reproceso/reproceso.controller.js`), que ya están en `develop`.
 4. **Que la lectura tenga trazabilidad:** al aprobar, guarda en `reportes_oficiales.usuario_validacion_id` quién aprobó (ya está `req.user.id`), y que la respuesta de una lectura incluya `lote_origen_id` y `usuario_validacion_id`.
 5. **No se hace** la pantalla de consulta de la bitácora (HU-12, fuera de alcance). Basta un `GET /api/auditoria?tabla=&id_registro=` solo para admin, para demostrarlo.
 
@@ -72,7 +77,7 @@ En `test/auth.test.js`, como pedía la caja 3. Al inicio pon `process.env.SECRET
 Encontrados al integrar. Cada uno va en su commit:
 1. **Fecha de corte en UTC:** la ingesta guarda `fecha_corte` a medianoche UTC, que en Ecuador es el día anterior a las 19:00. Por eso el informe dice «inicio del período 2026/11/01» en un reporte de octubre. Guárdala como fecha local (`America/Guayaquil`) o como `date`.
 2. **`validarLoteStaging` toma el cliente del primer reporte** (`LIMIT 1`). Un lote con reportes de dos clientes se valida mal. Valida por cada cliente o rechaza lotes mixtos.
-3. **`approveStagingBatch` no copia `snap_area_nombre` ni `contador_copias_*`** a `reportes_oficiales`. El consolidado de meses pasados depende de eso.
+3. **`approveStagingBatch` no copia `snap_area_nombre` ni `contador_copias_*`** a `reportes_oficiales`. El consolidado de meses pasados depende de eso. El informe por usuario ya toma el área de la asignación cuando falta, pero lo correcto es que la aprobación la guarde.
 4. **`protect` copia el `rol` viejo dentro del token renovado.** El backend no lo usa porque consulta el rol en la base, pero si se cambia el rol de un usuario el dato queda desactualizado. Vuelve a leerlo o quítalo del token.
 
 ## 5. S4-06 · Prueba E2E y UAT (cierre del proyecto)
@@ -98,7 +103,7 @@ El despliegue es **del Equipo C**. Ya existe la configuración base, probada en 
    - datos de la demo y **contraseñas nuevas** para los 3 usuarios.
 
    Si algo de la guía no funciona tal cual en la VM, **corrígelo en un commit**.
-2. **Migraciones sobre una base que ya existe.** Hoy `docker/postgres/init.sh` solo aplica `db/migrations` y `db/seeds` al **crear** el volumen. En producción, tus migraciones `010`/`011` y las de Christian y las de la lectura manual **no se aplicarían**.
+2. **Migraciones sobre una base que ya existe.** Hoy `docker/postgres/init.sh` solo aplica `db/migrations` y `db/seeds` al **crear** el volumen. En producción, tus migraciones `010`/`011` y las de Christian (`020` en adelante) **no se aplicarían**. Tampoco las `030` a `032` que ya están en `develop` (lectura manual, reprocesar y notificaciones por usuario), en una base creada antes de ellas.
    - Crea una tabla `schema_migrations (nombre, aplicada_en)` y un script `db/migrar.sh` (o `npm run migrar`) que aplique en orden **solo las migraciones pendientes**, cada una en su transacción. Si una falla, se detiene.
    - Que `init.sh` registre también las que aplica, para que una base nueva y una migrada queden iguales.
    - Pruébalo: base creada con las migraciones de hoy, agregas una nueva, corres el script y se aplica solo esa. Si lo corres otra vez, no hace nada.
