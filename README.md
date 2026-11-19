@@ -1,6 +1,6 @@
 # PrintFlow · Backend
 
-[![CI backend](https://github.com/MGabrielaVillon/SE2-4-Printflow/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/MGabrielaVillon/SE2-4-Printflow/actions/workflows/ci.yml)
+[![CI backend](https://github.com/MarSalvatore28/SE2-4-Printflow/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/MarSalvatore28/SE2-4-Printflow/actions/workflows/ci.yml)
 
 API del sistema **PrintFlow**, que registra los contadores de las impresoras que DOX S.A. tiene en sus clientes y calcula el consolidado mensual a facturar por cliente y período.
 
@@ -70,7 +70,7 @@ Los dos repositorios deben estar **en la misma carpeta**, porque Docker construy
 
 ```powershell
 mkdir C:\printflow; cd C:\printflow
-git clone https://github.com/MGabrielaVillon/SE2-4-Printflow.git
+git clone https://github.com/MarSalvatore28/SE2-4-Printflow.git
 git clone https://github.com/MarSalvatore28/SE2-4-Printflow-Frontend.git
 
 cd SE2-4-Printflow
