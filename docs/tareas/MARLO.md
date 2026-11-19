@@ -6,7 +6,7 @@
 | 2 | Integrar los PR y pasar `develop` → `main` al cierre de cada sprint | — | — |
 | 3 | Decisiones con el PO | — | — |
 
-> **S4-04 (despliegue) es del Equipo C** (Samuel y Christian). Marlo dejó lista y probada la configuración base (`deploy/` y `docs/despliegue.md`) y les da acceso a la cuenta de Azure.
+> **S4-04 (servidor y despliegue) es del Equipo C** (Samuel y Christian): ellos montan el servicio en Azure con su propia cuenta (Azure for Students) y deciden cómo. Marlo dejó lista y probada la configuración base (`deploy/` y `docs/despliegue.md`) como punto de partida.
 
 ---
 
