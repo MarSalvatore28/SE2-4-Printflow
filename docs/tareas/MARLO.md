@@ -1,11 +1,11 @@
 # Tareas de Marlo · Equipo A (Scrum Master, DevOps)
 
-| # | Tarea | Puntos | Para cuándo | Rama |
-|---|---|---|---|---|
-| 1 | **S4-04 · Despliegue de demostración** | 5 | 20 dic | `feature/f4-despliegue` |
-| 2 | Notificaciones leídas por usuario | 1 | 13 dic | `feature/f3-notificaciones-por-usuario` |
-| 3 | Integrar los PR y pasar `develop` → `main` al cierre de cada sprint | — | continuo | — |
-| 4 | Decisiones con el PO | — | próxima reunión | — |
+| # | Tarea | Puntos | Rama |
+|---|---|---|---|
+| 1 | **S4-04 · Despliegue de demostración** | 5 | `feature/f4-despliegue` |
+| 2 | Notificaciones leídas por usuario | 1 | `feature/f3-notificaciones-por-usuario` |
+| 3 | Integrar los PR y pasar `develop` → `main` al cierre de cada sprint | — | — |
+| 4 | Decisiones con el PO | — | — |
 
 ---
 

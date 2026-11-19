@@ -2,11 +2,11 @@
 
 Te toca registrar contadores a mano cuando una impresora no manda su correo (S3-04) y volver a intentar los reportes con error (S3-05). **No esperas a Samuel:** la función `validarLectura` ya existe con su contrato fijado (`src/services/validacionLecturas.js`). Hoy acepta todo; cuando Samuel termine S3-01, tu código empieza a rechazar sin que cambies nada.
 
-| # | Tarea | Puntos | Para cuándo | Rama |
-|---|---|---|---|---|
-| 1 | **S3-04 · Lectura manual** | 3 | 6 dic | `feature/f3-lectura-manual` |
-| 2 | **S3-05 · Reprocesar reportes con error** | 3 | 13 dic | `feature/f3-reprocesar` |
-| 3 | Fallo del historial de cambios de un área | 1 | 13 dic | `fix/area-historial` |
+| # | Tarea | Puntos | Rama |
+|---|---|---|---|
+| 1 | **S3-04 · Lectura manual** | 3 | `feature/f3-lectura-manual` |
+| 2 | **S3-05 · Reprocesar reportes con error** | 3 | `feature/f3-reprocesar` |
+| 3 | Fallo del historial de cambios de un área | 1 | `fix/area-historial` |
 
 Tus migraciones van de `030` a `039`. Las dos primeras tareas tocan los **dos repos**.
 
