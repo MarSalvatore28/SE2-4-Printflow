@@ -2,7 +2,7 @@
 
 Estado al 18/11/2026: las Fases 0, 1 y 2 están en `main`, con máquinas y reemplazos, notificaciones en vivo, lotes, informes, usuarios, roles y el simulador del correo. Este documento reparte **todo lo que falta** para cerrar el proyecto.
 
-**Todo es urgente: es lo que falta para el medio parcial.** Lo más pesado del backend es de **Samuel** y **Christian**. Las tareas de Roberto, Gabriela y Marlo las está haciendo Marlo.
+**Todo es urgente: es lo que falta para el medio parcial.** Lo más pesado del backend es de **Samuel** y **Christian**. Lectura manual, reprocesar, informes con facturación y PDF los está haciendo Marlo. Gabriela, Roberto y Kiara tienen tareas propias más chicas y que no dependen de nadie.
 
 **Cada tarea se puede hacer sin esperar a otra persona.** Donde había una dependencia, el contrato se fijó por adelantado (ver «Contratos compartidos»).
 
@@ -10,22 +10,22 @@ Estado al 18/11/2026: las Fases 0, 1 y 2 están en `main`, con máquinas y reemp
 |---|---|---|---|---|
 | **Samuel** (líder técnico backend) | [TAREAS-SAMUEL.md](../../TAREAS-SAMUEL.md) | **S3-01 validaciones**, **S3-02 auditoría**, tests de login y seguridad, 4 fallos del backend, **S4-06 prueba E2E y UAT**, **S4-04 despliegue: puesta en marcha y migraciones en producción** | ~18 | **URGENTE · le toca a él** |
 | **Christian** | [TAREAS-CHRISTIAN.md](../../TAREAS-CHRISTIAN.md) | **S3-06 cálculo del importe**, congelar tarifas al aprobar, **anular un reemplazo**, **S4-05 rendimiento con 500 máquinas**, endpoints 501 y limpieza, **S4-04 despliegue automático, respaldos fuera de la VM y monitoreo** | ~18 | **URGENTE · le toca a él** |
-| **Roberto** | [ROBERTO.md](ROBERTO.md) | S3-04 lectura manual, S3-05 reprocesar y un fallo de áreas | ~7 | Lo hace Marlo (medio parcial) |
-| **Gabriela** | [GABRIELA.md](GABRIELA.md) | S4-01 PDF, informes con el importe del backend y limpieza del frontend | ~7 | Lo hace Marlo (medio parcial) |
-| **Kiara** | [KIARA.md](KIARA.md) | S3-03 aviso por correo (SMTP), S4-02 Excel y QA de los PR | ~6 | Le toca a ella |
-| **Marlo** | [MARLO.md](MARLO.md) | Revisión e integración de los PR, decisiones con el PO (la base del despliegue ya la dejó lista) | ~3 | En curso |
+| **Roberto** | [TAREAS-ROBERTO.md](../../TAREAS-ROBERTO.md) | Pruebas automáticas del frontend (Vitest en el CI), limpieza de Asignaciones y Máquinas | ~4 | Le toca a él |
+| **Gabriela** | [TAREAS-GABRIELA.md](../../TAREAS-GABRIELA.md) | SonarCloud en verde (accesibilidad de los componentes compartidos), web usable en el celular | ~4 | Le toca a ella |
+| **Kiara** | [TAREAS-KIARA.md](../../TAREAS-KIARA.md) | S3-03 aviso por correo (SMTP), S4-02 Excel y QA de los PR | ~6 | Le toca a ella |
+| **Marlo** | [MARLO.md](MARLO.md) · [lectura manual y reprocesar](marlo-lectura-manual-y-reprocesar.md) · [informes y PDF](marlo-informes-y-pdf.md) | S3-04 lectura manual, S3-05 reprocesar, informes con facturación, S4-01 PDF, integración de los PR y decisiones con el PO | ~17 | En curso |
 
 ## Contratos compartidos (lo que hace que cada uno sea independiente)
 
 ### 1. `validarLectura` (S3-01 ↔ S3-04 y S3-05)
 Está en `src/services/validacionLecturas.js`, con su contrato documentado y `test/validacionLecturas.contrato.test.js`. **Hoy acepta todas las lecturas** (devuelve `null`).
-- **Roberto** la llama desde la lectura manual y el reprocesar **desde ya**.
+- La **lectura manual** y el **reprocesar** (los hace Marlo) la llaman **desde ya**.
 - **Samuel** reemplaza su contenido con las 3 reglas **sin cambiar la firma**.
 
 Cuando se mergee lo de Samuel, la lectura manual y el reprocesar empiezan a rechazar sin tocar nada.
 
 ### 2. Importe del consolidado (S3-06 ↔ S4-01)
-`GET /api/reportes/consolidado/:clienteId/:periodo` devolverá (Christian lo implementa; **Gabriela ya lo muestra**):
+`GET /api/reportes/consolidado/:clienteId/:periodo` devolverá (Christian lo implementa; **la pantalla de informes y el PDF ya lo muestran**):
 
 ```jsonc
 {
@@ -53,7 +53,7 @@ Para que no choquen dos archivos con el mismo número:
 |---|---|---|
 | Samuel | `010` a `019` | `010_lectura_unica.sql`, `011_registro_auditoria.sql` |
 | Christian | `020` a `029` | `020_indices_consolidado.sql` |
-| Roberto | `030` a `039` | `030_lectura_manual.sql`, `031_intentos_reproceso.sql` |
+| Marlo (lectura manual y reprocesar) | `030` a `039` | `030_lectura_manual.sql`, `031_intentos_reproceso.sql` |
 | Kiara | `040` a `049` | (solo si la necesita) |
 
 Las migraciones se aplican en orden alfabético la primera vez que se crea el volumen: `docker compose down -v` y `docker compose up -d --build`.

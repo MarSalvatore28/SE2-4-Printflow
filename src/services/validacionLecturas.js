@@ -2,8 +2,8 @@
 //
 // CONTRATO COMPARTIDO. Lo usan:
 //   - la ingesta del correo (Samuel la conecta al implementar S3-01),
-//   - la lectura manual (S3-04, Roberto),
-//   - el reprocesar (S3-05, Roberto).
+//   - la lectura manual (S3-04),
+//   - el reprocesar (S3-05).
 // Hasta que Samuel lo implemente, ACEPTA TODAS las lecturas (devuelve null). Así cada uno puede
 // programar y probar su parte sin esperar al otro. No cambiar la firma sin avisar a los tres.
 //

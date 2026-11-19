@@ -1,4 +1,6 @@
-# Tareas de Roberto · Equipo B
+# Lo hace Marlo · antes asignado a Roberto
+
+> Estas tareas las está haciendo **Marlo** para el medio parcial. Las tareas actuales de Roberto están en `TAREAS-ROBERTO.md` (raíz).
 
 Te toca registrar contadores a mano cuando una impresora no manda su correo (S3-04) y volver a intentar los reportes con error (S3-05). **No esperas a Samuel:** la función `validarLectura` ya existe con su contrato fijado (`src/services/validacionLecturas.js`). Hoy acepta todo; cuando Samuel termine S3-01, tu código empieza a rechazar sin que cambies nada.
 
