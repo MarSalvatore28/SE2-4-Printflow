@@ -1,8 +1,10 @@
 # Reparto de lo que falta · Sprints 3 y 4
 
-Estado al 18/11/2026: las Fases 0, 1 y 2 están en `main`, con máquinas y reemplazos, notificaciones en vivo, lotes, informes, usuarios, roles y el simulador del correo. Este documento reparte **todo lo que falta** para cerrar el proyecto.
+Estado al 19/11/2026: las Fases 0, 1 y 2 están en `main`, con máquinas y reemplazos, notificaciones en vivo, lotes, informes, usuarios, roles, el simulador del correo, la lectura manual (S3-04) y el reprocesar (S3-05). Este documento reparte **todo lo que falta** para cerrar el proyecto.
 
-**Todo es urgente: es lo que falta para el medio parcial.** Lo más pesado del backend es de **Samuel** y **Christian**. Lectura manual, reprocesar, informes con facturación y PDF los está haciendo Marlo. Gabriela, Roberto y Kiara tienen tareas propias más chicas y que no dependen de nadie.
+Los repos son **`MarSalvatore28/SE2-4-Printflow`** (backend) y **`MarSalvatore28/SE2-4-Printflow-Frontend`**. Cada integrante tiene que aceptar la invitación que le llegó por correo para poder hacer push.
+
+**Todo es urgente: es lo que falta para el medio parcial.** Lo más pesado del backend es de **Samuel** y **Christian**. Marlo ya terminó la lectura manual y el reprocesar; la pantalla de informes con facturación y el PDF están listos y esperan el importe de Christian (S3-06). Gabriela, Roberto y Kiara tienen tareas propias más chicas y que no dependen de nadie.
 
 **Cada tarea se puede hacer sin esperar a otra persona.** Donde había una dependencia, el contrato se fijó por adelantado (ver «Contratos compartidos»).
 
@@ -13,13 +15,13 @@ Estado al 18/11/2026: las Fases 0, 1 y 2 están en `main`, con máquinas y reemp
 | **Roberto** | [TAREAS-ROBERTO.md](../../TAREAS-ROBERTO.md) | Pruebas automáticas del frontend (Vitest en el CI), limpieza de Asignaciones y Máquinas | ~4 | **Hecho** (frontend #22 y #25) |
 | **Gabriela** | [TAREAS-GABRIELA.md](../../TAREAS-GABRIELA.md) | SonarCloud en verde (accesibilidad de los componentes compartidos), web usable en el celular | ~4 | Le toca a ella |
 | **Kiara** | [TAREAS-KIARA.md](../../TAREAS-KIARA.md) | S4-02 Excel, QA de los PR y guion de la demo | ~3 | Le toca a ella |
-| **Marlo** | [MARLO.md](MARLO.md) · [lectura manual y reprocesar](marlo-lectura-manual-y-reprocesar.md) · [informes y PDF](marlo-informes-y-pdf.md) | S3-03 aviso por correo (**hecho**), S3-04 lectura manual, S3-05 reprocesar, informes con facturación, S4-01 PDF, integración de los PR y decisiones para la demo (**hechas**, `PLAN.md` §9) | ~17 | En curso |
+| **Marlo** | [MARLO.md](MARLO.md) · [lectura manual y reprocesar](marlo-lectura-manual-y-reprocesar.md) · [informes y PDF](marlo-informes-y-pdf.md) | S3-03 aviso por correo, S3-04 lectura manual y S3-05 reprocesar (**hechos**), informes con facturación y S4-01 PDF (**listos, esperan S3-06**), integración de los PR y decisiones para la demo (**hechas**, `PLAN.md` §9) | ~17 | En curso |
 
 ## Contratos compartidos (lo que hace que cada uno sea independiente)
 
 ### 1. `validarLectura` (S3-01 ↔ S3-04 y S3-05)
 Está en `src/services/validacionLecturas.js`, con su contrato documentado y `test/validacionLecturas.contrato.test.js`. **Hoy acepta todas las lecturas** (devuelve `null`).
-- La **lectura manual** y el **reprocesar** (los hace Marlo) la llaman **desde ya**.
+- La **lectura manual** y el **reprocesar** ya están en `develop` y la llaman.
 - **Samuel** reemplaza su contenido con las 3 reglas **sin cambiar la firma**.
 
 Cuando se mergee lo de Samuel, la lectura manual y el reprocesar empiezan a rechazar sin tocar nada.
@@ -53,7 +55,7 @@ Para que no choquen dos archivos con el mismo número:
 |---|---|---|
 | Samuel | `010` a `019` | `010_lectura_unica.sql`, `011_registro_auditoria.sql` |
 | Christian | `020` a `029` | `020_indices_consolidado.sql` |
-| Marlo (lectura manual y reprocesar) | `030` a `039` | `030_lectura_manual.sql`, `031_intentos_reproceso.sql` |
+| Marlo (lectura manual, reprocesar y notificaciones) | `030` a `039` | `030_lectura_manual.sql`, `031_intentos_reproceso.sql`, `032_notificaciones_leidas.sql` |
 | Kiara | `040` a `049` | (solo si la necesita) |
 
 Las migraciones se aplican en orden alfabético la primera vez que se crea el volumen: `docker compose down -v` y `docker compose up -d --build`.
