@@ -8,12 +8,12 @@ Estado al 18/11/2026: las Fases 0, 1 y 2 están en `main`, con máquinas y reemp
 
 | Persona | Documento | Qué le toca | Puntos | Estado |
 |---|---|---|---|---|
-| **Samuel** (líder técnico backend) | [SAMUEL.md](SAMUEL.md) | **S3-01 validaciones**, **S3-02 auditoría**, tests de login y seguridad, 4 fallos del backend, **S4-06 prueba E2E y UAT** | ~15 | **URGENTE · le toca a él** |
-| **Christian** | [CHRISTIAN.md](CHRISTIAN.md) | **S3-06 cálculo del importe**, congelar tarifas al aprobar, **anular un reemplazo**, **S4-05 rendimiento con 500 máquinas**, endpoints 501 y limpieza | ~15 | **URGENTE · le toca a él** |
+| **Samuel** (líder técnico backend) | [SAMUEL.md](SAMUEL.md) | **S3-01 validaciones**, **S3-02 auditoría**, tests de login y seguridad, 4 fallos del backend, **S4-06 prueba E2E y UAT**, **S4-04 despliegue: puesta en marcha y migraciones en producción** | ~18 | **URGENTE · le toca a él** |
+| **Christian** | [CHRISTIAN.md](CHRISTIAN.md) | **S3-06 cálculo del importe**, congelar tarifas al aprobar, **anular un reemplazo**, **S4-05 rendimiento con 500 máquinas**, endpoints 501 y limpieza, **S4-04 despliegue automático, respaldos fuera de la VM y monitoreo** | ~18 | **URGENTE · le toca a él** |
 | **Roberto** | [ROBERTO.md](ROBERTO.md) | S3-04 lectura manual, S3-05 reprocesar y un fallo de áreas | ~7 | Lo hace Marlo (medio parcial) |
 | **Gabriela** | [GABRIELA.md](GABRIELA.md) | S4-01 PDF, informes con el importe del backend y limpieza del frontend | ~7 | Lo hace Marlo (medio parcial) |
 | **Kiara** | [KIARA.md](KIARA.md) | S3-03 aviso por correo (SMTP), S4-02 Excel y QA de los PR | ~6 | Le toca a ella |
-| **Marlo** | [MARLO.md](MARLO.md) | S4-04 despliegue, revisión e integración de los PR, decisiones con el PO | ~6 | En curso |
+| **Marlo** | [MARLO.md](MARLO.md) | Revisión e integración de los PR, decisiones con el PO (la base del despliegue ya la dejó lista) | ~3 | En curso |
 
 ## Contratos compartidos (lo que hace que cada uno sea independiente)
 
