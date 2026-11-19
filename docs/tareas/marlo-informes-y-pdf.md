@@ -1,4 +1,6 @@
-# Tareas de Gabriela · Equipo B
+# Lo hace Marlo · antes asignado a Gabriela
+
+> Estas tareas las está haciendo **Marlo** para el medio parcial. Las tareas actuales de Gabriela están en `TAREAS-GABRIELA.md` (raíz).
 
 Te toca que lo que se entrega al cliente se vea bien y sea correcto: el **PDF del consolidado** (S4-01), la **pantalla de informes con el importe** que calcula el backend, y dejar el frontend limpio. **No esperas a Christian:** el formato de la respuesta del importe ya está acordado (`README.md`, «Contratos compartidos», punto 2). Mientras él no termine vendrá en $0, y tu pantalla y tu PDF deben verse bien igual.
 
