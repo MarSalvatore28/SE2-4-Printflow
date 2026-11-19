@@ -5,6 +5,8 @@ const {
   motivoNoAutorizada
 } = require('@services/autorizacionMaquina');
 
+const { validarLectura } = require('@services/validacionLecturas');
+
 const processIngestaController = async (req, res) => {
   const payload = req.body;
 
@@ -151,6 +153,23 @@ const processIngestaController = async (req, res) => {
         const fb = lote_info.fecha_carga ? new Date(lote_info.fecha_carga) : new Date();
         fechaLecturaConsolidado = fb.toISOString();
         fechaCorteConsolidado = fb.toISOString().substring(0, 10);
+      }
+
+      // S3-01: la lectura debe pasar las reglas (retroceso, salto anómalo, duplicada).
+      // Solo se valida si la máquina está autorizada; si no, ya quedó en ERROR arriba.
+      if (maquinaAutorizada) {
+        const rechazo = await validarLectura(client, {
+          maquinaId: maquinaIdTentativa,
+          periodo: lote_info.periodo || fechaCorteConsolidado.substring(0, 7),
+          fecha: fechaCorteConsolidado.substring(0, 10),
+          contadorBn: consolidado.bn_total || 0,
+          contadorColor: consolidado.color_total || 0
+        });
+        if (rechazo) {
+          estadoMaquina = 'ERROR';
+          procesarLectura = false;
+          mensajeAviso = rechazo.motivo;
+        }
       }
 
       const queryConsolidado = `
