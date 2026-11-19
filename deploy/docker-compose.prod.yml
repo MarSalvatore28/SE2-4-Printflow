@@ -1,0 +1,66 @@
+# PrintFlow · despliegue de demostración (S4-04). Se usa ENCIMA del docker-compose.yml:
+#
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --build
+#
+# Qué cambia respecto al entorno local:
+#   - Caddy delante de todo: HTTPS con certificado válido (Let's Encrypt) y redirección HTTP → HTTPS.
+#   - Ni la base de datos ni la web publican puertos: solo Caddy (80 y 443).
+#   - n8n no arranca (en la demo los correos los procesa el simulador).
+#   - Respaldo diario de la base, con retención de RETENCION_DIAS días (30 por defecto) en ./backups.
+#
+# Variables nuevas en el .env de producción (ver docs/despliegue.md):
+#   DOMINIO=printflow-demo.eastus.cloudapp.azure.com   (o localhost para probar en la PC)
+
+services:
+  db:
+    ports: !reset []
+
+  api:
+    environment:
+      NODE_ENV: production
+      CORS_ORIGINS: https://${DOMINIO:?Falta DOMINIO en el .env}
+
+  web:
+    ports: !reset []
+    expose:
+      - "80"
+
+  n8n:
+    profiles: ["n8n"]
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      - web
+    environment:
+      DOMINIO: ${DOMINIO:?Falta DOMINIO en el .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  backup:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: ${DB_USER:-postgres}
+      PGPASSWORD: ${DB_PASSWORD:?Falta DB_PASSWORD en el .env}
+      PGDATABASE: ${DB_NAME:-printflow}
+      RETENCION_DIAS: ${RETENCION_DIAS:-30}
+      TZ: America/Guayaquil
+    volumes:
+      - ./deploy/backup.sh:/backup.sh:ro
+      - ./backups:/backups
+    entrypoint: ["sh", "/backup.sh"]
+
+volumes:
+  caddy_data:
+  caddy_config:

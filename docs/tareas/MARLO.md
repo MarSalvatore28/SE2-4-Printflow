@@ -11,6 +11,8 @@
 
 ## 1. S4-04 · Despliegue de demostración
 
+> **Configuración lista y probada** (`deploy/` y `docs/despliegue.md`): HTTPS con redirección, la base sin exponer, respaldo diario con 30 días de retención y restauración probados en local. **Falta solo crear la VM** en Azure for Students y seguir la guía.
+
 En **Azure for Students** o un servicio gratuito, **nunca en el servidor de DOX** (`PLAN.md`):
 - **HTTPS** con certificado válido (Let's Encrypt) y **redirección de HTTP a HTTPS**.
 - **Docker Compose** en una VM, o servicios administrados. `db` no expuesto a internet.
