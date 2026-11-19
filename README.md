@@ -178,6 +178,8 @@ Los módulos se incorporan por fases según [`PLAN.md`](PLAN.md). Algunas carpet
 | B | María Gabriela Villón · Roberto Barrios | Interfaz web, clientes, contratos, áreas, informes y usuarios |
 | C | Samuel Chichande · Christian Villacrés | Base de datos, autenticación, ingesta, cálculo del informe y pruebas |
 
+**Lo que falta y quién lo hace:** [docs/tareas/README.md](docs/tareas/README.md), con un documento por persona.
+
 Cliente: **DOX S.A.**
 
 ---
