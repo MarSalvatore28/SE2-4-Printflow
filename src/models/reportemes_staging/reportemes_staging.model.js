@@ -1,5 +1,7 @@
 const pool = require('@config/db');
 
+const { validarLectura } = require('@services/validacionLecturas');
+
 const getAllStaging = async () => {
   const query = `
     SELECT 
@@ -736,6 +738,32 @@ const validarLoteStaging = async (loteId) => {
         }
       }
     });
+  }
+
+    // S3-01: volver a validar cada lectura. Entre la ingesta y la aprobación pudo
+  // aprobarse otra lectura de la misma máquina y período.
+  const { rows: loteRows } = await pool.query(
+    'SELECT periodo FROM lotes_carga WHERE id_lote = $1',
+    [loteId]
+  );
+  const { rows: lecturas } = await pool.query(
+    `SELECT serie_maquina, maquina_id_tentativa, impresion_bn, impresion_color, fecha_corte
+       FROM reportes_consolidado_staging
+      WHERE lote_id = $1
+        AND procesar_lectura IS DISTINCT FROM FALSE
+        AND maquina_id_tentativa IS NOT NULL`,
+    [loteId]
+  );
+  for (const l of lecturas) {
+    const periodoLote = loteRows[0]?.periodo || new Date(l.fecha_corte).toISOString().slice(0, 7);
+    const rechazo = await validarLectura(pool, {
+      maquinaId: l.maquina_id_tentativa,
+      periodo: periodoLote,
+      fecha: new Date(l.fecha_corte).toISOString().slice(0, 10),
+      contadorBn: l.impresion_bn || 0,
+      contadorColor: l.impresion_color || 0
+    });
+    if (rechazo) errores.push(`Máquina ${l.serie_maquina}: ${rechazo.motivo}`);
   }
 
   const erroresUnicos = [...new Set(errores)];
