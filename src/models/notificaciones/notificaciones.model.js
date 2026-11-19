@@ -4,20 +4,34 @@ const pool = require('@config/db');
 // Notificaciones
 // Las crea sobre todo la base de datos: el trigger notificar_nuevo_lote inserta una
 // por cada lote nuevo y trg_notify_socket la avisa por pg_notify (ver src/socket.js).
-// Son globales: la tabla no tiene usuario, así que todos los usuarios ven las mismas.
+//
+// Leída POR USUARIO (migración 032): cada usuario tiene sus propias leídas en
+// notificaciones_leidas. Además, notificaciones.leida = true significa «resuelta para
+// todos»: la pone la aprobación o el rechazo del lote, porque ya no hay nada que atender.
+// Para un usuario, una notificación está leída si la leyó él o si está resuelta.
 // ---------------------------------------------------------------------------
 
-// Columnas comunes de una notificación, con los datos de su tipo y de su lote
-const SELECT_NOTIFICACION = `
+// Expresión SQL «leída para el usuario del parámetro p» (p es '$1', '$2', …)
+const leidaPara = (p) => `(n.leida OR EXISTS (
+    SELECT 1 FROM notificaciones_leidas nl
+    WHERE nl.notificacion_id = n.id_notificacion AND nl.usuario_id = ${p}))`;
+
+// Columnas comunes de una notificación, con los datos de su tipo y de su lote,
+// y su estado de lectura para el usuario del parámetro p
+const selectNotificacion = (p) => `
   SELECT
     n.id_notificacion,
     n.titulo,
     n.mensaje,
     n.datos_adicionales,
     n.lote_id,
-    n.leida,
+    ${leidaPara(p)} AS leida,
     n.fecha_creacion,
-    n.fecha_lectura,
+    COALESCE(
+      (SELECT nl.fecha FROM notificaciones_leidas nl
+       WHERE nl.notificacion_id = n.id_notificacion AND nl.usuario_id = ${p}),
+      n.fecha_lectura
+    ) AS fecha_lectura,
     n.tipo_notificacion_id,
     t.codigo AS tipo_codigo,
     t.nombre AS tipo_nombre,
@@ -34,18 +48,15 @@ const SELECT_NOTIFICACION = `
 
 const ORDEN_NOTIFICACIONES = 'ORDER BY n.fecha_creacion DESC, n.id_notificacion DESC';
 
-// leida: true | false | undefined (todas). limite: máximo de filas (opcional)
-const listarNotificaciones = async ({ leida, limite } = {}) => {
-  const valores = [];
-  const condiciones = [];
+// leida: true | false | undefined (todas), para usuarioId. limite: máximo de filas (opcional)
+const listarNotificaciones = async ({ leida, limite, usuarioId } = {}) => {
+  const valores = [usuarioId];
+  let sql = selectNotificacion('$1');
 
   if (leida !== undefined) {
     valores.push(leida);
-    condiciones.push(`n.leida = $${valores.length}`);
+    sql += ` WHERE ${leidaPara('$1')} = $${valores.length}`;
   }
-
-  let sql = SELECT_NOTIFICACION;
-  if (condiciones.length) sql += ` WHERE ${condiciones.join(' AND ')}`;
   sql += ` ${ORDEN_NOTIFICACIONES}`;
   if (limite) {
     valores.push(limite);
@@ -56,43 +67,46 @@ const listarNotificaciones = async ({ leida, limite } = {}) => {
   return rows;
 };
 
-const obtenerNotificacion = async (id) => {
-  const { rows } = await pool.query(`${SELECT_NOTIFICACION} WHERE n.id_notificacion = $1`, [id]);
+const obtenerNotificacion = async (id, usuarioId) => {
+  const { rows } = await pool.query(`${selectNotificacion('$2')} WHERE n.id_notificacion = $1`, [id, usuarioId]);
   return rows[0] || null;
 };
 
-const listarNotificacionesPorLote = async (loteId) => {
+const listarNotificacionesPorLote = async (loteId, usuarioId) => {
   const { rows } = await pool.query(
-    `${SELECT_NOTIFICACION} WHERE n.lote_id = $1 ${ORDEN_NOTIFICACIONES}`,
-    [loteId]
+    `${selectNotificacion('$2')} WHERE n.lote_id = $1 ${ORDEN_NOTIFICACIONES}`,
+    [loteId, usuarioId]
   );
   return rows;
 };
 
-const contarNoLeidas = async () => {
-  const { rows } = await pool.query('SELECT COUNT(*)::int AS total FROM notificaciones WHERE leida = false');
+const contarNoLeidas = async (usuarioId) => {
+  const { rows } = await pool.query(
+    `SELECT COUNT(*)::int AS total FROM notificaciones n WHERE NOT ${leidaPara('$1')}`,
+    [usuarioId]
+  );
   return rows[0].total;
 };
 
-const obtenerEstadisticas = async () => {
+const obtenerEstadisticas = async (usuarioId) => {
   const { rows: [totales] } = await pool.query(`
     SELECT
       COUNT(*)::int AS total,
-      COUNT(*) FILTER (WHERE leida = false)::int AS no_leidas,
-      COUNT(*) FILTER (WHERE leida = true)::int AS leidas,
-      MAX(fecha_creacion) AS ultima
-    FROM notificaciones
-  `);
+      COUNT(*) FILTER (WHERE NOT ${leidaPara('$1')})::int AS no_leidas,
+      COUNT(*) FILTER (WHERE ${leidaPara('$1')})::int AS leidas,
+      MAX(n.fecha_creacion) AS ultima
+    FROM notificaciones n
+  `, [usuarioId]);
   const { rows: porTipo } = await pool.query(`
     SELECT t.codigo, t.nombre,
            COUNT(n.id_notificacion)::int AS total,
-           COUNT(n.id_notificacion) FILTER (WHERE n.leida = false)::int AS no_leidas
+           COUNT(n.id_notificacion) FILTER (WHERE NOT ${leidaPara('$1')})::int AS no_leidas
     FROM tipos_notificacion t
     LEFT JOIN notificaciones n ON n.tipo_notificacion_id = t.id_tipo_notificacion
     GROUP BY t.id_tipo_notificacion, t.codigo, t.nombre
     HAVING COUNT(n.id_notificacion) > 0
     ORDER BY total DESC, t.codigo
-  `);
+  `, [usuarioId]);
   return { ...totales, por_tipo: porTipo };
 };
 
@@ -115,31 +129,39 @@ const crearNotificacion = async ({ titulo, mensaje, lote_id, tipo_notificacion_i
   return rows[0].id_notificacion;
 };
 
-// Devuelve la fila actualizada o null si no existe. Si ya estaba leída, conserva la fecha.
-const marcarLeida = async (id) => {
-  const { rows } = await pool.query(
-    `UPDATE notificaciones
-     SET leida = true, fecha_lectura = COALESCE(fecha_lectura, NOW())
-     WHERE id_notificacion = $1
-     RETURNING id_notificacion, leida, fecha_lectura`,
-    [id]
+// Marca leída SOLO para ese usuario. Devuelve la fila o null si no existe.
+// Si ya estaba leída, conserva la fecha de la primera lectura.
+const marcarLeida = async (id, usuarioId) => {
+  const { rows: [existe] } = await pool.query('SELECT 1 FROM notificaciones WHERE id_notificacion = $1', [id]);
+  if (!existe) return null;
+  await pool.query(
+    `INSERT INTO notificaciones_leidas (notificacion_id, usuario_id) VALUES ($1, $2)
+     ON CONFLICT (notificacion_id, usuario_id) DO NOTHING`,
+    [id, usuarioId]
   );
-  return rows[0] || null;
+  const fila = await obtenerNotificacion(id, usuarioId);
+  return { id_notificacion: id, leida: true, fecha_lectura: fila?.fecha_lectura ?? null };
 };
 
-const marcarVariasLeidas = async (ids) => {
+// Devuelve cuántas pasaron de no leídas a leídas para ese usuario
+const marcarVariasLeidas = async (ids, usuarioId) => {
   const { rowCount } = await pool.query(
-    `UPDATE notificaciones
-     SET leida = true, fecha_lectura = NOW()
-     WHERE id_notificacion = ANY($1::int[]) AND leida = false`,
-    [ids]
+    `INSERT INTO notificaciones_leidas (notificacion_id, usuario_id)
+     SELECT n.id_notificacion, $2 FROM notificaciones n
+     WHERE n.id_notificacion = ANY($1::int[]) AND NOT ${leidaPara('$2')}
+     ON CONFLICT (notificacion_id, usuario_id) DO NOTHING`,
+    [ids, usuarioId]
   );
   return rowCount;
 };
 
-const marcarTodasLeidas = async () => {
+const marcarTodasLeidas = async (usuarioId) => {
   const { rowCount } = await pool.query(
-    'UPDATE notificaciones SET leida = true, fecha_lectura = NOW() WHERE leida = false'
+    `INSERT INTO notificaciones_leidas (notificacion_id, usuario_id)
+     SELECT n.id_notificacion, $1 FROM notificaciones n
+     WHERE NOT ${leidaPara('$1')}
+     ON CONFLICT (notificacion_id, usuario_id) DO NOTHING`,
+    [usuarioId]
   );
   return rowCount;
 };
@@ -149,11 +171,17 @@ const eliminarNotificacion = async (id) => {
   return rowCount;
 };
 
-// Solo borra las ya leídas: una sin leer todavía espera que alguien la atienda
+// Borra las antiguas que ya nadie tiene que atender: resueltas, o leídas por todos los
+// usuarios activos. Una que alguien todavía no leyó, se queda.
 const eliminarLeidasAntiguas = async (dias) => {
   const { rowCount } = await pool.query(
-    `DELETE FROM notificaciones
-     WHERE leida = true AND fecha_creacion < NOW() - make_interval(days => $1)`,
+    `DELETE FROM notificaciones n
+     WHERE n.fecha_creacion < NOW() - make_interval(days => $1)
+       AND (n.leida OR NOT EXISTS (
+         SELECT 1 FROM usuarios u
+         WHERE u.activo = true AND NOT EXISTS (
+           SELECT 1 FROM notificaciones_leidas nl
+           WHERE nl.notificacion_id = n.id_notificacion AND nl.usuario_id = u.id_usuario)))`,
     [dias]
   );
   return rowCount;

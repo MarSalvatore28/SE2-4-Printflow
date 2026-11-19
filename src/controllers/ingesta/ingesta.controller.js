@@ -1,3 +1,10 @@
+const {
+  normalizarSerie,
+  buscarMaquinaPorSerie,
+  estaAutorizada,
+  motivoNoAutorizada
+} = require('@services/autorizacionMaquina');
+
 const processIngestaController = async (req, res) => {
   const payload = req.body;
 
@@ -66,38 +73,15 @@ const processIngestaController = async (req, res) => {
 
       let maquinaIdTentativa = null;
       let clienteIdTentativo = null;
-      let serieLimpia = consolidado.serie_maquina ? consolidado.serie_maquina.trim().toUpperCase() : null;
+      const serieLimpia = normalizarSerie(consolidado.serie_maquina);
 
+      // Misma regla que el reprocesar (S3-05): src/services/autorizacionMaquina.js
       if (serieLimpia) {
-        if (maquinaCache[serieLimpia] !== undefined) {
-          const cached = maquinaCache[serieLimpia];
-          maquinaIdTentativa = cached.id_maquina;
-          clienteIdTentativo = cached.id_cliente;
-        } else {
-          const buscarDatos = await client.query(
-            `SELECT m.id_maquina, a.cliente_id
-             FROM public.maquinas m
-             LEFT JOIN public.instalaciones i 
-                ON m.id_maquina = i.maquina_id 
-                AND i.activo = true 
-                AND i.fecha_retiro IS NULL
-             LEFT JOIN public.areas a 
-                ON i.area_id = a.id_area
-             WHERE UPPER(TRIM(m.serie)) = $1 LIMIT 1`,
-            [serieLimpia]
-          );
-
-          if (buscarDatos.rows.length > 0) {
-            const row = buscarDatos.rows[0];
-            maquinaIdTentativa = row.id_maquina;
-            clienteIdTentativo = row.cliente_id || null;
-          }
-
-          maquinaCache[serieLimpia] = {
-            id_maquina: maquinaIdTentativa,
-            id_cliente: clienteIdTentativo
-          };
+        if (maquinaCache[serieLimpia] === undefined) {
+          maquinaCache[serieLimpia] = await buscarMaquinaPorSerie(client, serieLimpia);
         }
+        maquinaIdTentativa = maquinaCache[serieLimpia].maquinaId;
+        clienteIdTentativo = maquinaCache[serieLimpia].clienteId;
       }
 
       const totalServicio = consolidado.print_total || 0;
@@ -108,13 +92,12 @@ const processIngestaController = async (req, res) => {
 
       // Caja 9, mejora 3.3: serie no registrada o sin asignación vigente → ERROR, sin lectura.
       // procesar_lectura = false hace que la aprobación la salte y que aparezca en las alertas del lote.
-      const maquinaAutorizada = maquinaIdTentativa !== null && clienteIdTentativo !== null;
+      const maquina = { serie: serieLimpia, maquinaId: maquinaIdTentativa, clienteId: clienteIdTentativo };
+      const maquinaAutorizada = estaAutorizada(maquina);
       if (!maquinaAutorizada) {
         estadoMaquina = 'ERROR';
         procesarLectura = false;
-        mensajeAviso = maquinaIdTentativa === null
-          ? `Máquina no autorizada: la serie ${serieLimpia || '(vacía)'} no está registrada`
-          : `Máquina no autorizada: la serie ${serieLimpia} no tiene una asignación vigente`;
+        mensajeAviso = motivoNoAutorizada(maquina);
       }
       // Función para extraer YYYY-MM-DD seguro
       const extractDate = (dateStr) => {

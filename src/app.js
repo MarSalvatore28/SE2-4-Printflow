@@ -81,6 +81,10 @@ app.use('/api/staging', stagingRoutes); // [C-F2]
 // --- Fase 3
 const reportemesRoutes = require('@routes/reportemes/reportemes.routes'); // [C-F3]
 app.use('/api/reportes', reportemesRoutes); // [C-F3]
+const lecturaRoutes = require('@routes/lectura/lectura.routes'); // [B-F3]
+app.use('/api/lecturas', lecturaRoutes); // [B-F3]
+const reprocesoRoutes = require('@routes/reproceso/reproceso.routes'); // [B-F3]
+app.use('/api/staging', reprocesoRoutes); // [B-F3]
 const usuariosRoutes = require('@routes/usuario/usuarios.routes'); // [B-F4]
 app.use('/api/usuarios', usuariosRoutes); // [B-F4]
 

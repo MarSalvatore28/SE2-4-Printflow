@@ -352,12 +352,13 @@ const getEstadisticasArea = async (id_area) => {
         WHERE i.area_id = a.id_area 
           AND i.fecha_retiro IS NOT NULL
       ) AS instalaciones_retiradas,
-      -- Cambios de máquina
+      -- Reemplazos de máquina vigentes (los anulados no cuentan)
       (
-        SELECT COUNT(DISTINCT hc.id_cambio)
-        FROM historial_cambios hc
-        INNER JOIN historial_ubicaciones hu ON hc.id_cambio = hu.cambio_id
-        WHERE hu.area_id = a.id_area
+        SELECT COUNT(*)
+        FROM maquinas_cambio mc
+        LEFT JOIN instalaciones i_sal ON i_sal.id_instalacion = mc.instalacion_saliente_id
+        WHERE COALESCE(mc.area_id, i_sal.area_id) = a.id_area
+          AND mc.activo = TRUE
       ) AS total_cambios_maquina
     FROM areas a
     LEFT JOIN clientes c ON a.cliente_id = c.id_cliente
@@ -369,29 +370,36 @@ const getEstadisticasArea = async (id_area) => {
 };
 
 /**
- * Obtener historial de cambios de máquinas en un área
+ * Obtener historial de cambios de máquinas en un área.
+ * Sale de maquinas_cambio (los reemplazos que se registran en Máquinas → Reemplazos): las tablas
+ * historial_ubicaciones e historial_maquinas no tienen una columna que las una a historial_cambios
+ * (no existe cambio_id) y nada las llena. Incluye los reemplazos anulados (activo = false).
  */
 const getHistorialCambiosArea = async (id_area) => {
   const query = `
-    SELECT 
-      hc.id_cambio,
-      hf.fecha_cambio_completa,
-      hf.periodo_afectado,
-      hm.maquina_saliente_id,
-      ms.serie AS maquina_saliente_serie,
-      hm.maquina_entrante_id,
-      me.serie AS maquina_entrante_serie,
-      hc.motivo_cambio,
-      u.nombre AS usuario_nombre
-    FROM historial_cambios hc
-    INNER JOIN historial_ubicaciones hu ON hc.id_cambio = hu.cambio_id
-    INNER JOIN historial_fechas hf ON hc.id_cambio = hf.cambio_id
-    LEFT JOIN historial_maquinas hm ON hc.id_cambio = hm.cambio_id
-    LEFT JOIN maquinas ms ON hm.maquina_saliente_id = ms.id_maquina
-    LEFT JOIN maquinas me ON hm.maquina_entrante_id = me.id_maquina
-    LEFT JOIN usuarios u ON hc.usuario_id = u.id_usuario
-    WHERE hu.area_id = $1
-    ORDER BY hf.fecha_cambio_completa DESC
+    SELECT
+      mc.id_maquina_cambio AS id_cambio,
+      mc.fecha_registro AS fecha_cambio_completa,
+      mc.periodo_afectado,
+      TO_CHAR(mc.fecha_danio, 'YYYY-MM-DD') AS fecha_danio,
+      TO_CHAR(mc.fecha_instalacion_entrante, 'YYYY-MM-DD') AS fecha_instalacion_entrante,
+      mc.maquina_saliente_id,
+      COALESCE(mc.snap_maquina_saliente_serie, ms.serie) AS maquina_saliente_serie,
+      mc.snap_maquina_saliente_modelo AS maquina_saliente_modelo,
+      mc.maquina_entrante_id,
+      COALESCE(mc.snap_maquina_entrante_serie, me.serie) AS maquina_entrante_serie,
+      mc.snap_maquina_entrante_modelo AS maquina_entrante_modelo,
+      mc.tipo_cambio,
+      mc.razon_cambio AS motivo_cambio,
+      mc.activo,
+      -- maquinas_cambio no guarda quién registró el reemplazo
+      NULL::text AS usuario_nombre
+    FROM maquinas_cambio mc
+    LEFT JOIN instalaciones i_sal ON i_sal.id_instalacion = mc.instalacion_saliente_id
+    LEFT JOIN maquinas ms ON mc.maquina_saliente_id = ms.id_maquina
+    LEFT JOIN maquinas me ON mc.maquina_entrante_id = me.id_maquina
+    WHERE COALESCE(mc.area_id, i_sal.area_id) = $1
+    ORDER BY mc.fecha_danio DESC, mc.id_maquina_cambio DESC
   `;
   
   const { rows } = await pool.query(query, [id_area]);

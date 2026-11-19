@@ -10,7 +10,9 @@
 
 ---
 
-## 1. Notificaciones leídas por usuario
+## 1. Notificaciones leídas por usuario · HECHO
+
+> Hecho: cada usuario tiene sus leídas (`notificaciones_leidas`, migración 032) y un lote aprobado o rechazado cuenta como leído para todos. Queda confirmarlo con el PO en la próxima reunión.
 
 Hoy, si un usuario abre un lote o pulsa «Marcar todas como leídas», las notificaciones quedan leídas **para todos**, porque `notificaciones.leida` es global. Hay que confirmar con el PO si debe ser **por usuario**. Si es así:
 - tabla `notificaciones_leidas (notificacion_id, usuario_id, fecha)`;
