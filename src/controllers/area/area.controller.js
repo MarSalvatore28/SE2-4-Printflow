@@ -327,6 +327,9 @@ const getAreasVigentesController = async (req, res) => {
 const getEstadisticasAreaController = async (req, res) => {
   try {
     const { id } = req.params;
+    if (!/^\d+$/.test(id) || Number(id) <= 0) {
+      return res.status(400).json({ success: false, message: 'ID de área inválido' });
+    }
     const estadisticas = await getEstadisticasArea(id);
 
     if (!estadisticas) {
@@ -353,6 +356,12 @@ const getEstadisticasAreaController = async (req, res) => {
 const getHistorialCambiosAreaController = async (req, res) => {
   try {
     const { id } = req.params;
+    if (!/^\d+$/.test(id) || Number(id) <= 0) {
+      return res.status(400).json({ success: false, message: 'ID de área inválido' });
+    }
+    if (!(await getAreaById(id))) {
+      return res.status(404).json({ success: false, message: 'Área no encontrada' });
+    }
     const historial = await getHistorialCambiosArea(id);
 
     res.json({
