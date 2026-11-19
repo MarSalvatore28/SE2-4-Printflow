@@ -37,7 +37,7 @@ curl -fsSL https://get.docker.com | sudo sh
 sudo usermod -aG docker $USER && newgrp docker
 
 # Los dos repos, lado a lado (como en desarrollo)
-git clone https://github.com/MGabrielaVillon/SE2-4-Printflow.git
+git clone https://github.com/MarSalvatore28/SE2-4-Printflow.git
 git clone https://github.com/MarSalvatore28/SE2-4-Printflow-Frontend.git
 cd SE2-4-Printflow && git checkout main && (cd ../SE2-4-Printflow-Frontend && git checkout main)
 ```
