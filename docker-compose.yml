@@ -50,6 +50,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      # S3-03: con CORREO_MODO=archivo, los avisos por correo quedan aquí como .eml
+      - ./buzon-salida:/app/buzon-salida
     expose:
       - "9000"
 
@@ -77,6 +80,18 @@ services:
       - n8n_data:/home/node/.n8n
     ports:
       - "127.0.0.1:5678:5678"
+
+  # Servidor de correo de PRUEBAS (S3-03): atrapa los correos y los muestra en http://localhost:8025.
+  # No envía nada a internet. Opcional: docker compose --profile correo up -d
+  # y en el .env: CORREO_MODO=smtp, SMTP_HOST=mailpit, SMTP_PORT=1025
+  mailpit:
+    image: axllent/mailpit:v1.20
+    profiles: ["correo"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8025:8025"
+    expose:
+      - "1025"
 
   # Simulador del flujo de correo (hace lo que hacía el n8n de DOX, con datos ficticios).
   # No arranca con `up`: se usa bajo demanda. Ver simulador/README.md

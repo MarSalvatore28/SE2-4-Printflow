@@ -3,6 +3,8 @@ const { Client } = require('pg');
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 const { verifyToken } = require('./utils/jwt.util');
+const pool = require('./config/db');
+const { avisarSiEsLoteNuevo } = require('./services/avisos.service');
 
 let io;
 let pgClient;
@@ -58,6 +60,8 @@ module.exports = {
                 try {
                     const payload = JSON.parse(msg.payload);
                     io.emit('nueva_notificacion', payload);
+                    // S3-03: si es un lote nuevo, aviso por correo a operadores y admins (sin bloquear)
+                    avisarSiEsLoteNuevo(pool, payload);
                 } catch (e) {
                     console.error('Error parseando notificación:', e);
                 }

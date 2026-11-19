@@ -13,3 +13,6 @@ backups/
 simulador/buzon/**/*.eml
 simulador/buzon/**/*.motivo.txt
 simulador/buzon/estado.json
+
+# Avisos por correo guardados como .eml (CORREO_MODO=archivo)
+buzon-salida/
