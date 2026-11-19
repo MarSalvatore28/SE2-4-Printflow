@@ -26,7 +26,7 @@ Tus migraciones van de `020` a `029`.
 
 **Dónde:** `src/models/reportemes/reportemes.model.js` (`getReporteConsolidado`). Hoy el importe es `gran_total × snap_costo_impresion_bn` (cerca de la línea 285): está mal y sale en $0. El **consumo ya está bien** y verificado a mano, incluidos los reemplazos. No lo cambies.
 
-**Regla** (recomendada; confírmala con el PO en la próxima reunión): **cuota fija + excedente, por contrato y por mes.**
+**Regla** (decidida por el equipo, `PLAN.md` sección 9): **cuota fija + excedente, por contrato y por mes.**
 - **Cuota fija:** `incluidas × costo`. Se cobra completa aunque no se usen las páginas.
 - **Excedente:** `max(0, consumo − incluidas) × costo_excedente`.
 - Se calcula **por separado para B/N y color**, sumando el consumo de **todas las máquinas del cliente bajo ese contrato** en el período (`instalaciones.contrato_id`). No por máquina.
