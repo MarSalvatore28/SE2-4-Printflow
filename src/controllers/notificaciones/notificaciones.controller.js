@@ -51,34 +51,34 @@ const listarController = async (req, res) => {
       }
     }
 
-    const data = await Notificaciones.listarNotificaciones({ leida, limite });
+    const data = await Notificaciones.listarNotificaciones({ leida, limite, usuarioId: req.user.id });
     res.json({ success: true, data, total: data.length });
   } catch (err) {
     error500(res, 'Error al obtener las notificaciones', err);
   }
 };
 
-const listarPorLecturaController = (leida) => async (_req, res) => {
+const listarPorLecturaController = (leida) => async (req, res) => {
   try {
-    const data = await Notificaciones.listarNotificaciones({ leida });
+    const data = await Notificaciones.listarNotificaciones({ leida, usuarioId: req.user.id });
     res.json({ success: true, data, total: data.length });
   } catch (err) {
     error500(res, 'Error al obtener las notificaciones', err);
   }
 };
 
-const contarNoLeidasController = async (_req, res) => {
+const contarNoLeidasController = async (req, res) => {
   try {
-    const total = await Notificaciones.contarNoLeidas();
+    const total = await Notificaciones.contarNoLeidas(req.user.id);
     res.json({ success: true, data: total });
   } catch (err) {
     error500(res, 'Error al contar las notificaciones no leídas', err);
   }
 };
 
-const estadisticasController = async (_req, res) => {
+const estadisticasController = async (req, res) => {
   try {
-    const data = await Notificaciones.obtenerEstadisticas();
+    const data = await Notificaciones.obtenerEstadisticas(req.user.id);
     res.json({ success: true, data });
   } catch (err) {
     error500(res, 'Error al obtener las estadísticas de notificaciones', err);
@@ -89,7 +89,7 @@ const obtenerController = async (req, res) => {
   const id = aEntero(req.params.id);
   if (!id) return res.status(400).json({ success: false, message: 'ID de notificación inválido' });
   try {
-    const data = await Notificaciones.obtenerNotificacion(id);
+    const data = await Notificaciones.obtenerNotificacion(id, req.user.id);
     if (!data) return res.status(404).json({ success: false, message: 'Notificación no encontrada' });
     res.json({ success: true, data });
   } catch (err) {
@@ -101,7 +101,7 @@ const listarPorLoteController = async (req, res) => {
   const loteId = aEntero(req.params.loteId);
   if (!loteId) return res.status(400).json({ success: false, message: 'ID de lote inválido' });
   try {
-    const data = await Notificaciones.listarNotificacionesPorLote(loteId);
+    const data = await Notificaciones.listarNotificacionesPorLote(loteId, req.user.id);
     res.json({ success: true, data, total: data.length });
   } catch (err) {
     error500(res, 'Error al obtener las notificaciones del lote', err);
@@ -146,7 +146,7 @@ const crearController = async (req, res) => {
       tipo_notificacion_id: tipo.id_tipo_notificacion,
       datos_adicionales,
     });
-    const data = await Notificaciones.obtenerNotificacion(id);
+    const data = await Notificaciones.obtenerNotificacion(id, req.user.id);
     res.status(201).json({ success: true, data, message: 'Notificación creada' });
   } catch (err) {
     error500(res, 'Error al crear la notificación', err);
@@ -157,7 +157,7 @@ const marcarLeidaController = async (req, res) => {
   const id = aEntero(req.params.id);
   if (!id) return res.status(400).json({ success: false, message: 'ID de notificación inválido' });
   try {
-    const data = await Notificaciones.marcarLeida(id);
+    const data = await Notificaciones.marcarLeida(id, req.user.id);
     if (!data) return res.status(404).json({ success: false, message: 'Notificación no encontrada' });
     avisarCambio({ id_notificacion: id });
     res.json({ success: true, data, message: 'Notificación marcada como leída' });
@@ -176,7 +176,7 @@ const marcarVariasLeidasController = async (req, res) => {
     return res.status(400).json({ success: false, message: 'Todos los ids deben ser enteros positivos' });
   }
   try {
-    const actualizadas = await Notificaciones.marcarVariasLeidas([...new Set(enteros)]);
+    const actualizadas = await Notificaciones.marcarVariasLeidas([...new Set(enteros)], req.user.id);
     avisarCambio({ ids: enteros });
     res.json({ success: true, data: { actualizadas }, message: `${actualizadas} notificaciones marcadas como leídas` });
   } catch (err) {
@@ -184,9 +184,9 @@ const marcarVariasLeidasController = async (req, res) => {
   }
 };
 
-const marcarTodasLeidasController = async (_req, res) => {
+const marcarTodasLeidasController = async (req, res) => {
   try {
-    const actualizadas = await Notificaciones.marcarTodasLeidas();
+    const actualizadas = await Notificaciones.marcarTodasLeidas(req.user.id);
     avisarCambio({ todas: true });
     res.json({ success: true, data: { actualizadas }, message: `${actualizadas} notificaciones marcadas como leídas` });
   } catch (err) {
@@ -198,7 +198,7 @@ const eliminarController = async (req, res) => {
   const id = aEntero(req.params.id);
   if (!id) return res.status(400).json({ success: false, message: 'ID de notificación inválido' });
   try {
-    const notificacion = await Notificaciones.obtenerNotificacion(id);
+    const notificacion = await Notificaciones.obtenerNotificacion(id, req.user.id);
     if (!notificacion) return res.status(404).json({ success: false, message: 'Notificación no encontrada' });
     if (!notificacion.leida) {
       return res.status(409).json({ success: false, message: 'Solo se pueden eliminar notificaciones leídas' });
@@ -362,7 +362,7 @@ const accionLotePorNotificacion = (accion, mensajeError) => async (req, res) => 
   const id = aEntero(req.params.id);
   if (!id) return res.status(400).json({ success: false, message: 'ID de notificación inválido' });
   try {
-    const notificacion = await Notificaciones.obtenerNotificacion(id);
+    const notificacion = await Notificaciones.obtenerNotificacion(id, req.user.id);
     if (!notificacion) return res.status(404).json({ success: false, message: 'Notificación no encontrada' });
     if (!notificacion.lote_id) {
       return res.status(400).json({ success: false, message: 'La notificación no está asociada a un lote' });
