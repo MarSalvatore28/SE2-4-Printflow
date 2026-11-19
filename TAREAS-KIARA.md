@@ -2,11 +2,18 @@
 
 Tus tareas de la Fase 0 ya están en `main`: CODEOWNERS en los dos repos, la API con 404 en JSON y validación del `.env`, los tests de la API y el job `smoke` del CI. Ahora te toca el **aviso por correo** (S3-03), el **Excel** (S4-02) y seguir como **QA de los PR de todos**. Nada depende de otra persona.
 
+> **Necesitamos dejar esto listo ya. Lo hacemos ahora, empezando por la tarea 1.** No hay fecha de entrega: es urgente para el medio parcial.
+> **No dependes de nadie y nadie depende de ti:**
+> - el aviso por correo es un servicio nuevo;
+> - en el Excel solo tocas sus funciones (el PDF lo trabaja otra persona en el mismo archivo);
+> - la facturación, si todavía no llega del backend, se muestra como «Importe pendiente de cálculo».
+> Una tarea está **terminada** solo cuando tiene tus commits, un PR a `develop` con «Cómo probarlo», el CI en verde y capturas o la salida de las pruebas.
+
 | # | Tarea | Puntos | Rama |
 |---|---|---|---|
 | 1 | **S3-03 · Aviso por correo (SMTP) al operador** | 3 | `feature/f3-smtp` |
 | 2 | **S4-02 · Excel del consolidado** | 2 | `feature/f4-excel` |
-| 3 | **QA de cada PR** de Samuel, Christian, Roberto y Gabriela | — | — |
+| 3 | **QA de cada PR** de Samuel, Christian, Roberto, Gabriela y Marlo | — | — |
 | 4 | Guion de la demo para el sponsor | 1 | — |
 
 Tus migraciones, si las necesitas, van de `040` a `049`.
@@ -49,7 +56,7 @@ Tus migraciones, si las necesitas, van de `040` a `049`.
 
 ## 2. S4-02 · Excel del consolidado
 
-La exportación está en `src/utils/exportUtils.ts` (repo **frontend**). **Gabriela trabaja el PDF en el mismo archivo:** tú tocas solo las funciones del Excel y ella solo las del PDF.
+La exportación está en `src/utils/exportUtils.ts` (repo **frontend**). **El PDF lo trabaja Marlo en el mismo archivo:** tú tocas solo las funciones del Excel y ella solo las del PDF.
 - **Columnas numéricas como número,** no como texto: contadores, páginas e importes. Así se pueden sumar en Excel. Los importes, con formato de 2 decimales.
 - **Cabecera** con cliente, RUC, período y fecha de generación. Una hoja por consolidado y, si hay detalle por usuario, otra hoja.
 - **Facturación:** cuando Christian termine S3-06, la tabla de facturación (`resumen.facturacion`). Antes, una fila «Importe pendiente de cálculo».

@@ -1,4 +1,4 @@
-// Fija el CONTRATO de validarLectura que comparten S3-01 (Samuel), S3-04 y S3-05 (Roberto).
+// Fija el CONTRATO de validarLectura que comparten S3-01 (Samuel), S3-04 y S3-05 (lectura manual y reprocesar).
 // Samuel agrega sus propios tests de las reglas en otro archivo; este no se toca.
 const test = require('node:test');
 const assert = require('node:assert');

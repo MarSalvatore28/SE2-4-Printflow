@@ -24,7 +24,7 @@ Tus migraciones van de `010` a `019`.
 
 ## 1. S3-01 · Validaciones de lecturas
 
-**Qué existe:** `src/services/validacionLecturas.js` con la firma y el contrato (léelo entero). Hoy devuelve `null`. Roberto ya lo llama desde la lectura manual y el reprocesar. **No cambies la firma.**
+**Qué existe:** `src/services/validacionLecturas.js` con la firma y el contrato (léelo entero). Hoy devuelve `null`. La lectura manual y el reprocesar (los hace Marlo) ya lo llaman. **No cambies la firma.**
 
 **Qué hacer:**
 1. **Implementa las 3 reglas en `validarLectura(db, lectura)`.** Las lecturas aprobadas están en `reportes_oficiales`, con `contador_impresiones_bn` y `contador_impresiones_color`, que son los totales B/N y color acumulados.
@@ -33,7 +33,7 @@ Tus migraciones van de `010` a `019`.
    - **DUPLICADA:** ya existe en `reportes_oficiales` una lectura de esa máquina para ese período.
    - **Reemplazos:** si la máquina es la **entrante** de un reemplazo de ese período (`maquinas_cambio` y `cabecera_contadores_cambio`), su «lectura anterior» es su contador inicial registrado, no una lectura aprobada.
 2. **Migración `010_lectura_unica.sql`:** índice único `(maquina_id, periodo)` en `reportes_oficiales`. Comprueba antes que la demo y los reemplazos no lo violan: en un reemplazo, saliente y entrante son máquinas distintas.
-3. **Conéctalo a la ingesta** (`src/controllers/ingesta/ingesta.controller.js`): por cada reporte de una máquina autorizada, llama a `validarLectura`. Si devuelve un motivo, el reporte queda en **ERROR** como ya se hace con «Máquina no autorizada»: `estado_maquina = 'ERROR'`, `procesar_lectura = false` y `mensaje_aviso = motivo`. Así se ve en las alertas del lote, el lote no se puede aprobar y Roberto lo puede reprocesar.
+3. **Conéctalo a la ingesta** (`src/controllers/ingesta/ingesta.controller.js`): por cada reporte de una máquina autorizada, llama a `validarLectura`. Si devuelve un motivo, el reporte queda en **ERROR** como ya se hace con «Máquina no autorizada»: `estado_maquina = 'ERROR'`, `procesar_lectura = false` y `mensaje_aviso = motivo`. Así se ve en las alertas del lote, el lote no se puede aprobar y se puede reprocesar.
 4. **Vuelve a validar al aprobar** (`approveStagingBatch` o `validarLoteStaging`): entre la ingesta y la aprobación pudo aprobarse otra lectura. Si alguna falla, la aprobación responde 409 con el motivo.
 5. **Tests unitarios de las 3 reglas** en `test/validacionLecturas.test.js`, con un `db` simulado (un objeto con `query` que devuelve filas preparadas), sin base de datos. No toques `validacionLecturas.contrato.test.js`.
 
@@ -53,7 +53,7 @@ Tus migraciones van de `010` a `019`.
    - **reemplazos**;
    - **aprobación y rechazo de lotes**;
    - alta, cambio y activación de **usuarios**;
-   - alta de **lectura manual**: cuando se mergee lo de Roberto, agrégale la línea en un PR aparte.
+   - alta de **lectura manual**: cuando se mergee la lectura manual, agrégale la línea en un PR aparte.
 4. **Que la lectura tenga trazabilidad:** al aprobar, guarda en `reportes_oficiales.usuario_validacion_id` quién aprobó (ya está `req.user.id`), y que la respuesta de una lectura incluya `lote_origen_id` y `usuario_validacion_id`.
 5. **No se hace** la pantalla de consulta de la bitácora (HU-12, fuera de alcance). Basta un `GET /api/auditoria?tabla=&id_registro=` solo para admin, para demostrarlo.
 
@@ -98,7 +98,7 @@ El despliegue es **del Equipo C**. Ya existe la configuración base, probada en 
    - datos de la demo y **contraseñas nuevas** para los 3 usuarios.
 
    Si algo de la guía no funciona tal cual en la VM, **corrígelo en un commit**.
-2. **Migraciones sobre una base que ya existe.** Hoy `docker/postgres/init.sh` solo aplica `db/migrations` y `db/seeds` al **crear** el volumen. En producción, tus migraciones `010`/`011` y las de Christian y Roberto **no se aplicarían**.
+2. **Migraciones sobre una base que ya existe.** Hoy `docker/postgres/init.sh` solo aplica `db/migrations` y `db/seeds` al **crear** el volumen. En producción, tus migraciones `010`/`011` y las de Christian y las de la lectura manual **no se aplicarían**.
    - Crea una tabla `schema_migrations (nombre, aplicada_en)` y un script `db/migrar.sh` (o `npm run migrar`) que aplique en orden **solo las migraciones pendientes**, cada una en su transacción. Si una falla, se detiene.
    - Que `init.sh` registre también las que aplica, para que una base nueva y una migrada queden iguales.
    - Pruébalo: base creada con las migraciones de hoy, agregas una nueva, corres el script y se aplica solo esa. Si lo corres otra vez, no hace nada.
