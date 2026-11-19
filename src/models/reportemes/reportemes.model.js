@@ -1,6 +1,7 @@
 const pool = require('@config/db');
 const { consumoDelCambio } = require('@utils/maquinasCambio.consumo');
 const { consumoDeCuenta } = require('@utils/consumoPorCuenta');
+const { calcularFacturacion } = require('@utils/facturacion');
 
 const getPeriodoAnterior = (periodoActual) => {
   const [year, month] = periodoActual.split('-').map(Number);
@@ -102,6 +103,16 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
         ro.snap_costo_impresion_bn,
         ro.snap_costo_impresion_color,
         
+        -- ========== DATOS DEL CONTRATO ==========
+        c.id_contrato,
+        c.impresiones_bn_incluidas,
+        c.impresiones_color_incluidas,
+        c.costo_impresion_bn AS costo_contrato_bn,
+        c.costo_impresion_color AS costo_contrato_color,
+        c.costo_x_excedente_impresion_bn,
+        c.costo_x_excedente_impresion_color,
+        c.facturacion_de_impresora,
+
         -- ========== SUMA DETALLES ACTUAL ==========
         det_cur.det_cur_imp_bn,
         det_cur.det_cur_imp_col,
@@ -208,6 +219,9 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
       
       LEFT JOIN areas area_cambio
         ON mc.area_id = area_cambio.id_area
+
+      LEFT JOIN contratos c 
+        ON a.cliente_id = c.cliente_id
       
       -- Las asignaciones que el registro del reemplazo retiró y creó
       LEFT JOIN instalaciones inst_saliente
@@ -289,7 +303,9 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
       const cambioCalculado = tieneCambio ? cambios.get(row.maquina_cambio_id) : null;
       const consumoFinal = cambioCalculado ? cambioCalculado.total : calcularConsumoNormal(row);
 
-      const dineroTotal = consumoFinal.gran_total * parseFloat(row.snap_costo_impresion_bn || 0);
+      // Cálculo referencial (solo informativo, por máquina)
+      const dineroReferencial = (consumoFinal.total_bn * parseFloat(row.costo_contrato_bn || 0)) + 
+                                (consumoFinal.total_color * parseFloat(row.costo_contrato_color || 0));
       const tipoNombre = row.tipo_impresion_nombre || 'BN';
       const esColor = tipoNombre !== 'BN';
 
@@ -421,7 +437,7 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
         },
         consumo: consumoFinal,
         financiero: {
-          monto_total: dineroTotal.toFixed(2)
+          monto_referencial: dineroReferencial.toFixed(2)
         }
       };
     });
@@ -504,6 +520,42 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
     }));
 
     const totalRenta = rentaEquipos.reduce((acc, r) => acc + r.costo_mensual, 0);
+
+      // --- NUEVA LÓGICA DE FACTURACIÓN POR CONTRATO (S3-06) ---
+    // Agrupamos el consumo de todas las máquinas por contrato
+    const consumosPorContrato = {};
+    detalles.forEach(d => {
+      // Necesitamos el contrato_id, que está en la fila original 'row'. 
+      // Como no lo guardamos en 'detalles', lo buscaremos en las filas visibles.
+      const rowOriginal = filasVisibles.find(r => r.id_reporte === d.info.id_reporte);
+      if (!rowOriginal || !rowOriginal.contrato_id) return;
+
+      const idContrato = rowOriginal.contrato_id;
+      if (!consumosPorContrato[idContrato]) {
+        consumosPorContrato[idContrato] = { bn: 0, color: 0, contratoData: rowOriginal };
+      }
+      consumosPorContrato[idContrato].bn += d.consumo.total_bn;
+      consumosPorContrato[idContrato].color += d.consumo.total_color;
+    });
+
+    // Calculamos la facturación para cada contrato
+    const facturacionContratos = [];
+    let montoTotalFacturado = 0;
+
+    Object.values(consumosPorContrato).forEach(({ bn, color, contratoData }) => {
+      // Asumimos que el filtrado es false por ahora (contrato completo)
+      // Si el usuario filtró por área/máquina, lo marcamos, pero mantenemos el cálculo global
+      const esFiltrado = areaId || maquinaId ? true : false;
+
+      const calculo = calcularFacturacion(contratoData, { bn, color }, 0, esFiltrado);
+      
+      facturacionContratos.push({
+        id_contrato: contratoData.contrato_id,
+        ...calculo
+      });
+
+      montoTotalFacturado += parseFloat(calculo.total_impresiones);
+    });
 
     const resumen = {
       total_bn: detalles.reduce((acc, d) => acc + d.consumo.total_bn, 0),
