@@ -107,6 +107,7 @@ const poolFalso = ({ reporte = REPORTE, maquina = null, contabilidad = false } =
       if (/FROM instalaciones i WHERE i\.id_instalacion/.test(sql)) {
         return { rows: [{ contabilidad_por_usuario: contabilidad, tiene_cuentas: false }] };
       }
+      if (/FROM reportes_oficiales|cabecera_contadores_cambio/.test(sql)) return { rows: [] };
       throw new Error(`consulta inesperada: ${sql}`);
     },
     release() { liberado = true; },
