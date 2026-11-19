@@ -1,5 +1,7 @@
 # Tareas de Roberto · Equipo B
 
+> **Hecho:** las dos tareas están en `develop` y `main` (frontend #22, Vitest en el CI; #25, limpieza de Asignaciones y Máquinas). Recuerda: los PR van a `develop`, nunca directo a `main`.
+>
 > **Necesitamos dejar esto listo ya. Lo hacemos ahora, empezando por la tarea 1.** No hay fecha de entrega: es urgente para el medio parcial.
 > **No dependes de nadie y nadie depende de ti:** las pruebas del frontend son nuevas y las pantallas que limpias no las tiene nadie más.
 > Una tarea está **terminada** solo cuando tiene las 4 cosas:

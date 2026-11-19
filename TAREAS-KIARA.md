@@ -20,11 +20,13 @@ Tus migraciones, si las necesitas, van de `040` a `049`.
 
 ## 1. S4-02 · Excel del consolidado
 
-La exportación está en `src/utils/exportUtils.ts` (repo **frontend**). **El PDF lo trabaja Marlo en el mismo archivo:** tú tocas solo las funciones del Excel y ella solo las del PDF.
+La exportación está en `src/utils/exportUtils.ts` (repo **frontend**). **El PDF lo trabaja Marlo en el mismo archivo:** tú tocas solo las funciones del Excel y Marlo solo las del PDF.
 - **Columnas numéricas como número,** no como texto: contadores, páginas e importes. Así se pueden sumar en Excel. Los importes, con formato de 2 decimales.
 - **Cabecera** con cliente, RUC, período y fecha de generación. Una hoja por consolidado y, si hay detalle por usuario, otra hoja.
 - **Facturación:** cuando Christian termine S3-06, la tabla de facturación (`resumen.facturacion`). Antes, una fila «Importe pendiente de cálculo».
 - **Valores idénticos a la pantalla:** 2 clientes, 2 períodos y el de noviembre con reemplazo. Compara y deja capturas en el PR.
+- **Hoja por usuario, columnas cruzadas:** en `exportToExcel` (cerca de la línea 186), «COPIA B/N» y «COPIA COLOR» reciben los valores de impresión, y al revés. Corrígelo. Desde el backend #48, el detalle por usuario ya trae el **consumo del período** de cada cuenta, no el contador acumulado: el Excel lo toma tal cual.
+- **Hoja por usuario: columnas cruzadas.** En `exportToExcel` (cerca de la línea 186), «COPIA B/N» y «COPIA COLOR» reciben los valores de impresión, y al revés. Corrígelo. Desde el backend #48, el detalle por usuario ya trae el **consumo del período** de cada cuenta, no el contador acumulado: el Excel lo toma tal cual.
 
 ## 2. QA de cada PR
 
