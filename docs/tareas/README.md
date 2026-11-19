@@ -12,8 +12,8 @@ Estado al 18/11/2026: las Fases 0, 1 y 2 están en `main`, con máquinas y reemp
 | **Christian** | [TAREAS-CHRISTIAN.md](../../TAREAS-CHRISTIAN.md) | **S3-06 cálculo del importe**, congelar tarifas al aprobar, **anular un reemplazo**, **S4-05 rendimiento con 500 máquinas**, endpoints 501 y limpieza, **S4-04 despliegue automático, respaldos fuera de la VM y monitoreo** | ~18 | **URGENTE · le toca a él** |
 | **Roberto** | [TAREAS-ROBERTO.md](../../TAREAS-ROBERTO.md) | Pruebas automáticas del frontend (Vitest en el CI), limpieza de Asignaciones y Máquinas | ~4 | Le toca a él |
 | **Gabriela** | [TAREAS-GABRIELA.md](../../TAREAS-GABRIELA.md) | SonarCloud en verde (accesibilidad de los componentes compartidos), web usable en el celular | ~4 | Le toca a ella |
-| **Kiara** | [TAREAS-KIARA.md](../../TAREAS-KIARA.md) | S3-03 aviso por correo (SMTP), S4-02 Excel y QA de los PR | ~6 | Le toca a ella |
-| **Marlo** | [MARLO.md](MARLO.md) · [lectura manual y reprocesar](marlo-lectura-manual-y-reprocesar.md) · [informes y PDF](marlo-informes-y-pdf.md) | S3-04 lectura manual, S3-05 reprocesar, informes con facturación, S4-01 PDF, integración de los PR y decisiones con el PO | ~17 | En curso |
+| **Kiara** | [TAREAS-KIARA.md](../../TAREAS-KIARA.md) | S4-02 Excel, QA de los PR y guion de la demo | ~3 | Le toca a ella |
+| **Marlo** | [MARLO.md](MARLO.md) · [lectura manual y reprocesar](marlo-lectura-manual-y-reprocesar.md) · [informes y PDF](marlo-informes-y-pdf.md) | S3-03 aviso por correo (**hecho**), S3-04 lectura manual, S3-05 reprocesar, informes con facturación, S4-01 PDF, integración de los PR y decisiones con el PO | ~17 | En curso |
 
 ## Contratos compartidos (lo que hace que cada uno sea independiente)
 

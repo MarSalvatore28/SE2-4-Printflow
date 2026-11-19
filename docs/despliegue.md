@@ -56,6 +56,8 @@ nano .env
 | `SECRET_KEY` | `openssl rand -hex 48` |
 | `INGESTA_TOKEN` | `openssl rand -hex 32` |
 | `NODE_ENV` | `production` |
+| `CORREO_MODO` y `SMTP_*` | Los datos del SMTP que pone DOX (ver `docs/avisos-por-correo.md`) |
+| `APP_URL` | `https://DOMINIO` (el enlace que va en los avisos) |
 
 ## 4. Levantar
 
