@@ -2,13 +2,20 @@
 
 Te toca **lo que se factura**: que el consolidado deje de salir en $0 (S3-06), que una tarifa nueva no cambie los meses ya cerrados, poder anular un reemplazo y que el informe responda en menos de 5 segundos con 500 máquinas (S4-05). Nada depende de otra persona: el formato de la respuesta del importe ya está acordado con Gabriela (ver `README.md`).
 
-| # | Tarea | Puntos | Para cuándo | Rama |
-|---|---|---|---|---|
-| 1 | **S3-06 · Cálculo del importe del consolidado** | 8 | 10 dic | `feature/f3-importe` |
-| 2 | Congelar las tarifas al aprobar | 1 | 13 dic | `feature/f3-tarifas-congeladas` |
-| 3 | **Anular un reemplazo de máquina** | 3 | 13 dic | `feature/f3-anular-reemplazo` |
-| 4 | **S4-05 · Rendimiento: menos de 5 s con 500 máquinas** | 2 | 20 dic | `feature/f4-rendimiento` |
-| 5 | Endpoints 501 de reportes y limpieza | 1 | 20 dic | `fix/reportes-pendientes` |
+> **Prioridad: URGENTE (medio parcial). Empieza hoy por la tarea 1.**
+> Una tarea está **terminada** solo cuando tiene las 4 cosas:
+> 1. **Tus commits** en tu rama (uno por mejora, a tu nombre).
+> 2. Un **PR a `develop`** con «Cómo probarlo» completo.
+> 3. El **CI en verde** (`test`, `docker` y `smoke`).
+> 4. Una **prueba de que funciona** con datos del simulador: la salida de los tests y una captura o un video corto en el PR.
+
+| # | Tarea | Puntos | Rama |
+|---|---|---|---|
+| 1 | **S3-06 · Cálculo del importe del consolidado** | 8 | `feature/f3-importe` |
+| 2 | Congelar las tarifas al aprobar | 1 | `feature/f3-tarifas-congeladas` |
+| 3 | **Anular un reemplazo de máquina** | 3 | `feature/f3-anular-reemplazo` |
+| 4 | **S4-05 · Rendimiento: menos de 5 s con 500 máquinas** | 2 | `feature/f4-rendimiento` |
+| 5 | Endpoints 501 de reportes y limpieza | 1 | `fix/reportes-pendientes` |
 
 Tus migraciones van de `020` a `029`.
 
