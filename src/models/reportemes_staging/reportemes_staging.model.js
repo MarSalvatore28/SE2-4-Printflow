@@ -158,6 +158,7 @@ const getConsolidadoConDetallesByLote = async (lote_id) => {
       c.estado_maquina,
       c.procesar_lectura,
       c.mensaje_aviso,
+      c.intentos_reproceso,
       
       l.codigo_referencia as lote_codigo,
       l.fecha_carga as lote_fecha_carga,
@@ -201,7 +202,7 @@ const getConsolidadoConDetallesByLote = async (lote_id) => {
       c.id_staging_consolidado, c.lote_id, c.ip_detectada, c.print_total, c.copy_total,
       c.fecha_lectura, c.fecha_corte, c.maquina_id_tentativa, c.cliente_id_tentativo,
       c.serie_maquina, c.impresion_bn, c.impresion_color, c.copia_bn, c.copia_color, c.totalservicio,
-      c.estado_maquina, c.procesar_lectura, c.mensaje_aviso,
+      c.estado_maquina, c.procesar_lectura, c.mensaje_aviso, c.intentos_reproceso,
       l.codigo_referencia, l.fecha_carga, l.fecha_corte, l.periodo,
       m.serie, m.modelo_id, mo.nombre, cl.nombre, cl.ruc
     ORDER BY c.id_staging_consolidado
