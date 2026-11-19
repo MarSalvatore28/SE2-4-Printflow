@@ -1,8 +1,8 @@
 # Tareas de Christian · Equipo C
 
-Te toca **lo que se factura**: que el consolidado deje de salir en $0 (S3-06), que una tarifa nueva no cambie los meses ya cerrados, poder anular un reemplazo que el informe responda en menos de 5 segundos con 500 máquinas (S4-05) y, con Samuel, **publicar el sistema en internet y que se actualice solo** (S4-04). Nada depende de otra persona: el formato de la respuesta del importe ya está acordado con Gabriela (ver `README.md`).
+Te toca **lo que se factura**: que el consolidado deje de salir en $0 (S3-06), que una tarifa nueva no cambie los meses ya cerrados, poder anular un reemplazo, que el informe responda en menos de 5 segundos con 500 máquinas (S4-05) y, con Samuel, **publicar el sistema en internet y que se actualice solo** (S4-04). Nada depende de otra persona: el formato de la respuesta del importe ya está acordado con Gabriela (ver `docs/tareas/README.md`).
 
-> **Prioridad: URGENTE (medio parcial). Empieza hoy por la tarea 1.**
+> **Necesitamos dejar esto listo ya. Lo hacemos ahora, empezando por la tarea 1.** No hay fecha de entrega: es urgente para el medio parcial.
 > Una tarea está **terminada** solo cuando tiene las 4 cosas:
 > 1. **Tus commits** en tu rama (uno por mejora, a tu nombre).
 > 2. Un **PR a `develop`** con «Cómo probarlo» completo.
@@ -38,7 +38,7 @@ Tus migraciones van de `020` a `029`.
 
 Columnas en `contratos`: `impresiones_bn_incluidas`, `impresiones_color_incluidas`, `costo_impresion_bn`, `costo_impresion_color`, `costo_x_excedente_impresion_bn`, `costo_x_excedente_impresion_color` y `facturacion_de_impresora`.
 
-**Respuesta (acordada con Gabriela, no la cambies sin avisarle):** `resumen.facturacion[]` (un elemento por contrato), `resumen.monto_total_general` y, por máquina, `financiero.monto_referencial` (= consumo × tarifa por página, solo informativo). La forma exacta está en `README.md`, «Contratos compartidos», punto 2. Los montos van como texto con 2 decimales.
+**Respuesta (acordada con Gabriela, no la cambies sin avisarle):** `resumen.facturacion[]` (un elemento por contrato), `resumen.monto_total_general` y, por máquina, `financiero.monto_referencial` (= consumo × tarifa por página, solo informativo). La forma exacta está en `docs/tareas/README.md`, «Contratos compartidos», punto 2. Los montos van como texto con 2 decimales.
 
 **Cómo hacerlo bien:**
 - Pon el cálculo en una **función pura** (por ejemplo `src/utils/facturacion.js`) que reciba consumos y contrato y devuelva el desglose. Así se prueba sin base de datos, como `src/utils/maquinasCambio.consumo.js`.

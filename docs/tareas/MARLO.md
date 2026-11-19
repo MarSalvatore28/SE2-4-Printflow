@@ -24,7 +24,7 @@ Hoy, si un usuario abre un lote o pulsa «Marcar todas como leídas», las notif
 ## 3. Decisiones con el PO
 
 Llevar a la próxima reunión y anotar las respuestas en `PLAN.md`, sección 9:
-1. **Regla de cobro (S3-06):** ¿cuota fija + excedente por contrato y por mes? Es la recomendada; está en `CHRISTIAN.md`.
+1. **Regla de cobro (S3-06):** ¿cuota fija + excedente por contrato y por mes? Es la recomendada; está en `TAREAS-CHRISTIAN.md` (raíz).
 2. ¿Las notificaciones se marcan como leídas **por usuario** o para todos?
 3. ¿Se puede **anular un reemplazo** si el período ya está aprobado?
 4. Las 5 preguntas pendientes de `PLAN.md`, sección 9: aprobación manual, identificación de la máquina, campos del contrato, nombre del rol «auditor» y cambio de máquinas en la demo final.

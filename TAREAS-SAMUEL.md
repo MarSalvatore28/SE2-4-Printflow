@@ -1,8 +1,8 @@
 # Tareas de Samuel · Equipo C (líder técnico backend)
 
-Te toca **lo más delicado del backend**: que el sistema rechace las lecturas malas (S3-01), que quede registro de quién cambió qué (S3-02), la prueba de punta a punta con el PO (S4-06) y, con Christian, **publicar el sistema en internet** (S4-04). Ninguna depende de otra persona: el contrato de `validarLectura` ya está fijado (ver `README.md`).
+Te toca **lo más delicado del backend**: que el sistema rechace las lecturas malas (S3-01), que quede registro de quién cambió qué (S3-02), la prueba de punta a punta con el PO (S4-06) y, con Christian, **publicar el sistema en internet** (S4-04). Ninguna depende de otra persona: el contrato de `validarLectura` ya está fijado (ver `docs/tareas/README.md`).
 
-> **Prioridad: URGENTE (medio parcial). Empieza hoy por la tarea 1.**
+> **Necesitamos dejar esto listo ya. Lo hacemos ahora, empezando por la tarea 1.** No hay fecha de entrega: es urgente para el medio parcial.
 > Una tarea está **terminada** solo cuando tiene las 4 cosas:
 > 1. **Tus commits** en tu rama (uno por mejora, a tu nombre).
 > 2. Un **PR a `develop`** con «Cómo probarlo» completo.

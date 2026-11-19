@@ -2,7 +2,7 @@
 
 PrintFlow se publica en internet con **HTTPS**, para que el PO y el sponsor lo usen sin instalar nada. Nunca se despliega en el servidor de DOX (ver `PLAN.md`).
 
-**Responsables: Equipo C.** Samuel pone en marcha la VM y las migraciones en producción; Christian, el despliegue automático, los respaldos fuera de la VM y el monitoreo. Detalle en `docs/tareas/SAMUEL.md` y `docs/tareas/CHRISTIAN.md`, tarea S4-04.
+**Responsables: Equipo C.** Samuel pone en marcha la VM y las migraciones en producción; Christian, el despliegue automático, los respaldos fuera de la VM y el monitoreo. Detalle en `TAREAS-SAMUEL.md` y `TAREAS-CHRISTIAN.md` (en la raíz), tarea S4-04.
 
 La configuración de producción está en `deploy/`:
 
