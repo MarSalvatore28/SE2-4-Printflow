@@ -86,14 +86,18 @@ async function mostrarConsolidado(token, escenario, ids, periodo) {
       console.log('  (sin lecturas aprobadas en el período)');
       continue;
     }
-    console.log('  Serie       Tipo    Consumo B/N   Consumo color   Total     Monto');
+    console.log('  Serie       Tipo    Consumo B/N   Consumo color   Total     Monto ref.');
     for (const f of filas) {
       console.log(`  ${String(f.info.serie).padEnd(11)} ${String(f.info.tipo_impresion).padEnd(7)}` +
         ` ${numero(f.consumo.total_bn).padStart(11)} ${numero(f.consumo.total_color).padStart(15)}` +
-        ` ${numero(f.consumo.gran_total).padStart(7)}   $${f.financiero.monto_total}`);
+        ` ${numero(f.consumo.gran_total).padStart(7)}   $${f.financiero.monto_referencial ?? f.financiero.monto_total}`);
     }
     const r = datos.data.resumen || {};
-    console.log(`  Total del cliente: ${numero(r.total_impresiones)} páginas · $${Number(r.monto_total_general || 0).toFixed(2)}`);
+    const tramo = (nombre, t) => `${nombre} ${numero(t.consumo)} págs. (incluidas ${numero(t.incluidas)}): cuota $${t.cuota_fija} + excedente $${t.monto_excedente}`;
+    for (const c of r.facturacion || []) {
+      console.log(`  Contrato #${c.contrato_id}: ${tramo('B/N', c.bn)} · ${tramo('color', c.color)} · renta $${c.renta} = $${c.total}`);
+    }
+    console.log(`  Total del cliente: ${numero(r.total_impresiones)} páginas · a facturar $${Number(r.monto_total_general || 0).toFixed(2)}`);
   }
 }
 
@@ -128,7 +132,7 @@ async function main() {
 
   titulo('4) Consolidado mensual (lo que se factura)');
   console.log('El consumo es la diferencia entre el contador de este mes y el del mes anterior.');
-  console.log('El monto sale en $0 mientras no esté la historia S3-06 (tarifa del contrato con incluidas y excedente).');
+  console.log('Se factura por contrato: cuota fija de las páginas incluidas + excedente (+ renta). El monto por máquina es solo referencial.');
   for (const periodo of meses.slice(1)) await mostrarConsolidado(token, escenario, ids, periodo);
   if (meses.length < 2) console.log('Se necesitan al menos 2 meses para calcular consumos.');
   console.log('\nListo. Los correos quedaron en simulador/buzon/procesados y simulador/buzon/con-error.');

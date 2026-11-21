@@ -160,6 +160,6 @@ Los tests están en `test/simulador.test.js` y corren con `npm test`.
 ## Límites (a la fecha de hoy)
 
 - **Los formatos son inventados.** Representan los casos típicos, pero no son los de las impresoras de DOX. Cuando el PO entregue correos de muestra, se agrega su formato en `lib/formatos.js` (un objeto con `generar`, `reconocer` y `leer`) sin tocar lo demás.
-- **El monto del consolidado sale en $0.** Cobrar según el contrato (incluidas, excedente, «Todo como color») es la historia **S3-06**, del Equipo C.
+- **El importe se calcula por contrato (S3-06):** cuota fija de las páginas incluidas, más el excedente, más la renta. Con la demo, Colegio Horizonte de octubre de 2026 da **$395,48**. El monto por máquina es solo referencial (consumo × tarifa por página).
 - **`demo.js` aprueba los lotes por la API** para que la demo corra sola. En la aplicación, el operador también puede aprobarlos o rechazarlos desde **Notificaciones → Lotes → Ver detalle**.
 - **Los datos del escenario se cargan por SQL** (`preparar-datos.js`) para que siempre coincidan con los correos. Las máquinas también se pueden crear desde la pantalla **Máquinas**.

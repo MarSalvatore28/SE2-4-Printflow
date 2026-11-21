@@ -17,7 +17,7 @@ Te toca **lo que se factura**: que el consolidado deje de salir en $0 (S3-06), q
 
 | # | Tarea | Puntos | Rama |
 |---|---|---|---|
-| 1 | **S3-06 · Cálculo del importe del consolidado** | 8 | `feature/f3-importe` |
+| 1 | ~~S3-06 · Cálculo del importe del consolidado~~ **Hecho** (#57, aprobado y en `main`; ver la revisión del PR) | 8 | `feature/f3-importe` |
 | 2 | Congelar las tarifas al aprobar | 1 | `feature/f3-tarifas-congeladas` |
 | 3 | **Anular un reemplazo de máquina** | 3 | `feature/f3-anular-reemplazo` |
 | 4 | **S4-05 · Rendimiento: menos de 5 s con 500 máquinas** | 2 | `feature/f4-rendimiento` |
