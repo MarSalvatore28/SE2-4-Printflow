@@ -9,7 +9,7 @@
 
 const { escenarioDeArgs } = require('./lib/escenarioGrande');
 
-const q = (valor) => (valor === null || valor === undefined ? 'NULL' : `'${String(valor).replace(/'/g, "''")}'`);
+const q = (valor) => (valor === null || valor === undefined ? 'NULL' : `'${String(valor).replaceAll("'", "''")}'`);
 const FECHA_INSTALACION = '2026-01-15';
 
 function generarSql(escenario) {
@@ -29,12 +29,11 @@ function generarSql(escenario) {
     const idCliente = `(SELECT id_cliente FROM clientes WHERE ruc = ${q(cliente.ruc)})`;
     const idContrato = `(SELECT id_contrato FROM contratos WHERE cliente_id = ${idCliente} AND fecha_inicio = ${q(k.fecha_inicio)} ORDER BY id_contrato LIMIT 1)`;
 
-    sql.push('', `-- ${cliente.nombre}`);
     sql.push(
+      '',
+      `-- ${cliente.nombre}`,
       `INSERT INTO clientes (nombre, ruc, razon_social) SELECT ${q(cliente.nombre)}, ${q(cliente.ruc)}, ${q(cliente.razon_social)}` +
       ` WHERE NOT EXISTS (SELECT 1 FROM clientes WHERE ruc = ${q(cliente.ruc)});`,
-    );
-    sql.push(
       'INSERT INTO contratos (cliente_id, fecha_inicio, fecha_fin, impresiones_bn_incluidas, impresiones_color_incluidas,' +
       ' costo_impresion_bn, costo_impresion_color, costo_x_excedente_impresion_bn, costo_x_excedente_impresion_color,' +
       ' renta_equipo, software_control, facturacion_de_impresora)' +
@@ -54,8 +53,6 @@ function generarSql(escenario) {
         `INSERT INTO maquinas (serie, tipo_impresion_id, modelo_id) VALUES (${q(m.serie)},` +
         ` (SELECT id_tipo_impresion FROM tipos_impresion WHERE nombre = ${q(m.tipo)} LIMIT 1),` +
         ` (SELECT id_modelo FROM modelos WHERE nombre = ${q(m.modelo)})) ON CONFLICT (serie) DO NOTHING;`,
-      );
-      sql.push(
         'INSERT INTO instalaciones (maquina_id, area_id, contrato_id, ip_address, fecha_instalacion, activo,' +
         ' contador_acumulativo, contabilidad_por_usuario, costo_renta_mensual)' +
         ` SELECT ${idMaquina}, (SELECT id_area FROM areas WHERE cliente_id = ${idCliente} AND nombre = ${q(m.area)} LIMIT 1),` +
@@ -74,8 +71,12 @@ function generarSql(escenario) {
     ` (SELECT id_modelo FROM modelos WHERE nombre = ${q(m.modelo)})) ON CONFLICT (serie) DO NOTHING;`,
   ));
 
-  sql.push('', 'COMMIT;', '');
-  sql.push("SELECT 'Simulación lista: ' || count(*) || ' máquinas asignadas' AS resultado FROM instalaciones i JOIN maquinas m ON m.id_maquina = i.maquina_id WHERE m.serie LIKE 'SIM%' AND i.activo;");
+  sql.push(
+    '',
+    'COMMIT;',
+    '',
+    "SELECT 'Simulación lista: ' || count(*) || ' máquinas asignadas' AS resultado FROM instalaciones i JOIN maquinas m ON m.id_maquina = i.maquina_id WHERE m.serie LIKE 'SIM%' AND i.activo;",
+  );
   return sql.join('\n') + '\n';
 }
 

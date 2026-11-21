@@ -4,7 +4,7 @@ const { generateToken, verifyToken } = require('@utils/jwt.util');
 const protect = async (req, res, next) => {
     const header = req.headers.authorization;
 
-    if (!header || !header.startsWith('Bearer ')) {
+    if (!header?.startsWith('Bearer ')) {
         return res.status(401).json({
             success: false,
             message: 'No hay token, autorización denegada'
@@ -32,7 +32,7 @@ const protect = async (req, res, next) => {
         });
     }
 
-    if (!user || !user.activo) {
+    if (!user?.activo) {
         return res.status(401).json({
             success: false,
             message: 'Usuario no autorizado o inactivo'

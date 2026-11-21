@@ -43,12 +43,15 @@ azure_listar() {
 }
 
 # Verdadero si el texto $1 va antes que $2 en orden alfabético (los nombres llevan la fecha)
-antes_que() { [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort | head -n 1)" = "$1" ]; }
+antes_que() {
+  primero=$1 segundo=$2
+  [ "$primero" != "$segundo" ] && [ "$(printf '%s\n%s\n' "$primero" "$segundo" | sort | head -n 1)" = "$primero" ]
+}
 
 sincronizar_azure() {
   azure_listo || return 0
   if ! remotos=$(azure_listar); then
-    echo "$(ahora) ERROR: no se pudo leer el contenedor de Azure (¿venció el SAS?); se intenta en el próximo respaldo"
+    echo "$(ahora) ERROR: no se pudo leer el contenedor de Azure (¿venció el SAS?); se intenta en el próximo respaldo" >&2
     return 0
   fi
   for f in "$DIR"/printflow_*.dump; do
@@ -59,7 +62,7 @@ sincronizar_azure() {
         -H 'Content-Type: application/octet-stream' --upload-file "$f" "$(blob_url "$nombre")"; then
       echo "  copiado a Azure: $nombre"
     else
-      echo "$(ahora) ERROR: no se pudo copiar $nombre a Azure; se intenta en el próximo respaldo"
+      echo "$(ahora) ERROR: no se pudo copiar $nombre a Azure; se intenta en el próximo respaldo" >&2
     fi
   done
   limite="printflow_$(date -d "@$(( $(date +%s) - RETENCION * 86400 ))" +%Y-%m-%d)"
@@ -68,7 +71,7 @@ sincronizar_azure() {
     if curl -fsS --max-time 60 -o /dev/null -X DELETE "$(blob_url "$nombre")"; then
       echo "  borrado de Azure por antigüedad: $nombre"
     else
-      echo "$(ahora) ERROR: no se pudo borrar $nombre de Azure"
+      echo "$(ahora) ERROR: no se pudo borrar $nombre de Azure" >&2
     fi
   done
 }
@@ -116,6 +119,6 @@ esac
 if [ -n "$AZURE" ]; then destino=" y copia en Azure"; else destino=""; fi
 echo "Respaldos cada $INTERVALO s en $DIR$destino, con retención de $RETENCION días"
 while true; do
-  respaldar || echo "$(ahora) ERROR: no se pudo hacer el respaldo"
+  respaldar || echo "$(ahora) ERROR: no se pudo hacer el respaldo" >&2
   sleep "$INTERVALO"
 done

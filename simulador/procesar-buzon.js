@@ -12,8 +12,8 @@
 //
 // Variables: REINTENTOS (3), ESPERA_BASE_MS (1000), FALLOS_PARA_ALERTA (3), ALERTA_PARA (admin@printflow.local)
 
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
 const { leerCorreo } = require('./lib/correo');
 const { correoAIngesta } = require('./lib/n8n');
 const entrega = require('./lib/entrega');

@@ -154,7 +154,7 @@ async function insertarDetalles(client, { idLote, idPadre, maquinaId, detalles }
       det.ip_detectada
     ];
 
-    await client.query(queryDetalle, valuesDetalle);
+    await client.query(queryDetalle, valuesDetalle); // NOSONAR: en orden, misma transacción y mismo client
   }
 }
 
@@ -217,12 +217,12 @@ const processIngestaController = async (req, res) => {
     };
 
     for (const item of payload) {
-      if (await procesarReporte(client, item, ctx)) totalProcesados++;
+      if (await procesarReporte(client, item, ctx)) totalProcesados++; // NOSONAR: en orden, cada reporte usa las cachés y los message_id de los anteriores
     }
 
     for (const idLote in ctx.conteoPorLote) {
       const cantidad = ctx.conteoPorLote[idLote];
-      await client.query(
+      await client.query( // NOSONAR: en orden, misma transacción y mismo client
         `UPDATE public.lotes_carga
          SET total_registros_cargados = COALESCE(total_registros_cargados, 0) + $1
          WHERE id_lote = $2`,

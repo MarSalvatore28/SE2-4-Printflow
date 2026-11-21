@@ -51,8 +51,10 @@ async function iniciarSesion() {
 
 async function comprobarDatos(token, escenario) {
   const ids = {};
-  for (const cliente of escenario.clientes) {
-    const { status, datos } = await api(`/api/clientes/ruc/${cliente.ruc}`, { token });
+  // Solo consultas: se piden a la vez y se revisan en orden (el error es el del primer cliente que falte)
+  const respuestas = await Promise.all(escenario.clientes.map((cliente) => api(`/api/clientes/ruc/${cliente.ruc}`, { token })));
+  for (const [i, cliente] of escenario.clientes.entries()) {
+    const { status, datos } = respuestas[i];
     const id = (datos.data || datos)?.id_cliente;
     if (status !== 200 || !id) {
       throw new Error(`No existe el cliente ${cliente.nombre}. Primero carga los datos:\n` +
@@ -72,7 +74,7 @@ async function aprobarLotes(token, periodo) {
   if (lotes.size === 0) console.log('No hay lotes pendientes de este mes (ya estaban aprobados).');
 
   for (const [loteId, codigo] of lotes) {
-    const { status, datos: r } = await api('/api/staging/approve-batch', { token, metodo: 'POST', cuerpo: { loteId, periodo } });
+    const { status, datos: r } = await api('/api/staging/approve-batch', { token, metodo: 'POST', cuerpo: { loteId, periodo } }); // NOSONAR: de a uno, como el operador
     if (status === 200) {
       console.log(`✓ Lote ${codigo} (#${loteId}) aprobado: sus lecturas pasan a reportes oficiales`);
     } else {
@@ -84,7 +86,7 @@ async function aprobarLotes(token, periodo) {
 
 async function mostrarConsolidado(token, escenario, ids, periodo) {
   for (const cliente of escenario.clientes) {
-    const { status, datos } = await api(`/api/reportes/consolidado/${ids[cliente.codigo]}/${periodo}`, { token });
+    const { status, datos } = await api(`/api/reportes/consolidado/${ids[cliente.codigo]}/${periodo}`, { token }); // NOSONAR: de a uno para no cargar la API con el escenario grande
     if (status !== 200) {
       console.log(`${cliente.nombre}: no se pudo obtener el consolidado (HTTP ${status})`);
       continue;
@@ -136,16 +138,16 @@ async function main() {
     generarCorreos({ periodo, errores: conErrores && ultimo, escenario }).forEach((a) => console.log(`   ✉ ${a}`));
 
     console.log('\n2) n8n (simulado) lee el buzón y llama a la ingesta');
-    await procesarBuzon();
+    await procesarBuzon(); // NOSONAR: cada mes necesita aprobado el anterior
 
     console.log('\n3) El operador revisa y aprueba los lotes del mes');
-    await aprobarLotes(token, periodo);
+    await aprobarLotes(token, periodo); // NOSONAR: cada mes necesita aprobado el anterior
   }
 
   titulo('4) Consolidado mensual (lo que se factura)');
   console.log('El consumo es la diferencia entre el contador de este mes y el del mes anterior.');
   console.log('Se factura por contrato: cuota fija de las páginas incluidas + excedente (+ renta). El monto por máquina es solo referencial.');
-  for (const periodo of meses.slice(1)) await mostrarConsolidado(token, escenario, ids, periodo);
+  for (const periodo of meses.slice(1)) await mostrarConsolidado(token, escenario, ids, periodo); // NOSONAR: se imprime mes a mes
   if (meses.length < 2) console.log('Se necesitan al menos 2 meses para calcular consumos.');
   console.log('\nListo. Los correos quedaron en simulador/buzon/procesados y simulador/buzon/con-error.');
 }

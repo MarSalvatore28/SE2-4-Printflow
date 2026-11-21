@@ -123,9 +123,9 @@ test('la alerta al administrador es un correo legible con el motivo', () => {
 
 // --- Reemplazos de máquina (escenario.reemplazos, solo con --reemplazos) ---
 
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const { cargarEscenario, maquinasDelPeriodo, totalesBnColor } = require('../simulador/lib/escenario');
 const { generarCorreos, reemplazosPorRegistrar } = require('../simulador/generar-correos');
 const { generarSql } = require('../simulador/preparar-datos');

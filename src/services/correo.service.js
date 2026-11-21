@@ -8,16 +8,16 @@
 //
 // Si el envío falla, se devuelve { enviado: false, error } y se registra en el log: un correo nunca
 // debe tumbar la API ni la ingesta.
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
 const nodemailer = require('nodemailer');
 
-const MODOS = ['archivo', 'smtp', 'desactivado'];
+const MODOS = new Set(['archivo', 'smtp', 'desactivado']);
 
 function configuracion() {
   const modo = (process.env.CORREO_MODO || 'archivo').trim().toLowerCase();
   return {
-    modo: MODOS.includes(modo) ? modo : 'archivo',
+    modo: MODOS.has(modo) ? modo : 'archivo',
     dir: process.env.CORREO_DIR || path.resolve(__dirname, '../../buzon-salida'),
     remitente: process.env.CORREO_REMITENTE || 'PrintFlow <no-responder@printflow.example>',
     smtp: {

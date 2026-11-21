@@ -9,8 +9,8 @@
 // Un correo por cliente y mes, con un adjunto por impresora en el formato de su marca.
 // El Message-ID es fijo por cliente y mes: generar dos veces el mismo mes simula un reenvío.
 
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
 const {
   cargarEscenario, validarPeriodo, fechaCorte, contadoresAlCierre, repartirPorUsuario, maquinasDelPeriodo, totalesBnColor,
 } = require('./lib/escenario');
@@ -91,7 +91,7 @@ function generarCorreos({ periodo, errores = false, fallas = [], reemplazos = fa
       nombre: 'Remitente sin registrar',
       codigo: 'desconocido',
       maquinas: [{
-        serie: 'SIMX9999', modelo: 'Equipo no registrado (demo)', formato: 'texto-contadores', ip: '10.99.9.99',
+        serie: 'SIMX9999', modelo: 'Equipo no registrado (demo)', formato: 'texto-contadores', ip: '10.99.9.99', // NOSONAR: IP ficticia del equipo sin registrar de la simulación
         contador_inicial: { impresion_bn: 5000, impresion_color: 0, copia_bn: 0, copia_color: 0 },
         consumo_mensual: { impresion_bn: 900, impresion_color: 0, copia_bn: 0, copia_color: 0 },
       }],

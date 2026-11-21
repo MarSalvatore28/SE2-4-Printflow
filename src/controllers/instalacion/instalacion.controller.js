@@ -423,7 +423,7 @@ const getRentaByClienteController = async (req, res) => {
   try {
     const { cliente_id } = req.params;
     const rentas = await getRentaByCliente(cliente_id);
-    const total = rentas.reduce((acc, r) => acc + parseFloat(r.costo_renta_mensual), 0);
+    const total = rentas.reduce((acc, r) => acc + Number.parseFloat(r.costo_renta_mensual), 0);
 
     res.status(200).json({ success: true, total_renta: total, data: rentas });
   } catch (error) {

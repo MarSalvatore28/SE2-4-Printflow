@@ -268,7 +268,7 @@ const deleteAreaPermanente = async (id_area) => {
   
   const { rows: checkRows } = await pool.query(checkQuery, [id_area]);
   
-  if (parseInt(checkRows[0].total) > 0) {
+  if (Number.parseInt(checkRows[0].total, 10) > 0) {
     throw new Error('No se puede eliminar el área porque tiene instalaciones asociadas');
   }
   
