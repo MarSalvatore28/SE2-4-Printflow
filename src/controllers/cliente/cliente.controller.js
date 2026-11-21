@@ -26,30 +26,17 @@ const {
 
 } = require('@models/cliente/cliente.model');
 const { ACCIONES, leerFila, auditarFila, contextoAuditoria, enTransaccion } = require('@services/auditoria');
+const { parseId } = require('@utils/usuarios.validacion');
+const { validarContrato, contratoComoCuerpo, avisoSuperposicion } = require('@utils/contratos.validacion');
 
 // --- Reglas de negocio (caja 5, mejoras 3.1 y 3.3) ---
 
 const RUC_VALIDO = /^\d{13}$/;
 const PG_UNIQUE_VIOLATION = '23505';
 
-// Mayor que 0. Un valor que no es número (NaN) no lo es.
-const esPositivo = (valor) => Number(valor) > 0;
-
-// Devuelve el mensaje de error del contrato o null si es válido.
-const validarContrato = (data) => {
-  if (!data.fecha_inicio) return 'Fecha de inicio es obligatoria';
-  if (data.fecha_fin && new Date(data.fecha_fin) < new Date(data.fecha_inicio)) {
-    return 'La fecha fin no puede ser anterior a la de inicio';
-  }
-  if (!esPositivo(data.costo_impresion_bn) && !esPositivo(data.costo_impresion_color)) {
-    return 'Al menos un costo (B/N o color) debe ser mayor que 0';
-  }
-  return null;
-};
-
-const advertenciaSuperposicion = async (clienteId, data, excluirId = null) => {
-  const otro = await getContratoSuperpuesto(clienteId, data.fecha_inicio, data.fecha_fin, excluirId);
-  return otro ? `Se superpone con el contrato #${otro.id_contrato}` : undefined;
+const advertenciaSuperposicion = async (clienteId, datos, excluirId = null) => {
+  const otro = await getContratoSuperpuesto(clienteId, datos.fecha_inicio, datos.fecha_fin, excluirId);
+  return avisoSuperposicion(otro);
 };
 
 const fetchAllClientes = async (req, res) => {
@@ -393,15 +380,22 @@ const getContratoByIdController = async (req, res) => {
 
 const crearContratoController = async (req, res) => {
   try {
-    const { id: cliente_id } = req.params;
-    const contratoData = { ...req.body, cliente_id };
+    const clienteId = parseId(req.params.id);
+    if (!clienteId) return res.status(400).json({ success: false, message: 'Seleccione un cliente válido' });
 
-    const error = validarContrato(contratoData);
+    const { error, datos } = validarContrato(req.body);
     if (error) {
       return res.status(400).json({ success: false, message: error });
     }
 
-    const advertencia = await advertenciaSuperposicion(cliente_id, contratoData);
+    const cliente = await getClienteById(clienteId);
+    if (!cliente) return res.status(404).json({ success: false, message: 'Cliente no encontrado' });
+    if (!cliente.activo) {
+      return res.status(409).json({ success: false, message: 'El cliente está inactivo: actívelo antes de asignarle un contrato' });
+    }
+
+    const contratoData = { ...datos, cliente_id: clienteId };
+    const advertencia = await advertenciaSuperposicion(clienteId, contratoData);
     // S3-02: el alta y su auditoría van en la misma transacción
     const nuevoId = await enTransaccion(req.pool, async (db) => {
       const id = await createContrato(contratoData, db);
@@ -428,14 +422,14 @@ const crearContratoController = async (req, res) => {
 const actualizarContratoController = async (req, res) => {
   try {
     const { id } = req.params;
-    const contratoData = req.body;
 
     const actual = await getContratoById(id);
     if (!actual) {
       return res.status(404).json({ success: false, message: 'Contrato no encontrado' });
     }
 
-    const error = validarContrato(contratoData);
+    // Lo que no viene en la petición conserva el valor guardado
+    const { error, datos: contratoData } = validarContrato(req.body, contratoComoCuerpo(actual));
     if (error) {
       return res.status(400).json({ success: false, message: error });
     }

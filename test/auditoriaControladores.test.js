@@ -76,13 +76,18 @@ const silenciarErrores = (t) => {
 
 // ------------------------------ Contratos ------------------------------
 
+// Respuesta del pool global: el cliente #4 existe y está activo; lo demás, vacío
+const clienteActivo = async (sql) => (/FROM clientes\s+WHERE id_cliente/.test(sql)
+  ? { rows: [{ id_cliente: 4, activo: true }] }
+  : { rows: [] });
+
 const CONTRATO = {
   fecha_inicio: '2026-01-01', fecha_fin: null, costo_impresion_bn: 0.02, costo_impresion_color: 0.12,
 };
 
 test('crear contrato: el alta y su auditoría en la misma transacción, con usuario e IP', async (t) => {
-  // La advertencia de superposición consulta con el pool global
-  reemplazar(t, pool, { query: async () => ({ rows: [] }) });
+  // El cliente y la advertencia de superposición se consultan con el pool global
+  reemplazar(t, pool, { query: clienteActivo });
   const bd = clienteFalso((sql) => {
     if (/INSERT INTO contratos/.test(sql)) return { rows: [{ id_contrato: 31 }] };
     if (/to_jsonb\(t\) AS fila FROM contratos/.test(sql)) return { rows: [{ fila: { id_contrato: 31, cliente_id: 4, activo: true } }] };
@@ -133,7 +138,7 @@ test('actualizar contrato: guarda la fila antes (bloqueada) y después del cambi
 
 test('si la auditoría falla, el contrato no se crea (ROLLBACK y 500)', async (t) => {
   silenciarErrores(t);
-  reemplazar(t, pool, { query: async () => ({ rows: [] }) });
+  reemplazar(t, pool, { query: clienteActivo });
   const bd = clienteFalso((sql) => {
     if (/INSERT INTO contratos/.test(sql)) return { rows: [{ id_contrato: 32 }] };
     if (/to_jsonb/.test(sql)) return { rows: [] };

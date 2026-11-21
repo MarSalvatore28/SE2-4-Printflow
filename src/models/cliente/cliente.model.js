@@ -505,7 +505,7 @@ const getContratoById = async (contratoId) => {
 // Otro contrato ACTIVO del mismo cliente cuyas fechas se cruzan (fecha_fin NULL = sin fin).
 const getContratoSuperpuesto = async (clienteId, fechaInicio, fechaFin, excluirId = null) => {
   const query = `
-    SELECT id_contrato
+    SELECT id_contrato, fecha_inicio, fecha_fin
     FROM contratos
     WHERE cliente_id = $1
       AND activo = true
