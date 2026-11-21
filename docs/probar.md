@@ -339,6 +339,8 @@ docker run --rm -v "${PWD}:/app" -v printflow_test_modules:/app/node_modules -w 
 
 > **Ojo:** `docker compose exec api node --test ...` **no funciona**, porque la imagen de la API no trae la carpeta `test/`. Usa uno de los dos comandos de arriba.
 
+**Prueba de punta a punta (E2E):** `npm run e2e` (con Docker abierto) levanta una copia aparte del sistema en los puertos 8099 y 5499, sin tocar tu base, recorre la demo completa (agosto a noviembre, validaciones, reemplazo y seguridad) y la baja. Tarda unos 40 segundos y tiene que terminar en `0 fallos`. `npm test` no la ejecuta. Qué comprueba y cómo leer un fallo: [`e2e.md`](e2e.md).
+
 **Frontend:** en `C:\printflow\SE2-4-Printflow-Frontend`, `npm install` y `npm run build` (tiene que terminar en `✓ built in ...`). Para las pruebas, `npm test`, que necesita Node 22.22 o más nuevo.
 
 ## 10. Probar el PR de un compañero
