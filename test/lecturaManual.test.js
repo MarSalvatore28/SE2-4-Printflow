@@ -153,6 +153,8 @@ const poolFalso = ({ asignacion: fila = ASIGNACION_BD } = {}) => {
           }],
         };
       }
+      if (/FROM reportes_oficiales|cabecera_contadores_cambio/.test(sql)) return { rows: [] };
+
       throw new Error(`consulta inesperada: ${sql}`);
     },
     release() { liberado = true; },
