@@ -34,7 +34,7 @@ Empieza **siempre** con una base vacía (`down -v` del proyecto de la prueba) y,
 
 ## Qué comprueba
 
-Cada comprobación sale en pantalla con ✓ o ✗. Hoy son **136**.
+Cada comprobación sale en pantalla con ✓ o ✗. Hoy son **139**.
 
 1. **Base limpia y sistema arriba:** existe el `.env` con sus claves, Docker responde, `down -v` y `up -d --build db api web`, la API contesta, `preparar-datos.js` registra los clientes, contratos, áreas y las 5 máquinas, y los tres usuarios de prueba inician sesión.
 2. **Agosto, septiembre y octubre de 2026:** el simulador genera los correos de cada mes, el «n8n» simulado los procesa (dentro de Docker, como en la demo), cada cliente tiene su lote en staging sin lecturas en ERROR y el **operador** lo aprueba por la API (`POST /api/staging/approve-batch`).
@@ -43,7 +43,7 @@ Cada comprobación sale en pantalla con ✓ o ✗. Hoy son **136**.
    - septiembre y octubre: la lectura y el **consumo B/N y color de cada máquina** (este mes − el anterior);
    - la **facturación por contrato** con la regla de S3-06, calculada aparte y sin usar el código de la API: por separado para B/N y color, cuota fija de las páginas incluidas + excedente por lo que pasa de ellas, más la renta. Se comparan consumo, incluidas, excedente, cuota fija, monto del excedente, renta y total.
    - **Colegio Horizonte de 2026-10 tiene que dar $395,48.**
-4. **Seguridad:** 401 sin token y con un token falso, la cabecera `X-Nuevo-Token` en una respuesta válida, 403 al auditor que intenta aprobar un lote, 403 en `/api/ingesta/cargar` desde fuera (puerto de la web, aun con el token de ingesta), 403 al auditor en `/api/auditoria` y que `GET /api/auditoria` (admin) muestra la **aprobación** del lote de octubre de Colegio Horizonte hecha por `operador@printflow.local`.
+4. **Seguridad:** 401 sin token y con un token falso, la cabecera `X-Nuevo-Token` en una respuesta válida, 403 al auditor que intenta aprobar un lote, 403 en `/api/ingesta/cargar` desde fuera (puerto de la web, aun con el token de ingesta), 404 al admin que intenta editar a mano un reporte del lote (`PUT /api/staging/consolidado/:id`, la ruta ya no existe), 403 al auditor en `/api/auditoria` y que `GET /api/auditoria` (admin) muestra la **aprobación** del lote de octubre de Colegio Horizonte hecha por `operador@printflow.local`.
 5. **Validaciones de lecturas (S3-01):**
    - **DUPLICADA** por la lectura manual: `POST /api/lecturas/manual` de SIMA0001 en octubre (ya aprobado) → 400 con `codigo: DUPLICADA`.
    - Se prepara el lote de noviembre de **Constructora Andina** para que traiga los tres errores: una lectura manual de noviembre de SIME0005 (201, como si el equipo no hubiera mandado su correo), y el historial aprobado alterado como en el PR #58: SIMC0003 con +100.000.000 en octubre (retroceso) y SIMD0004 con sus lecturas de agosto a octubre ÷10 (salto anómalo).
@@ -55,7 +55,7 @@ Cada comprobación sale en pantalla con ✓ o ✗. Hoy son **136**.
    - octubre sigue en $395,48;
    - **anular el reemplazo** con noviembre aprobado → 409.
 7. **Lote de noviembre de Andina:** SIMC0003 queda en ERROR con «Retroceso de contador…», SIMD0004 con «Salto anómalo…» y SIME0005 con «Lectura duplicada…» (`procesar_lectura = false`). Aprobar el lote responde **409** con los tres motivos, cada uno con su máquina («Máquina SIMC0003: Retroceso de contador…»), y el lote sigue pendiente.
-8. **Clientes, contratos y áreas:** RUC con provincia inválida (400), nombre de solo espacios (400), RUC repetido (409), el operador no crea clientes (403) y un id que no es número (400). Un cliente nuevo con un contrato «Todo como Color» (como lo mandaba la web) queda guardado como «Todo como color», el valor que entiende la facturación; un costo negativo responde 400; editar solo un costo conserva lo demás, y reenviar lo que devolvió el GET (con `costo_x_excedente_*`) conserva el excedente; un contrato superpuesto se guarda con un aviso que describe el otro por sus fechas, sin su id. Al desactivar el cliente caen sus contratos y al reactivarlo vuelve **solo** el que cayó con él (no el que se había desactivado aparte). En áreas: nombre repetido en el mismo cliente (409, sin distinguir mayúsculas), desactivar un área con máquinas asignadas (409, sigue activa), moverla a otro cliente (409) y editar sin mandar «activo» la deja activa.
+8. **Clientes, contratos y áreas:** RUC con provincia inválida (400), nombre de solo espacios (400), RUC repetido (409), el operador no crea clientes (403) y un id que no es número (400). Un cliente nuevo con un contrato «Todo como Color» (como lo mandaba la web) queda guardado como «Todo como color», el valor que entiende la facturación; un costo negativo responde 400; editar solo un costo conserva lo demás, y reenviar lo que devolvió el GET (con `costo_x_excedente_*`) conserva el excedente; un contrato superpuesto se guarda con un aviso que describe el otro por sus fechas, sin su id. Al desactivar el cliente caen sus contratos y al reactivarlo vuelve **solo** el que cayó con él (no el que se había desactivado aparte). En áreas: nombre repetido en el mismo cliente (409, sin distinguir mayúsculas), desactivar un área con máquinas asignadas (409, sigue activa), moverla a otro cliente (409) y editar sin mandar «activo» la deja activa. Con un área desactivada a mano, desactivar y reactivar el cliente devuelve **solo** el área que cayó con él, y la auditoría de las áreas muestra el alta, el cambio, la baja a mano, la baja con el cliente (con su marca) y la vuelta.
 
 ## Cómo leer el resultado
 
@@ -63,7 +63,7 @@ Al final siempre sale el resumen, y el código de salida es **1** si algo falló
 
 ```text
 ======================================================================
-136 comprobaciones, 0 fallos · 41 s
+139 comprobaciones, 0 fallos · 41 s
 ======================================================================
 ```
 
@@ -73,7 +73,7 @@ Si algo falla, la línea lleva ✗ y debajo el detalle: casi siempre `esperado �
   ✗ 2026-10 · SIMB0002: consumo B/N 9.930 · color 0
       lectura esperado {"bn":373108,"color":0}, obtenido {"bn":373108,"color":0}; consumo esperado {"bn":9930,"color":0}, obtenido {"bn":373108,"color":0}
 ...
-136 comprobaciones, 1 fallos · 42 s
+139 comprobaciones, 1 fallos · 42 s
 
 Fallos:
   ✗ [3. Consolidado contra el cálculo a mano del escenario (contadoresAlCierre)] 2026-10 · SIMB0002: consumo B/N 9.930 · color 0 — ...

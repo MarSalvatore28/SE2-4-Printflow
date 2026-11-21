@@ -409,6 +409,9 @@ async function seccionSeguridad(ctx) {
   comprobar(res.status === 403, 'El auditor no puede aprobar lotes: POST /api/staging/approve-batch → 403', `HTTP ${res.status}`);
   res = await api('/api/ingesta/cargar', { metodo: 'POST', cuerpo: [], token: ctx.env.INGESTA_TOKEN });
   comprobar(res.status === 403, `Ingesta desde fuera (puerto ${WEB_PORT}), aun con el token de ingesta → 403`, `HTTP ${res.status}`);
+  // Los contadores de un lote no se editan a mano antes de aprobarlo: ni siquiera el admin
+  res = await api('/api/staging/consolidado/1', { token: ctx.admin, metodo: 'PUT', cuerpo: { consolidado_print_total: 1 } });
+  comprobar(res.status === 404, 'Editar a mano un reporte del lote (PUT /api/staging/consolidado/:id, admin) → 404: la ruta ya no existe', `HTTP ${res.status}`);
   res = await api('/api/auditoria?tabla=lotes_carga', { token: ctx.auditor });
   comprobar(res.status === 403, 'La auditoría es solo para admin: el auditor recibe 403', `HTTP ${res.status}`);
   const loteAuditado = ctx.lotesAprobados['SIM-2026-10-horizonte'];
@@ -710,6 +713,25 @@ async function seccionCatalogos(ctx) {
   const area = (await api(`/api/areas/${areaId}`, admin)).datos.data || {};
   comprobar(res.status === 200 && area.nombre === 'Diseño «B»' && area.activo === true && area.id_cliente === clienteId,
     'Editar un área sin mandar «activo» la deja activa y en su cliente', JSON.stringify(area));
+
+  // Cascada de áreas: al reactivar el cliente vuelve el área que cayó con él, no la desactivada a mano
+  res = await api('/api/areas', { ...admin, metodo: 'POST', cuerpo: { cliente_id: clienteId, nombre: 'Bodega' } });
+  const bodegaId = res.datos.data?.id_area;
+  await api(`/api/areas/${bodegaId}`, { ...admin, metodo: 'DELETE' });
+  await api(`/api/clientes/${clienteId}`, { ...admin, metodo: 'DELETE' });
+  await api(`/api/clientes/${clienteId}/activar`, { ...admin, metodo: 'PATCH' });
+  const estadoArea = async (id) => (await api(`/api/areas/${id}`, admin)).datos.data?.activo;
+  const estados = { diseno: await estadoArea(areaId), bodega: await estadoArea(bodegaId) };
+  comprobar(igual(estados, { diseno: true, bodega: false }),
+    'Al reactivar el cliente vuelve el área que cayó con él; la desactivada a mano («Bodega») sigue inactiva',
+    diferencia(estados, { diseno: true, bodega: false }));
+  // Las dos quedan en la auditoría: la baja a mano, la de la cascada (con su marca) y la vuelta
+  const acciones = async (id) => lista((await api(`/api/auditoria?tabla=areas&id_registro=${id}`, admin)).datos.data)
+    .reverse().map((a) => (a.valor_nuevo?.por_baja_del_cliente ? `${a.accion}*` : a.accion));
+  const historial = { diseno: await acciones(areaId), bodega: await acciones(bodegaId) };
+  const esperado = { diseno: ['CREAR', 'ACTUALIZAR', 'DESACTIVAR*', 'ACTIVAR'], bodega: ['CREAR', 'DESACTIVAR'] };
+  comprobar(igual(historial, esperado), 'Las áreas quedan en la auditoría: alta, cambio, baja a mano, baja con el cliente (*) y vuelta',
+    diferencia(historial, esperado));
 }
 
 async function prueba() {

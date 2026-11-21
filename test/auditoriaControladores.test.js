@@ -13,6 +13,9 @@ const notificacionesController = require('../src/controllers/notificaciones/noti
 const {
   crearContratoController, actualizarContratoController, eliminarClienteController, activarClienteController,
 } = require('../src/controllers/cliente/cliente.controller');
+const {
+  crearAreaController, actualizarAreaController, eliminarAreaController, activarAreaController,
+} = require('../src/controllers/area/area.controller');
 const { registrarLecturaManualController } = require('../src/controllers/lectura/lectura.controller');
 const { reprocesarReporteController } = require('../src/controllers/reproceso/reproceso.controller');
 const { listarAuditoriaController } = require('../src/controllers/auditoria/auditoria.controller');
@@ -154,10 +157,32 @@ test('si la auditoría falla, el contrato no se crea (ROLLBACK y 500)', async (t
 
 // ------------------------------ Cliente: desactivar y activar en cascada ------------------------------
 
-// Base falsa de un cliente con una asignación vigente (#51) y un contrato (#31)
+// Base falsa de un cliente con una asignación vigente (#51), un contrato (#31) y un área (#71).
+// El área que el admin desactivó a mano no la devuelve ninguna de las dos selecciones: la filtra
+// el SQL (activo IS NOT FALSE al desactivar, desactivada_con_cliente = TRUE al reactivar).
 const bdCliente = (opciones) => {
-  const estado = { instalacionActiva: true, contratoActivo: opciones.contratoActivo ?? true };
+  const estado = {
+    instalacionActiva: true,
+    contratoActivo: opciones.contratoActivo ?? true,
+    areaActiva: opciones.areaActiva ?? true,
+    areaConCliente: opciones.areaConCliente ?? false,
+  };
+  const filaArea = () => ({ id_area: 71, activo: estado.areaActiva, desactivada_con_cliente: estado.areaConCliente });
   return clienteFalso((sql) => {
+    if (/SELECT id_area AS id FROM areas/.test(sql)) {
+      const cae = /activo IS NOT FALSE/.test(sql) && estado.areaActiva;
+      const vuelve = /desactivada_con_cliente = TRUE/.test(sql) && estado.areaConCliente;
+      return { rows: cae || vuelve ? [{ id: 71 }] : [] };
+    }
+    if (/to_jsonb\(t\) AS fila FROM areas/.test(sql)) return { rows: [{ fila: filaArea() }] };
+    if (/UPDATE areas SET activo = FALSE, desactivada_con_cliente = TRUE/.test(sql)) {
+      Object.assign(estado, { areaActiva: false, areaConCliente: true });
+      return { rows: [], rowCount: 1 };
+    }
+    if (/UPDATE areas SET activo = TRUE, desactivada_con_cliente = FALSE/.test(sql)) {
+      Object.assign(estado, { areaActiva: true, areaConCliente: false });
+      return { rows: [], rowCount: 1 };
+    }
     if (/SELECT id_instalacion AS id FROM instalaciones/.test(sql)) return { rows: estado.instalacionActiva ? [{ id: 51 }] : [] };
     if (/SELECT (c\.)?id_contrato AS id FROM contratos/.test(sql)) {
       const activos = /activo = TRUE/.test(sql);
@@ -168,12 +193,12 @@ const bdCliente = (opciones) => {
     if (/UPDATE instalaciones/.test(sql)) { estado.instalacionActiva = false; return { rows: [], rowCount: 1 }; }
     if (/UPDATE contratos SET activo = FALSE/.test(sql)) { estado.contratoActivo = false; return { rows: [], rowCount: 1 }; }
     if (/UPDATE contratos SET activo = TRUE/.test(sql)) { estado.contratoActivo = true; return { rows: [], rowCount: 1 }; }
-    if (/UPDATE (clientes|areas)/.test(sql)) return { rows: [], rowCount: 1 };
+    if (/UPDATE clientes/.test(sql)) return { rows: [], rowCount: 1 };
     return undefined;
   }, opciones);
 };
 
-test('desactivar cliente: la asignación retirada y el contrato desactivado quedan en la auditoría, en la misma transacción', async (t) => {
+test('desactivar cliente: la asignación retirada y el contrato y el área desactivados quedan en la auditoría, en la misma transacción', async (t) => {
   reemplazar(t, pool, { query: clienteActivo });
   const bd = bdCliente({});
   const res = respuesta();
@@ -181,19 +206,28 @@ test('desactivar cliente: la asignación retirada y el contrato desactivado qued
 
   assert.equal(res.statusCode, 200);
   assert.deepEqual(bd.transaccion(), ['BEGIN', 'COMMIT']);
-  const bloqueos = bd.consultas.filter((c) => /SELECT id_(instalacion|contrato) AS id/.test(c.sql));
-  assert.ok(bloqueos.length === 2 && bloqueos.every((c) => /FOR UPDATE/.test(c.sql)), 'las filas de la cascada se bloquean antes de leerlas');
+  const bloqueos = bd.consultas.filter((c) => /SELECT id_(instalacion|contrato|area) AS id/.test(c.sql));
+  assert.ok(bloqueos.length === 3 && bloqueos.every((c) => /FOR UPDATE/.test(c.sql)), 'las filas de la cascada se bloquean antes de leerlas');
   assert.deepEqual(bd.auditorias(), [
     { tabla: 'instalaciones', id: 51, accion: 'RETIRAR', usuario: USUARIO.id, antes: { id_instalacion: 51, activo: true }, despues: { id_instalacion: 51, activo: false }, ip: IP },
     // La marca distingue la baja en cascada de la baja individual del contrato
     { tabla: 'contratos', id: 31, accion: 'DESACTIVAR', usuario: USUARIO.id, antes: { id_contrato: 31, activo: true }, despues: { id_contrato: 31, activo: false, por_baja_del_cliente: true }, ip: IP },
+    { tabla: 'areas', id: 71, accion: 'DESACTIVAR', usuario: USUARIO.id,
+      antes: { id_area: 71, activo: true, desactivada_con_cliente: false },
+      despues: { id_area: 71, activo: false, desactivada_con_cliente: true, por_baja_del_cliente: true }, ip: IP },
   ]);
+  // Solo caen (y quedan marcadas) las áreas activas: las que el admin desactivó a mano no se tocan
+  const seleccion = bd.consultas.find((c) => /SELECT id_area AS id FROM areas/.test(c.sql));
+  assert.match(seleccion.sql, /activo IS NOT FALSE/);
+  const baja = bd.consultas.find((c) => /UPDATE areas/.test(c.sql));
+  assert.match(baja.sql, /id_area = ANY/);
+  assert.deepEqual(baja.params, [[71]]);
   assert.ok(bd.liberado());
 });
 
-test('activar cliente: los contratos que vuelven a estar activos quedan en la auditoría', async (t) => {
+test('activar cliente: los contratos y las áreas que vuelven a estar activos quedan en la auditoría', async (t) => {
   reemplazar(t, pool, { query: clienteActivo });
-  const bd = bdCliente({ contratoActivo: false });
+  const bd = bdCliente({ contratoActivo: false, areaActiva: false, areaConCliente: true });
   const res = respuesta();
   await activarClienteController({ params: { id: '4' }, pool: bd.pool, user: USUARIO, ip: IP }, res);
 
@@ -201,6 +235,9 @@ test('activar cliente: los contratos que vuelven a estar activos quedan en la au
   assert.deepEqual(bd.transaccion(), ['BEGIN', 'COMMIT']);
   assert.deepEqual(bd.auditorias(), [
     { tabla: 'contratos', id: 31, accion: 'ACTIVAR', usuario: USUARIO.id, antes: { id_contrato: 31, activo: false }, despues: { id_contrato: 31, activo: true }, ip: IP },
+    { tabla: 'areas', id: 71, accion: 'ACTIVAR', usuario: USUARIO.id,
+      antes: { id_area: 71, activo: false, desactivada_con_cliente: true },
+      despues: { id_area: 71, activo: true, desactivada_con_cliente: false }, ip: IP },
   ]);
   // Solo vuelven los contratos que se desactivaron con el cliente, no los desactivados uno por uno
   const seleccion = bd.consultas.find((c) => /SELECT c\.id_contrato AS id FROM contratos/.test(c.sql));
@@ -208,6 +245,24 @@ test('activar cliente: los contratos que vuelven a estar activos quedan en la au
   const reactivacion = bd.consultas.find((c) => /UPDATE contratos SET activo = TRUE/.test(c.sql));
   assert.match(reactivacion.sql, /id_contrato = ANY/);
   assert.deepEqual(reactivacion.params, [[31]]);
+  // De las áreas vuelven solo las que cayeron con el cliente
+  const areas = bd.consultas.find((c) => /SELECT id_area AS id FROM areas/.test(c.sql));
+  assert.match(areas.sql, /desactivada_con_cliente = TRUE/);
+  const vuelven = bd.consultas.find((c) => /UPDATE areas/.test(c.sql));
+  assert.match(vuelven.sql, /id_area = ANY/);
+  assert.deepEqual(vuelven.params, [[71]]);
+});
+
+test('activar cliente: un área desactivada a mano (sin la marca) no vuelve ni se audita', async (t) => {
+  reemplazar(t, pool, { query: clienteActivo });
+  const bd = bdCliente({ contratoActivo: false, areaActiva: false, areaConCliente: false });
+  const res = respuesta();
+  await activarClienteController({ params: { id: '4' }, pool: bd.pool, user: USUARIO, ip: IP }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(bd.auditorias().map((a) => a.tabla), ['contratos']);
+  const vuelven = bd.consultas.find((c) => /UPDATE areas/.test(c.sql));
+  assert.deepEqual(vuelven.params, [[]]);
 });
 
 test('desactivar o activar un cliente que no existe responde 404 sin abrir la transacción', async (t) => {
@@ -231,6 +286,115 @@ test('si la auditoría de la cascada falla, el cliente no se desactiva (ROLLBACK
   assert.equal(res.statusCode, 500);
   assert.deepEqual(bd.transaccion(), ['BEGIN', 'ROLLBACK']);
   assert.ok(bd.liberado());
+});
+
+// ------------------------------ Áreas: alta, cambio, baja y alta de nuevo ------------------------------
+
+// Pool global de las validaciones: el cliente #4 está activo, el área #71 es suya, sin máquinas
+// asignadas y sin otra área con el mismo nombre
+const areaValidable = async (sql) => {
+  if (/FROM clientes\s+WHERE id_cliente/.test(sql)) return { rows: [{ id_cliente: 4, activo: true }] };
+  if (/FROM areas a\s+LEFT JOIN clientes c/.test(sql)) {
+    return { rows: [{ id_area: 71, cliente_id: 4, nombre: 'Secretaría', activo: true, cliente_activo: true, instalaciones_activas: 0, instalaciones_totales: 0 }] };
+  }
+  return { rows: [] };
+};
+
+// Transacción falsa del área #71: el alta devuelve #80; el cambio responde `filas`
+const bdArea = (opciones = {}) => {
+  const estado = { activo: opciones.activo ?? true, nombre: 'Secretaría' };
+  return clienteFalso((sql, params) => {
+    if (/INSERT INTO areas/.test(sql)) return { rows: [{ id_area: 80 }] };
+    if (/to_jsonb\(t\) AS fila FROM areas/.test(sql)) {
+      return { rows: [{ fila: { id_area: params[0], nombre: estado.nombre, activo: estado.activo, desactivada_con_cliente: false } }] };
+    }
+    if (/UPDATE areas/.test(sql)) {
+      if (/SET activo = FALSE/.test(sql)) estado.activo = false;
+      if (/SET activo = TRUE/.test(sql)) estado.activo = true;
+      if (/nombre = \$1/.test(sql)) estado.nombre = params[0];
+      return { rows: [], rowCount: opciones.filas ?? 1 };
+    }
+    return undefined;
+  }, opciones);
+};
+
+test('crear área: el alta y su auditoría en la misma transacción, con usuario e IP', async (t) => {
+  reemplazar(t, pool, { query: areaValidable });
+  const bd = bdArea();
+  const res = respuesta();
+  await crearAreaController({ body: { cliente_id: 4, nombre: 'Contabilidad' }, pool: bd.pool, user: USUARIO, ip: IP }, res);
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(res.body.data.id_area, 80);
+  assert.deepEqual(bd.transaccion(), ['BEGIN', 'COMMIT']);
+  const [auditoria] = bd.auditorias();
+  assert.deepEqual({ ...auditoria, despues: undefined }, { tabla: 'areas', id: 80, accion: 'CREAR', usuario: USUARIO.id, antes: null, despues: undefined, ip: IP });
+  assert.equal(auditoria.despues.id_area, 80);
+  assert.ok(bd.liberado());
+});
+
+test('editar, desactivar y activar un área: cada cambio queda auditado con la fila antes (bloqueada) y después', async (t) => {
+  reemplazar(t, pool, { query: areaValidable });
+  const casos = [
+    { controlador: actualizarAreaController, body: { nombre: 'Rectorado' }, accion: 'ACTUALIZAR', antes: { nombre: 'Secretaría', activo: true }, despues: { nombre: 'Rectorado', activo: true } },
+    { controlador: eliminarAreaController, accion: 'DESACTIVAR', antes: { nombre: 'Secretaría', activo: true }, despues: { nombre: 'Secretaría', activo: false } },
+    { controlador: activarAreaController, inicial: false, accion: 'ACTIVAR', antes: { nombre: 'Secretaría', activo: false }, despues: { nombre: 'Secretaría', activo: true } },
+  ];
+  for (const caso of casos) {
+    const bd = bdArea({ activo: caso.inicial ?? true });
+    const res = respuesta();
+    await caso.controlador({ params: { id: '71' }, body: caso.body || {}, pool: bd.pool, user: USUARIO, ip: IP }, res);
+
+    assert.equal(res.statusCode, 200, caso.accion);
+    assert.deepEqual(bd.transaccion(), ['BEGIN', 'COMMIT'], caso.accion);
+    const lectura = bd.consultas.find((c) => /to_jsonb\(t\) AS fila FROM areas/.test(c.sql));
+    assert.match(lectura.sql, /FOR UPDATE/, `${caso.accion}: la fila se bloquea antes de leerla`);
+    const fila = (cambios) => ({ id_area: '71', desactivada_con_cliente: false, ...cambios });
+    assert.deepEqual(bd.auditorias(), [
+      { tabla: 'areas', id: 71, accion: caso.accion, usuario: USUARIO.id, antes: fila(caso.antes), despues: fila(caso.despues), ip: IP },
+    ], caso.accion);
+    // Desactivar o activar desde la pantalla del área quita la marca de la cascada del cliente
+    if (caso.accion !== 'ACTUALIZAR') {
+      assert.match(bd.consultas.find((c) => /UPDATE areas/.test(c.sql)).sql, /desactivada_con_cliente = FALSE/);
+    }
+  }
+});
+
+test('mover un área a otro cliente le quita la marca de la cascada del cliente anterior', async (t) => {
+  reemplazar(t, pool, { query: areaValidable });
+  const bd = bdArea();
+  const res = respuesta();
+  await actualizarAreaController({ params: { id: '71' }, body: { cliente_id: 5 }, pool: bd.pool, user: USUARIO, ip: IP }, res);
+  assert.equal(res.statusCode, 200);
+  assert.match(bd.consultas.find((c) => /UPDATE areas/.test(c.sql)).sql, /cliente_id = \$1, desactivada_con_cliente = FALSE/);
+});
+
+test('si la auditoría del área falla, el cambio no se guarda (ROLLBACK y 500)', async (t) => {
+  silenciarErrores(t);
+  reemplazar(t, pool, { query: areaValidable });
+  for (const [controlador, req] of [
+    [crearAreaController, { body: { cliente_id: 4, nombre: 'Contabilidad' } }],
+    [actualizarAreaController, { params: { id: '71' }, body: { nombre: 'Rectorado' } }],
+    [eliminarAreaController, { params: { id: '71' } }],
+    [activarAreaController, { params: { id: '71' } }],
+  ]) {
+    const bd = bdArea({ fallarAuditoria: true });
+    const res = respuesta();
+    await controlador({ params: {}, body: {}, ...req, pool: bd.pool, user: USUARIO, ip: IP }, res);
+    assert.equal(res.statusCode, 500);
+    assert.deepEqual(bd.transaccion(), ['BEGIN', 'ROLLBACK']);
+    assert.ok(bd.liberado());
+  }
+});
+
+test('un área que desapareció a mitad del cambio responde 404 sin auditar', async (t) => {
+  reemplazar(t, pool, { query: areaValidable });
+  const bd = bdArea({ filas: 0 });
+  const res = respuesta();
+  await eliminarAreaController({ params: { id: '71' }, pool: bd.pool, user: USUARIO, ip: IP }, res);
+  assert.equal(res.statusCode, 404);
+  assert.deepEqual(bd.auditorias(), []);
+  assert.deepEqual(bd.transaccion(), ['BEGIN', 'COMMIT']);
 });
 
 // ------------------------------ Lectura manual ------------------------------

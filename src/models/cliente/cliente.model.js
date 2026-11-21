@@ -334,7 +334,8 @@ const filasAntes = async (client, tabla, ids) => {
 };
 
 // Marca en la auditoría de la cascada: al reactivar el cliente solo vuelven los contratos que se
-// desactivaron con él, no los que el admin había desactivado antes uno por uno.
+// desactivaron con él, no los que el admin había desactivado antes uno por uno. Las áreas llevan
+// además la columna desactivada_con_cliente (migración 036), que decide cuáles vuelven.
 const POR_BAJA_DEL_CLIENTE = 'por_baja_del_cliente';
 
 // Registra en la auditoría cada fila que cambió la cascada, con su antes y su después
@@ -346,8 +347,10 @@ const auditarCascada = async (client, tabla, antes, accion, auditoria, extra = n
 
 /**
  * Desactiva el cliente en cascada: retira sus asignaciones vigentes y desactiva sus áreas y
- * contratos, en una transacción. Las asignaciones retiradas (RETIRAR) y los contratos
+ * contratos, en una transacción. Las asignaciones retiradas (RETIRAR) y los contratos y áreas
  * desactivados (DESACTIVAR) quedan en la auditoría (S3-02) con `auditoria` = { usuarioId, ip }.
+ * Las áreas que caen quedan marcadas (desactivada_con_cliente); las que ya estaban inactivas no
+ * se tocan, así que al reactivar el cliente siguen inactivas.
  *   db   pool de pg (por defecto el de la app)
  */
 const deleteCliente = async (id, auditoria = {}, db = pool) => {
@@ -367,8 +370,14 @@ const deleteCliente = async (id, auditoria = {}, db = pool) => {
       WHERE cliente_id = $1 AND activo = TRUE
       ORDER BY id_contrato
       FOR UPDATE`, id);
+    const areas = await idsBloqueados(client, `
+      SELECT id_area AS id FROM areas
+      WHERE cliente_id = $1 AND activo IS NOT FALSE
+      ORDER BY id_area
+      FOR UPDATE`, id);
     const instalacionesAntes = await filasAntes(client, 'instalaciones', instalaciones);
     const contratosAntes = await filasAntes(client, 'contratos', contratos);
+    const areasAntes = await filasAntes(client, 'areas', areas);
 
     await client.query(`UPDATE clientes SET activo = FALSE WHERE id_cliente = $1`, [id]);
 
@@ -382,12 +391,16 @@ const deleteCliente = async (id, auditoria = {}, db = pool) => {
     `;
     await client.query(queryInstalaciones, [id]);
 
-    await client.query(`UPDATE areas SET activo = FALSE WHERE cliente_id = $1`, [id]);
+    await client.query(
+      `UPDATE areas SET activo = FALSE, desactivada_con_cliente = TRUE WHERE id_area = ANY($1::int[])`,
+      [areas]
+    );
 
     await client.query(`UPDATE contratos SET activo = FALSE WHERE cliente_id = $1`, [id]);
 
     await auditarCascada(client, 'instalaciones', instalacionesAntes, ACCIONES.RETIRAR, auditoria);
     await auditarCascada(client, 'contratos', contratosAntes, ACCIONES.DESACTIVAR, auditoria, { [POR_BAJA_DEL_CLIENTE]: true });
+    await auditarCascada(client, 'areas', areasAntes, ACCIONES.DESACTIVAR, auditoria, { [POR_BAJA_DEL_CLIENTE]: true });
 
     await client.query('COMMIT');
     return 1;
@@ -402,10 +415,11 @@ const deleteCliente = async (id, auditoria = {}, db = pool) => {
 };
 
 /**
- * Reactiva el cliente con sus áreas y contratos, en una transacción. Los contratos que vuelven a
- * estar activos quedan en la auditoría (ACTIVAR, S3-02). Las asignaciones retiradas no vuelven.
- * Un contrato cuya última baja fue individual (DESACTIVAR sin la marca de la cascada) sigue
- * inactivo: si no, reaparecía junto al contrato nuevo del cliente.
+ * Reactiva el cliente con sus áreas y contratos, en una transacción. Los contratos y áreas que
+ * vuelven a estar activos quedan en la auditoría (ACTIVAR, S3-02). Las asignaciones retiradas no
+ * vuelven. Un contrato cuya última baja fue individual (DESACTIVAR sin la marca de la cascada)
+ * sigue inactivo: si no, reaparecía junto al contrato nuevo del cliente. De las áreas vuelven solo
+ * las marcadas con desactivada_con_cliente; las que el admin desactivó una por una, no.
  */
 const activarCliente = async (id, auditoria = {}, db = pool) => {
   const client = await db.connect();
@@ -428,13 +442,23 @@ const activarCliente = async (id, auditoria = {}, db = pool) => {
         )
       ORDER BY c.id_contrato
       FOR UPDATE OF c`, id);
+    const areas = await idsBloqueados(client, `
+      SELECT id_area AS id FROM areas
+      WHERE cliente_id = $1 AND desactivada_con_cliente = TRUE
+      ORDER BY id_area
+      FOR UPDATE`, id);
     const contratosAntes = await filasAntes(client, 'contratos', contratos);
+    const areasAntes = await filasAntes(client, 'areas', areas);
 
     await client.query(`UPDATE clientes SET activo = TRUE WHERE id_cliente = $1`, [id]);
-    await client.query(`UPDATE areas SET activo = TRUE WHERE cliente_id = $1`, [id]);
+    await client.query(
+      `UPDATE areas SET activo = TRUE, desactivada_con_cliente = FALSE WHERE id_area = ANY($1::int[])`,
+      [areas]
+    );
     await client.query(`UPDATE contratos SET activo = TRUE WHERE id_contrato = ANY($1::int[])`, [contratos]);
 
     await auditarCascada(client, 'contratos', contratosAntes, ACCIONES.ACTIVAR, auditoria);
+    await auditarCascada(client, 'areas', areasAntes, ACCIONES.ACTIVAR, auditoria);
 
     await client.query('COMMIT');
     return 1;
