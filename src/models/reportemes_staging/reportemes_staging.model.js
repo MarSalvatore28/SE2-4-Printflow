@@ -545,9 +545,10 @@ const approveStagingBatch = async (loteId, periodo = null, usuarioId = null) => 
           copy_total,
           total_servicio,
           fecha_procesamiento,
-          fecha_corte
-        ) 
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), $12)
+          fecha_corte,
+          usuario_validacion_id
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), $12, $13)
         RETURNING id_reporte
       `;
 
@@ -563,7 +564,9 @@ const approveStagingBatch = async (loteId, periodo = null, usuarioId = null) => 
         (row.print_total || 0) - (row.copy_total || 0),
         row.copy_total || 0,
         row.totalservicio || 0,
-        row.fecha_corte || null
+        row.fecha_corte || null,
+        // S3-02: trazabilidad de la lectura, quién aprobó el lote que la trajo
+        usuarioId
       ];
 
       const { rows: [newOficial] } = await client.query(insertOficialQuery, oficialValues);

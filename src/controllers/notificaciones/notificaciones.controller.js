@@ -308,7 +308,7 @@ const aprobarLote = async (loteId, req, res) => {
     periodoFinal = fecha_corte.slice(0, 7);
   }
 
-  await Staging.approveStagingBatch(loteId, periodoFinal);
+  await Staging.approveStagingBatch(loteId, periodoFinal, req.user.id);
   await Notificaciones.registrarAprobador(loteId, req.user.id);
   avisarCambio({ lote_id: loteId, estado: 'PROCESADO' });
 
