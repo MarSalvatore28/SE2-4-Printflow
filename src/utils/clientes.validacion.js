@@ -17,6 +17,21 @@ const validarRuc = (valor) => {
   return { ruc };
 };
 
+const validarNombre = (valor) => {
+  const nombre = normalizarTexto(valor);
+  if (!nombre) return { error: 'El nombre del cliente es obligatorio' };
+  if (nombre.length > NOMBRE_CLIENTE_MAX) return { error: `El nombre no puede tener más de ${NOMBRE_CLIENTE_MAX} caracteres` };
+  return { nombre };
+};
+
+// Razón social recortada ('' si viene vacía), o { error }
+const validarRazonSocial = (valor) => {
+  if (typeof valor !== 'string') return { error: 'La razón social debe ser texto' };
+  const razon = normalizarTexto(valor);
+  if (razon.length > RAZON_SOCIAL_MAX) return { error: `La razón social no puede tener más de ${RAZON_SOCIAL_MAX} caracteres` };
+  return { razon };
+};
+
 /**
  * Valida el cuerpo de POST /api/clientes (esCreacion) o PUT /api/clientes/:id.
  * Al editar, los campos que no vienen no cambian. `activo` no se toca aquí: la baja y el alta
@@ -28,9 +43,8 @@ const validarCliente = (body, { esCreacion }) => {
   const datos = {};
 
   if (esCreacion || body.nombre !== undefined) {
-    const nombre = normalizarTexto(body.nombre);
-    if (!nombre) return { error: 'El nombre del cliente es obligatorio' };
-    if (nombre.length > NOMBRE_CLIENTE_MAX) return { error: `El nombre no puede tener más de ${NOMBRE_CLIENTE_MAX} caracteres` };
+    const { error, nombre } = validarNombre(body.nombre);
+    if (error) return { error };
     datos.nombre = nombre;
   }
 
@@ -40,10 +54,10 @@ const validarCliente = (body, { esCreacion }) => {
     datos.ruc = ruc;
   }
 
-  if (body.razon_social !== undefined && body.razon_social !== null) {
-    if (typeof body.razon_social !== 'string') return { error: 'La razón social debe ser texto' };
-    const razon = normalizarTexto(body.razon_social);
-    if (razon.length > RAZON_SOCIAL_MAX) return { error: `La razón social no puede tener más de ${RAZON_SOCIAL_MAX} caracteres` };
+  const vieneRazon = body.razon_social !== undefined && body.razon_social !== null;
+  if (vieneRazon) {
+    const { error, razon } = validarRazonSocial(body.razon_social);
+    if (error) return { error };
     // Vacía: al crear se usa el nombre; al editar queda vacía
     datos.razon_social = razon || (esCreacion ? datos.nombre : null);
   } else if (esCreacion) {

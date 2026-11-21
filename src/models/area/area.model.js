@@ -262,7 +262,7 @@ const getAreaConMismoNombre = async (cliente_id, nombre, excluirId = null) => {
     SELECT id_area, nombre, activo
     FROM areas
     WHERE cliente_id = $1
-      AND LOWER(REGEXP_REPLACE(TRIM(nombre), '\\s+', ' ', 'g')) = LOWER($2)
+      AND LOWER(REGEXP_REPLACE(TRIM(nombre), '[[:space:]]+', ' ', 'g')) = LOWER($2)
       AND ($3::int IS NULL OR id_area <> $3::int)
     ORDER BY activo DESC, id_area
     LIMIT 1

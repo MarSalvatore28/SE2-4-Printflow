@@ -12,7 +12,7 @@
  * @param {boolean} filtrado - Indica si el consolidado se pidió filtrado por área o máquina.
  * @returns {Object} Desglose de la facturación.
  */
-// «Todo como color» sin distinguir mayúsculas: la web lo guardaba como «Todo como Color»
+// El modo de color único se reconoce sin distinguir mayúsculas (la web lo guardaba con la «C» mayúscula)
 const { esTodoColor } = require('./contratos.validacion');
 
 const aNumero = (valor) => Number(valor) || 0;

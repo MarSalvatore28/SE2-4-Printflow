@@ -205,6 +205,22 @@ const crearAreaController = async (req, res) => {
   }
 };
 
+// Por qué no se puede guardar la edición de un área ({ estado, mensaje }), o null
+const problemaEdicion = async (area, datos, id) => {
+  const cambiaCliente = datos.cliente_id !== undefined && Number(datos.cliente_id) !== Number(area.cliente_id);
+  if (cambiaCliente) {
+    // Sus asignaciones (y sus lecturas) quedarían en el cliente equivocado
+    if (area.instalaciones_totales > 0) {
+      return { estado: 409, mensaje: 'No se puede cambiar el cliente de un área que ya tiene máquinas asignadas (vigentes o retiradas)' };
+    }
+    const problema = await problemaCliente(datos.cliente_id);
+    if (problema) return problema;
+  }
+  const clienteFinal = cambiaCliente ? datos.cliente_id : area.cliente_id;
+  const repetido = await nombreRepetido(clienteFinal, datos.nombre ?? area.nombre, id);
+  return repetido ? { estado: 409, mensaje: repetido } : null;
+};
+
 // Edita nombre, descripción o cliente. Lo que no viene conserva su valor; el estado (activo)
 // cambia solo con DELETE y PATCH /:id/activar.
 const actualizarAreaController = async (req, res) => {
@@ -216,22 +232,8 @@ const actualizarAreaController = async (req, res) => {
     const area = await getAreaParaCambio(id);
     if (!area) return res.status(404).json({ success: false, message: 'Área no encontrada' });
 
-    const cambiaCliente = datos.cliente_id !== undefined && Number(datos.cliente_id) !== Number(area.cliente_id);
-    if (cambiaCliente) {
-      // Sus asignaciones (y sus lecturas) quedarían en el cliente equivocado
-      if (area.instalaciones_totales > 0) {
-        return res.status(409).json({
-          success: false,
-          message: 'No se puede cambiar el cliente de un área que ya tiene máquinas asignadas (vigentes o retiradas)'
-        });
-      }
-      const problema = await problemaCliente(datos.cliente_id);
-      if (problema) return res.status(problema.estado).json({ success: false, message: problema.mensaje });
-    }
-
-    const clienteFinal = cambiaCliente ? datos.cliente_id : area.cliente_id;
-    const repetido = await nombreRepetido(clienteFinal, datos.nombre ?? area.nombre, Number(id));
-    if (repetido) return res.status(409).json({ success: false, message: repetido });
+    const problema = await problemaEdicion(area, datos, Number(id));
+    if (problema) return res.status(problema.estado).json({ success: false, message: problema.mensaje });
 
     const affectedRows = await updateArea(id, datos);
 
