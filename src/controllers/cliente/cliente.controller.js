@@ -28,10 +28,10 @@ const {
 const { ACCIONES, leerFila, auditarFila, contextoAuditoria, enTransaccion } = require('@services/auditoria');
 const { parseId } = require('@utils/usuarios.validacion');
 const { validarContrato, contratoComoCuerpo, avisoSuperposicion } = require('@utils/contratos.validacion');
+const { validarCliente } = require('@utils/clientes.validacion');
 
 // --- Reglas de negocio (caja 5, mejoras 3.1 y 3.3) ---
 
-const RUC_VALIDO = /^\d{13}$/;
 const PG_UNIQUE_VIOLATION = '23505';
 
 const advertenciaSuperposicion = async (clienteId, datos, excluirId = null) => {
@@ -185,20 +185,10 @@ const searchClientesController = async (req, res) => {
 
 const crearClienteController = async (req, res) => {
   try {
-    const { nombre, ruc, razon_social } = req.body;
+    const { error, datos } = validarCliente(req.body, { esCreacion: true });
+    if (error) return res.status(400).json({ success: false, message: error });
 
-    if (!nombre || !ruc) {
-      return res.status(400).json({
-        success: false,
-        message: 'Nombre y RUC son obligatorios'
-      });
-    }
-
-    if (!RUC_VALIDO.test(ruc)) {
-      return res.status(400).json({ success: false, message: 'El RUC debe tener 13 dígitos' });
-    }
-
-    const clienteExistente = await getClienteByRuc(ruc);
+    const clienteExistente = await getClienteByRuc(datos.ruc);
     if (clienteExistente) {
       return res.status(409).json({
         success: false,
@@ -206,7 +196,7 @@ const crearClienteController = async (req, res) => {
       });
     }
 
-    const nuevoId = await createCliente({ nombre, ruc, razon_social });
+    const nuevoId = await createCliente(datos);
 
     res.status(201).json({
       success: true,
@@ -226,16 +216,22 @@ const crearClienteController = async (req, res) => {
   }
 };
 
+// Edita nombre, RUC y razón social. El estado (activo) cambia solo con DELETE y PATCH /:id/activar,
+// que hacen la cascada sobre contratos, áreas y asignaciones.
 const actualizarClienteController = async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre, ruc, razon_social, activo } = req.body;
+    const { error, datos } = validarCliente(req.body, { esCreacion: false });
+    if (error) return res.status(400).json({ success: false, message: error });
 
-    if (ruc !== undefined && !RUC_VALIDO.test(ruc)) {
-      return res.status(400).json({ success: false, message: 'El RUC debe tener 13 dígitos' });
+    if (datos.ruc) {
+      const conEseRuc = await getClienteByRuc(datos.ruc);
+      if (conEseRuc && Number(conEseRuc.id_cliente) !== Number(id)) {
+        return res.status(409).json({ success: false, message: 'Ya existe un cliente con ese RUC' });
+      }
     }
 
-    const affectedRows = await updateCliente(id, { nombre, ruc, razon_social, activo });
+    const affectedRows = await updateCliente(id, datos);
 
     if (affectedRows === 0) {
       return res.status(404).json({
@@ -264,6 +260,9 @@ const actualizarClienteController = async (req, res) => {
 const eliminarClienteController = async (req, res) => {
   try {
     const { id } = req.params;
+    if (!(await getClienteById(id))) {
+      return res.status(404).json({ success: false, message: 'Cliente no encontrado' });
+    }
     const affectedRows = await deleteCliente(id, contextoAuditoria(req), req.pool);
 
     if (affectedRows === 0) {
@@ -290,6 +289,9 @@ const eliminarClienteController = async (req, res) => {
 const activarClienteController = async (req, res) => {
   try {
     const { id } = req.params;
+    if (!(await getClienteById(id))) {
+      return res.status(404).json({ success: false, message: 'Cliente no encontrado' });
+    }
     const affectedRows = await activarCliente(id, contextoAuditoria(req), req.pool);
 
     if (affectedRows === 0) {

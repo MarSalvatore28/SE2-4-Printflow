@@ -279,12 +279,13 @@ const createCliente = async (clienteData) => {
     RETURNING id_cliente
   `;
 
-  const { rows } = await pool.query(query, [nombre, ruc, razon_social || nombre]);
+  const { rows } = await pool.query(query, [nombre, ruc, razon_social ?? nombre]);
   return rows[0].id_cliente;
 };
 
+// El estado (activo) no se cambia aquí: deleteCliente y activarCliente hacen la cascada
 const updateCliente = async (id, clienteData) => {
-  const { nombre, ruc, razon_social, activo } = clienteData;
+  const { nombre, ruc, razon_social } = clienteData;
 
   const updates = [];
   const values = [];
@@ -301,10 +302,6 @@ const updateCliente = async (id, clienteData) => {
   if (razon_social !== undefined) {
     updates.push(`razon_social = $${paramCounter++}`);
     values.push(razon_social);
-  }
-  if (activo !== undefined) {
-    updates.push(`activo = $${paramCounter++}`);
-    values.push(activo);
   }
 
   if (updates.length === 0) {

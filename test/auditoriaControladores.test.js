@@ -173,7 +173,8 @@ const bdCliente = (opciones) => {
   }, opciones);
 };
 
-test('desactivar cliente: la asignación retirada y el contrato desactivado quedan en la auditoría, en la misma transacción', async () => {
+test('desactivar cliente: la asignación retirada y el contrato desactivado quedan en la auditoría, en la misma transacción', async (t) => {
+  reemplazar(t, pool, { query: clienteActivo });
   const bd = bdCliente({});
   const res = respuesta();
   await eliminarClienteController({ params: { id: '4' }, pool: bd.pool, user: USUARIO, ip: IP }, res);
@@ -189,7 +190,8 @@ test('desactivar cliente: la asignación retirada y el contrato desactivado qued
   assert.ok(bd.liberado());
 });
 
-test('activar cliente: los contratos que vuelven a estar activos quedan en la auditoría', async () => {
+test('activar cliente: los contratos que vuelven a estar activos quedan en la auditoría', async (t) => {
+  reemplazar(t, pool, { query: clienteActivo });
   const bd = bdCliente({ contratoActivo: false });
   const res = respuesta();
   await activarClienteController({ params: { id: '4' }, pool: bd.pool, user: USUARIO, ip: IP }, res);
@@ -201,8 +203,20 @@ test('activar cliente: los contratos que vuelven a estar activos quedan en la au
   ]);
 });
 
+test('desactivar o activar un cliente que no existe responde 404 sin abrir la transacción', async (t) => {
+  reemplazar(t, pool, { query: async () => ({ rows: [] }) });
+  for (const controlador of [eliminarClienteController, activarClienteController]) {
+    const bd = bdCliente({});
+    const res = respuesta();
+    await controlador({ params: { id: '404' }, pool: bd.pool, user: USUARIO, ip: IP }, res);
+    assert.equal(res.statusCode, 404);
+    assert.deepEqual(bd.consultas, []);
+  }
+});
+
 test('si la auditoría de la cascada falla, el cliente no se desactiva (ROLLBACK y 500)', async (t) => {
   silenciarErrores(t);
+  reemplazar(t, pool, { query: clienteActivo });
   const bd = bdCliente({ fallarAuditoria: true });
   const res = respuesta();
   await eliminarClienteController({ params: { id: '4' }, pool: bd.pool, user: USUARIO, ip: IP }, res);
