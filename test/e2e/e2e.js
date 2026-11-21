@@ -566,9 +566,9 @@ async function prueba() {
     }
     res = await aprobar(operador, loteA.loteId, NOVIEMBRE);
     const errores = res.datos.errores || [];
-    // Los errores de la ingesta vuelven tal cual su mensaje_aviso (sin la serie)
-    comprobar(res.status === 409 && esperados.every((e) => errores.some((t) => t.startsWith(e.texto))),
-      `Aprobar ${codigoA} (#${loteA.loteId}) → 409 con los tres motivos (retroceso, salto anómalo y duplicada)`,
+    // Cada motivo dice de qué máquina es: «Máquina SIMC0003: Retroceso de contador…»
+    comprobar(res.status === 409 && esperados.every((e) => errores.some((t) => t.startsWith(`Máquina ${e.serie}: ${e.texto}`))),
+      `Aprobar ${codigoA} (#${loteA.loteId}) → 409 con los tres motivos, cada uno con su máquina (retroceso, salto anómalo y duplicada)`,
       `HTTP ${res.status}: ${errores.join('; ') || res.datos.message}`);
     const pendiente = (await lotesPendientes(operador, NOVIEMBRE))[codigoA];
     comprobar(Boolean(pendiente), `${codigoA} sigue pendiente (no se aprobó nada)`);

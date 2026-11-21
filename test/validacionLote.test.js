@@ -96,6 +96,24 @@ test('erroresDelCliente: falta un reporte, IP distinta y contadores por usuario 
   ]);
 });
 
+test('erroresDelCliente: el motivo de una lectura bloqueada dice de qué máquina es', () => {
+  const maquinas = MAQUINAS.filter((m) => m.cliente_id === ANDINA);
+  const errores = erroresDelCliente(maquinas, [reporte(3, 'SIMC0003', '10.0.1.3', ANDINA, {
+    procesar_lectura: false, mensaje_aviso: 'Retroceso de contador: B/N 10 < 20 (reporte oficial 2026-10)',
+  })], new Set());
+  assert.deepEqual(errores, ['Máquina SIMC0003: Retroceso de contador: B/N 10 < 20 (reporte oficial 2026-10)']);
+});
+
+test('erroresDelCliente: sin aviso, o con un aviso que ya nombra la serie, no se repite la máquina', () => {
+  const maquinas = MAQUINAS.filter((m) => m.cliente_id === ANDINA);
+  const sinAviso = erroresDelCliente(maquinas, [reporte(3, 'SIMC0003', '10.0.1.3', ANDINA, { procesar_lectura: false })], new Set());
+  assert.deepEqual(sinAviso, ['La máquina SIMC0003 tiene un error de estado y sus lecturas fueron bloqueadas.']);
+  const conSerie = erroresDelCliente(maquinas, [reporte(3, 'SIMC0003', '10.0.1.3', ANDINA, {
+    procesar_lectura: false, mensaje_aviso: 'Máquina no autorizada: la serie SIMC0003 no tiene una asignación vigente',
+  })], new Set());
+  assert.deepEqual(conSerie, ['Máquina no autorizada: la serie SIMC0003 no tiene una asignación vigente']);
+});
+
 test('erroresSinCliente explica que la máquina no es de ningún cliente y repite el aviso', () => {
   const errores = erroresSinCliente([reporte(3, 'SIMX9999', '10.9.9.9', null, {
     procesar_lectura: false, mensaje_aviso: 'Máquina no autorizada: la serie SIMX9999 no está registrada',
