@@ -194,10 +194,13 @@ const searchAreas = async (termino) => {
   return rows;
 };
 
+// Alta, cambio, baja y alta de nuevo de un área: `db` es el client de la transacción del que
+// llama (S3-02: el controlador guarda el cambio y su auditoría juntos). Sin él, usan el pool.
+
 /**
  * Crear nueva área
  */
-const createArea = async (areaData) => {
+const createArea = async (areaData, db = pool) => {
   const { cliente_id, nombre, descripcion } = areaData;
   
   const query = `
@@ -206,7 +209,7 @@ const createArea = async (areaData) => {
     RETURNING id_area
   `;
   
-  const { rows } = await pool.query(query, [
+  const { rows } = await db.query(query, [
     cliente_id,
     nombre,
     descripcion || null
@@ -217,14 +220,17 @@ const createArea = async (areaData) => {
 
 /**
  * Actualizar área: cambia solo los campos que vienen (cliente_id, nombre, descripcion).
- * El estado (activo) cambia con deleteArea y activarArea.
+ * El estado (activo) cambia con deleteArea y activarArea. Si cambia de cliente, deja de contar
+ * como desactivada con el anterior.
  */
-const updateArea = async (id_area, areaData) => {
+const updateArea = async (id_area, areaData, db = pool) => {
   const columnas = ['cliente_id', 'nombre', 'descripcion'].filter((c) => areaData[c] !== undefined);
   if (columnas.length === 0) return 0;
 
-  const asignaciones = columnas.map((c, i) => `${c} = $${i + 1}`).join(', ');
-  const { rowCount } = await pool.query(
+  const cambios = columnas.map((c, i) => `${c} = $${i + 1}`);
+  if (columnas.includes('cliente_id')) cambios.push('desactivada_con_cliente = FALSE');
+  const asignaciones = cambios.join(', ');
+  const { rowCount } = await db.query(
     `UPDATE areas SET ${asignaciones} WHERE id_area = $${columnas.length + 1}`,
     [...columnas.map((c) => areaData[c]), id_area]
   );
@@ -271,16 +277,17 @@ const getAreaConMismoNombre = async (cliente_id, nombre, excluirId = null) => {
 };
 
 /**
- * Desactivar área (soft delete)
+ * Desactivar área (soft delete) desde su pantalla: es una baja individual, así que al reactivar
+ * el cliente no vuelve (desactivada_con_cliente = FALSE).
  */
-const deleteArea = async (id_area) => {
+const deleteArea = async (id_area, db = pool) => {
   const query = `
     UPDATE areas
-    SET activo = FALSE
+    SET activo = FALSE, desactivada_con_cliente = FALSE
     WHERE id_area = $1
   `;
   
-  const { rowCount } = await pool.query(query, [id_area]);
+  const { rowCount } = await db.query(query, [id_area]);
   return rowCount;
 };
 
@@ -313,14 +320,14 @@ const deleteAreaPermanente = async (id_area) => {
 /**
  * Activar área
  */
-const activarArea = async (id_area) => {
+const activarArea = async (id_area, db = pool) => {
   const query = `
     UPDATE areas
-    SET activo = TRUE
+    SET activo = TRUE, desactivada_con_cliente = FALSE
     WHERE id_area = $1
   `;
   
-  const { rowCount } = await pool.query(query, [id_area]);
+  const { rowCount } = await db.query(query, [id_area]);
   return rowCount;
 };
 

@@ -20,7 +20,7 @@ const { listarAuditoriaController } = require('@controllers/auditoria/auditoria.
  *         name: tabla
  *         schema:
  *           type: string
- *           enum: [contratos, instalaciones, maquinas, maquinas_cambio, lotes_carga, usuarios, reportes_oficiales, reportes_consolidado_staging]
+ *           enum: [contratos, areas, instalaciones, maquinas, maquinas_cambio, lotes_carga, usuarios, reportes_oficiales, reportes_consolidado_staging]
  *       - in: query
  *         name: id_registro
  *         description: Clave primaria del registro en esa tabla (exige tabla)

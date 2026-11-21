@@ -60,7 +60,6 @@ test('periodos disponibles: un error inesperado responde 500 genérico y se regi
 });
 
 // --- Otros controladores que devolvían error.message en el 500 ---
-const staging = require('../src/controllers/reportemes_staging/reportemes_staging.controller');
 const instalacion = require('../src/controllers/instalacion/instalacion.controller');
 
 // pool.connect() entrega un client cuya consulta (salvo BEGIN y ROLLBACK) responde `responder()`
@@ -74,34 +73,6 @@ const simularTransaccion = (t, responder) => {
   t.mock.method(console, 'error', (...args) => { log.push(args); });
   return log;
 };
-
-test('staging: editar un consolidado con error de la base responde 500 genérico', async (t) => {
-  const log = simularTransaccion(t, () => { throw new Error(DETALLE_INTERNO); });
-  const r = await ejecutar(staging.updateConsolidadoStagingController, { params: { id: '5' }, body: { print_total: 10 } });
-  comprobarGenerico(r, log, 'Error al actualizar el consolidado');
-});
-
-test('staging: editar un detalle con error de la base responde 500 genérico', async (t) => {
-  const log = simularTransaccion(t, () => { throw new Error(DETALLE_INTERNO); });
-  const r = await ejecutar(staging.updateDetalleStagingController, { params: { id: '5' }, body: { print_total: 10 } });
-  comprobarGenerico(r, log, 'Error al actualizar el detalle');
-});
-
-test('staging: editar varios detalles con error de la base responde 500 genérico', async (t) => {
-  const log = simularTransaccion(t, () => { throw new Error(DETALLE_INTERNO); });
-  const r = await ejecutar(staging.updateMultiplesDetallesStagingController, { body: { detalles: [{ id_staging_detalle: 5, print_total: 1 }] } });
-  comprobarGenerico(r, log, 'Error al actualizar los detalles');
-});
-
-test('staging: editar un consolidado o un detalle que no existe sigue respondiendo su mensaje, ahora con 404', async (t) => {
-  simularTransaccion(t, () => ({ rows: [], rowCount: 0 }));
-  let r = await ejecutar(staging.updateConsolidadoStagingController, { params: { id: '999' }, body: {} });
-  assert.equal(r.status, 404);
-  assert.deepEqual(r.cuerpo, { success: false, message: 'No se encontró el registro para actualizar' });
-  r = await ejecutar(staging.updateDetalleStagingController, { params: { id: '999' }, body: {} });
-  assert.equal(r.status, 404);
-  assert.deepEqual(r.cuerpo, { success: false, message: 'No se encontró el detalle para actualizar' });
-});
 
 test('instalaciones: la renta con error de la base responde 500 genérico', async (t) => {
   const log = simularFalloDeLaBase(t);

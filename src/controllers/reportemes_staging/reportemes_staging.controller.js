@@ -6,16 +6,10 @@ const {
   getStagingByEstado,
   getStagingByCliente,
   getStagingByPeriodo,
-  createStaging,
-  updateStaging,
-  deleteStaging,
   deleteOldAprobados,
   deleteOldRechazados,
   getEstadisticasStaging,
   getConsolidadoConDetallesByLote,
-  updateConsolidadoStaging,
-  updateDetalleStaging,
-  updateMultiplesDetallesStaging,
   validarImportacionCSV,
   getAlertasPorLote
 } = require('@models/reportemes_staging/reportemes_staging.model');
@@ -96,62 +90,6 @@ const getStagingByPeriodoController = async (req, res) => {
   } catch (err) {
     console.error('Error getting staging by periodo:', err);
     res.status(500).json({ success: false, message: 'Error al obtener reportes por periodo' });
-  }
-};
-
-const createStagingController = async (req, res) => {
-  try {
-    const { lote_carga } = req.body;
-
-    if (!lote_carga) {
-      return res.status(400).json({
-        success: false,
-        message: 'El campo lote_carga es requerido'
-      });
-    }
-
-    const nuevoId = await createStaging(req.body);
-
-    res.status(201).json({
-      success: true,
-      message: 'Reporte creado en staging',
-      data: { id_staging: nuevoId }
-    });
-  } catch (err) {
-    console.error('Error creating staging:', err);
-    res.status(500).json({ success: false, message: 'Error al crear reporte en staging' });
-  }
-};
-
-const updateStagingController = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const affected = await updateStaging(id, req.body);
-
-    if (affected === 0) {
-      return res.status(404).json({ success: false, message: 'Reporte no encontrado' });
-    }
-
-    res.status(200).json({ success: true, message: 'Reporte actualizado en staging' });
-  } catch (err) {
-    console.error('Error updating staging:', err);
-    res.status(500).json({ success: false, message: 'Error al actualizar reporte' });
-  }
-};
-
-const deleteStagingController = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const affected = await deleteStaging(id);
-
-    if (affected === 0) {
-      return res.status(404).json({ success: false, message: 'Reporte no encontrado' });
-    }
-
-    res.status(200).json({ success: true, message: 'Reporte eliminado de staging' });
-  } catch (err) {
-    console.error('Error deleting staging:', err);
-    res.status(500).json({ success: false, message: 'Error al eliminar reporte' });
   }
 };
 
@@ -276,86 +214,6 @@ const getConsolidadoConDetallesByLoteController = async (req, res) => {
   }
 };
 
-const updateConsolidadoStagingController = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const data = req.body;
-
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: 'El ID del consolidado es requerido'
-      });
-    }
-
-    const updated = await updateConsolidadoStaging(Number.parseInt(id, 10), data);
-
-    res.status(200).json({
-      success: true,
-      message: 'Consolidado actualizado correctamente',
-      data: updated
-    });
-  } catch (err) {
-    // Solo los errores con status (registro no encontrado) llevan su mensaje; los demás, genérico
-    if (err.status) return res.status(err.status).json({ success: false, message: err.message });
-    console.error('Error updating consolidado staging:', err);
-    res.status(500).json({ success: false, message: 'Error al actualizar el consolidado' });
-  }
-};
-
-const updateDetalleStagingController = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const data = req.body;
-
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: 'El ID del detalle es requerido'
-      });
-    }
-
-    const updated = await updateDetalleStaging(Number.parseInt(id, 10), data);
-
-    res.status(200).json({
-      success: true,
-      message: 'Detalle actualizado correctamente',
-      data: updated
-    });
-  } catch (err) {
-    // Solo los errores con status (registro no encontrado) llevan su mensaje; los demás, genérico
-    if (err.status) return res.status(err.status).json({ success: false, message: err.message });
-    console.error('Error updating detalle staging:', err);
-    res.status(500).json({ success: false, message: 'Error al actualizar el detalle' });
-  }
-};
-
-const updateMultiplesDetallesStagingController = async (req, res) => {
-  try {
-    const { detalles } = req.body;
-
-    if (!detalles || !Array.isArray(detalles) || detalles.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Se requiere un array de detalles para actualizar'
-      });
-    }
-
-    const updated = await updateMultiplesDetallesStaging(detalles);
-
-    res.status(200).json({
-      success: true,
-      message: `${updated.length} detalles actualizados correctamente`,
-      data: updated
-    });
-  } catch (err) {
-    // Solo los errores con status (registro no encontrado) llevan su mensaje; los demás, genérico
-    if (err.status) return res.status(err.status).json({ success: false, message: err.message });
-    console.error('Error updating múltiples detalles staging:', err);
-    res.status(500).json({ success: false, message: 'Error al actualizar los detalles' });
-  }
-};
-
 const validarCSVController = async (req, res) => {
   try {
     const { cliente_id, csvConsolidado, csvDetalle } = req.body;
@@ -437,18 +295,12 @@ module.exports = {
   getStagingByEstadoController,
   getStagingByClienteController,
   getStagingByPeriodoController,
-  createStagingController,
-  updateStagingController,
-  deleteStagingController,
   limpiarAprobadosController,
   limpiarRechazadosController,
   getEstadisticasStagingController,
   approveStagingBatchController,
   rejectStagingBatchController,
   getConsolidadoConDetallesByLoteController,
-  updateConsolidadoStagingController,
-  updateDetalleStagingController,
-  updateMultiplesDetallesStagingController,
   validarCSVController,
   getValidacionLoteController,
   obtenerAlertasLoteController
