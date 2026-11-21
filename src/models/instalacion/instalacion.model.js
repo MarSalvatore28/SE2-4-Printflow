@@ -311,26 +311,66 @@ const getMaquinasSinInstalacion = async () => {
   return rows;
 };
 
-const createInstalacion = async (
-  maquina_id,
-  area_id,
-  contrato_id,
-  ip_address,
-  observaciones = null,
-  fecha_instalacion = null,
-  costo_renta_mensual = 0,
-  contador_acumulativo = true,
-  contabilidad_por_usuario = false,
-  auditoria = {} // S3-02: { usuarioId, ip } de la petición
-) => {
+// IP en uso por otra asignación vigente: la serie de esa máquina, o null
+const ipEnUso = async (client, ip, idInstalacionPropia = null) => {
+  const { rows } = await client.query(
+    `SELECT m.serie
+     FROM instalaciones i
+     INNER JOIN maquinas m ON i.maquina_id = m.id_maquina
+     WHERE i.ip_address = $1 AND i.activo = TRUE AND i.fecha_retiro IS NULL
+       AND i.id_instalacion <> COALESCE($2::int, 0)
+     LIMIT 1`,
+    [ip, idInstalacionPropia]
+  );
+  return rows[0]?.serie || null;
+};
+
+const errorIpEnUso = (ip, serie) => errorNegocio(409, `La IP ${ip} ya está siendo usada por la máquina ${serie}`);
+
+// El contrato activo, con `vigente` = la fecha (hoy si no se indica) cae dentro de su vigencia
+const contratoVigente = async (client, contratoId, fecha) => {
+  const { rows } = await client.query(
+    `SELECT id_contrato, cliente_id,
+            COALESCE($2::date, CURRENT_DATE) BETWEEN fecha_inicio AND COALESCE(fecha_fin, 'infinity'::date) AS vigente
+     FROM contratos WHERE id_contrato = $1 AND activo = TRUE`,
+    [contratoId, fecha || null]
+  );
+  return rows[0] || null;
+};
+
+// Una máquina no puede estar en dos asignaciones a la vez: la fecha de una asignación nueva (o
+// editada) no puede ser anterior al retiro de otra asignación de la misma máquina
+const validarSinCruceConRetiro = async (client, maquinaId, fecha, idInstalacionPropia = null) => {
+  const { rows: [anterior] } = await client.query(
+    `SELECT TO_CHAR(fecha_retiro, 'YYYY-MM-DD') AS retiro FROM instalaciones
+     WHERE maquina_id = $1 AND id_instalacion <> COALESCE($2::int, 0)
+       AND fecha_retiro IS NOT NULL AND fecha_retiro > COALESCE($3::date, CURRENT_DATE)
+     ORDER BY fecha_retiro DESC LIMIT 1`,
+    [maquinaId, idInstalacionPropia, fecha || null]
+  );
+  if (anterior) {
+    throw errorNegocio(409, `La máquina estuvo en otra asignación hasta el ${anterior.retiro}: la fecha de instalación no puede ser anterior`);
+  }
+};
+
+// Día de Ecuador ('YYYY-MM-DD') del corte de una lectura aprobada
+const DIA_CORTE = `TO_CHAR((ro.fecha_corte AT TIME ZONE 'America/Guayaquil')::date, 'YYYY-MM-DD')`;
+
+/**
+ * Crea la asignación de una máquina libre en un área del cliente del contrato.
+ * `datos` viene de validarDatosInstalacion (utils/instalacion.reglas.js): ids enteros, IP
+ * normalizada, fecha válida y no futura (null = hoy), renta >= 0 y booleanos.
+ * auditoria (S3-02): { usuarioId, ip } de la petición
+ */
+const createInstalacion = async (datos, auditoria = {}) => {
+  const {
+    maquina_id, area_id, contrato_id, ip_address, observaciones = null, fecha_instalacion = null,
+    costo_renta_mensual = 0, contador_acumulativo = true, contabilidad_por_usuario = false,
+  } = datos;
   const client = await pool.connect();
 
   try {
     await client.query('BEGIN');
-
-    if (!ip_address || ip_address.trim() === '') {
-      throw errorNegocio(400, 'La dirección IP es obligatoria');
-    }
 
     const { rows: maquina } = await client.query(
       'SELECT id_maquina, serie FROM maquinas WHERE id_maquina = $1 AND activo = TRUE',
@@ -347,59 +387,48 @@ const createInstalacion = async (
     );
 
     if (instalacionExistente.length > 0) {
-      throw errorNegocio(409, 'La máquina ya tiene una asignación activa');
+      throw errorNegocio(409, `La máquina ${maquina[0].serie} ya tiene una asignación activa`);
     }
 
+    // El área y su cliente tienen que estar activos
     const { rows: area } = await client.query(
-      'SELECT a.id_area, a.nombre, c.id_cliente, c.nombre as cliente_nombre FROM areas a INNER JOIN clientes c ON a.cliente_id = c.id_cliente WHERE a.id_area = $1',
+      `SELECT a.id_area, a.nombre, c.id_cliente, c.nombre as cliente_nombre
+       FROM areas a INNER JOIN clientes c ON a.cliente_id = c.id_cliente
+       WHERE a.id_area = $1 AND a.activo = TRUE AND c.activo = TRUE`,
       [area_id]
     );
 
     if (area.length === 0) {
-      throw errorNegocio(400, 'Área no encontrada');
+      throw errorNegocio(400, 'Área no encontrada o inactiva');
     }
 
     // Caja 6, mejora 3.2: el área debe ser del cliente del contrato y el contrato debe estar vigente
-    const { rows: contrato } = await client.query(
-      `SELECT id_contrato, cliente_id,
-              COALESCE($2::date, CURRENT_DATE) BETWEEN fecha_inicio AND COALESCE(fecha_fin, 'infinity'::date) AS vigente
-       FROM contratos WHERE id_contrato = $1 AND activo = TRUE`,
-      [contrato_id, fecha_instalacion || null]
-    );
-
-    if (contrato.length === 0) {
+    const contrato = await contratoVigente(client, contrato_id, fecha_instalacion);
+    if (!contrato) {
       throw errorNegocio(400, 'Contrato no encontrado o inactivo');
     }
-    if (contrato[0].cliente_id !== area[0].id_cliente) {
+    if (contrato.cliente_id !== area[0].id_cliente) {
       throw errorNegocio(400, 'El área no pertenece al cliente del contrato');
     }
-    if (!contrato[0].vigente) {
+    if (!contrato.vigente) {
       throw errorNegocio(400, 'El contrato no está vigente en la fecha de instalación');
     }
 
-    const { rows: ipCheck } = await client.query(
-      `SELECT m.serie, m.id_maquina 
-       FROM instalaciones i 
-       INNER JOIN maquinas m ON i.maquina_id = m.id_maquina 
-       WHERE i.ip_address = $1 AND i.activo = TRUE AND i.fecha_retiro IS NULL`,
-      [ip_address.trim()]
-    );
+    await validarSinCruceConRetiro(client, maquina_id, fecha_instalacion);
 
-    if (ipCheck.length > 0) {
-      throw errorNegocio(409, `La IP ${ip_address} ya está siendo usada por la máquina ${ipCheck[0].serie} (ID: ${ipCheck[0].id_maquina})`);
-    }
+    const otraSerie = await ipEnUso(client, ip_address);
+    if (otraSerie) throw errorIpEnUso(ip_address, otraSerie);
 
-    // INSERT ACTUALIZADO CON LOS NUEVOS CAMPOS
     const { rows: result } = await client.query(
-      `INSERT INTO instalaciones 
-       (maquina_id, area_id, contrato_id, ip_address, fecha_instalacion, observaciones, activo, costo_renta_mensual, contador_acumulativo, contabilidad_por_usuario) 
-       VALUES ($1, $2, $3, $4, COALESCE($6, CURRENT_DATE), $5, TRUE, $7, $8, $9)
+      `INSERT INTO instalaciones
+       (maquina_id, area_id, contrato_id, ip_address, fecha_instalacion, observaciones, activo, costo_renta_mensual, contador_acumulativo, contabilidad_por_usuario)
+       VALUES ($1, $2, $3, $4, COALESCE($6::date, CURRENT_DATE), $5, TRUE, $7, $8, $9)
        RETURNING id_instalacion`,
       [
         maquina_id,
         area_id,
         contrato_id,
-        ip_address.trim(),
+        ip_address,
         observaciones,
         fecha_instalacion,
         costo_renta_mensual || 0,
@@ -420,7 +449,7 @@ const createInstalacion = async (
       maquina_serie: maquina[0].serie,
       area_nombre: area[0].nombre,
       cliente_nombre: area[0].cliente_nombre,
-      ip_address: ip_address.trim()
+      ip_address
     };
 
   } catch (error) {
@@ -431,7 +460,11 @@ const createInstalacion = async (
   }
 };
 
-// auditoria (S3-02): { usuarioId, ip } de la petición
+/**
+ * Retira una asignación vigente. La fecha de retiro (hoy si no se indica) no puede ser anterior
+ * a la instalación ni al corte de la última lectura aprobada de la máquina en esta asignación.
+ * auditoria (S3-02): { usuarioId, ip } de la petición
+ */
 const deleteInstalacion = async (id_instalacion, observaciones_retiro = null, fecha_retiro = null, auditoria = {}) => {
   const client = await pool.connect();
 
@@ -439,8 +472,9 @@ const deleteInstalacion = async (id_instalacion, observaciones_retiro = null, fe
     await client.query('BEGIN');
 
     const { rows: instalacion } = await client.query(
-      `SELECT i.id_instalacion, i.fecha_instalacion, m.serie, a.nombre as area_nombre, c.nombre as cliente_nombre,
-              COALESCE($2::date, CURRENT_DATE) >= i.fecha_instalacion AS fecha_valida
+      `SELECT i.id_instalacion, i.maquina_id, i.fecha_instalacion, m.serie, a.nombre as area_nombre, c.nombre as cliente_nombre,
+              COALESCE($2::date, CURRENT_DATE) >= i.fecha_instalacion AS fecha_valida,
+              TO_CHAR(COALESCE($2::date, CURRENT_DATE), 'YYYY-MM-DD') AS dia_retiro
        FROM instalaciones i
        INNER JOIN maquinas m ON i.maquina_id = m.id_maquina
        INNER JOIN areas a ON i.area_id = a.id_area
@@ -455,6 +489,19 @@ const deleteInstalacion = async (id_instalacion, observaciones_retiro = null, fe
     // Caja 6, mejora 3.3: el retiro no puede ser anterior a la instalación (y no se borra el registro)
     if (!instalacion[0].fecha_valida) {
       throw errorNegocio(400, 'La fecha de retiro no puede ser anterior a la de instalación');
+    }
+
+    // Una lectura ya aprobada en esta asignación se facturó con la máquina en el área
+    const { rows: [ultima] } = await client.query(
+      `SELECT ro.periodo, ${DIA_CORTE} AS dia
+       FROM reportes_oficiales ro
+       WHERE ro.maquina_id = $1 AND (ro.fecha_corte AT TIME ZONE 'America/Guayaquil')::date >= $2::date
+       ORDER BY ro.fecha_corte DESC
+       LIMIT 1`,
+      [instalacion[0].maquina_id, instalacion[0].fecha_instalacion]
+    );
+    if (ultima && ultima.dia > instalacion[0].dia_retiro) {
+      throw errorNegocio(409, `La fecha de retiro no puede ser anterior a la última lectura aprobada de ${instalacion[0].serie} (período ${ultima.periodo}, corte del ${ultima.dia})`);
     }
 
     const observacionesFinal = observaciones_retiro || 'Retiro sin observaciones';
@@ -730,41 +777,83 @@ const getRentaByCliente = async (cliente_id) => {
   return rows;
 };
 
-const updateInstalacionCompleta = async (
-  id_instalacion,
-  ip_address,
-  costo_renta_mensual,
-  contador_acumulativo,
-  contabilidad_por_usuario,
-  fecha_instalacion,
-  auditoria = {} // S3-02: { usuarioId, ip } de la petición
-) => {
-  const renta = costo_renta_mensual || 0;
-  const acumulativo = contador_acumulativo !== undefined ? contador_acumulativo : true;
-  const contabilidad = contabilidad_por_usuario !== undefined ? contabilidad_por_usuario : false;
+/**
+ * La nueva fecha de instalación de una asignación vigente: el contrato tiene que estar vigente
+ * ese día, la máquina no puede tener otra asignación que se cruce, ninguna lectura
+ * aprobada de esta asignación puede quedar antes de la instalación y, si la creó un reemplazo,
+ * la fecha es la del reemplazo. Lanza errorNegocio si no cuadra.
+ */
+const validarNuevaFechaInstalacion = async (client, actual, fecha) => {
+  const contrato = await contratoVigente(client, actual.contrato_id, fecha);
+  if (!contrato?.vigente) {
+    throw errorNegocio(400, 'El contrato de la asignación no está vigente en la nueva fecha de instalación');
+  }
 
-  const query = `
-    UPDATE instalaciones
-    SET
-        ip_address = $1,
-        costo_renta_mensual = $2,
-        contador_acumulativo = $3,
-        contabilidad_por_usuario = $4,
-        fecha_instalacion = COALESCE($5, fecha_instalacion)
-    WHERE id_instalacion = $6 AND fecha_retiro IS NULL
-    RETURNING *;
-  `;
+  const { rows: [cambio] } = await client.query(
+    `SELECT snap_maquina_saliente_serie AS saliente FROM maquinas_cambio
+     WHERE instalacion_entrante_id = $1 AND activo = TRUE LIMIT 1`,
+    [actual.id_instalacion]
+  );
+  if (cambio) {
+    throw errorNegocio(409, `La fecha de esta asignación la fija el reemplazo de ${cambio.saliente}: para cambiarla, anule el reemplazo y regístrelo de nuevo`);
+  }
 
-  const values = [ip_address, renta, acumulativo, contabilidad, fecha_instalacion, id_instalacion];
+  await validarSinCruceConRetiro(client, actual.maquina_id, fecha, actual.id_instalacion);
+
+  const { rows: [primera] } = await client.query(
+    `SELECT ro.periodo, ${DIA_CORTE} AS dia
+     FROM reportes_oficiales ro
+     WHERE ro.maquina_id = $1 AND (ro.fecha_corte AT TIME ZONE 'America/Guayaquil')::date >= $2::date
+     ORDER BY ro.fecha_corte ASC
+     LIMIT 1`,
+    [actual.maquina_id, actual.fecha_instalacion]
+  );
+  if (primera && primera.dia < fecha) {
+    throw errorNegocio(409, `La máquina ya tiene una lectura aprobada en esta asignación (período ${primera.periodo}, corte del ${primera.dia}): la fecha de instalación no puede ser posterior`);
+  }
+};
+
+/**
+ * Edita una asignación vigente. `datos` viene de validarDatosEdicionInstalacion: IP normalizada,
+ * fecha (null = no se cambia), renta y forma de contar.
+ * auditoria (S3-02): { usuarioId, ip } de la petición
+ */
+const updateInstalacionCompleta = async (id_instalacion, datos, auditoria = {}) => {
+  const { ip_address, costo_renta_mensual = 0, contador_acumulativo = true, contabilidad_por_usuario = false, fecha_instalacion = null } = datos;
 
   // El cambio y su auditoría, en la misma transacción
   return enTransaccion(pool, async (client) => {
-    const antes = await leerFila(client, 'instalaciones', id_instalacion, { bloquear: true });
-    const { rows } = await client.query(query, values);
-
-    if (rows.length === 0) {
+    const { rows: [actual] } = await client.query(
+      `SELECT id_instalacion, maquina_id, contrato_id, TO_CHAR(fecha_instalacion, 'YYYY-MM-DD') AS fecha_instalacion
+       FROM instalaciones
+       WHERE id_instalacion = $1 AND activo = TRUE AND fecha_retiro IS NULL
+       FOR UPDATE`,
+      [id_instalacion]
+    );
+    if (!actual) {
       throw errorNegocio(404, 'Instalación no encontrada o ya está retirada.');
     }
+
+    const otraSerie = await ipEnUso(client, ip_address, id_instalacion);
+    if (otraSerie) throw errorIpEnUso(ip_address, otraSerie);
+
+    if (fecha_instalacion && fecha_instalacion !== actual.fecha_instalacion) {
+      await validarNuevaFechaInstalacion(client, actual, fecha_instalacion);
+    }
+
+    const antes = await leerFila(client, 'instalaciones', id_instalacion, { bloquear: true });
+    const { rows } = await client.query(
+      `UPDATE instalaciones
+       SET
+           ip_address = $1,
+           costo_renta_mensual = $2,
+           contador_acumulativo = $3,
+           contabilidad_por_usuario = $4,
+           fecha_instalacion = COALESCE($5::date, fecha_instalacion)
+       WHERE id_instalacion = $6 AND fecha_retiro IS NULL
+       RETURNING *`,
+      [ip_address, costo_renta_mensual || 0, contador_acumulativo, contabilidad_por_usuario, fecha_instalacion, id_instalacion]
+    );
 
     await auditarFila(client, {
       tabla: 'instalaciones', idRegistro: id_instalacion, accion: ACCIONES.ACTUALIZAR, antes, ...auditoria,
