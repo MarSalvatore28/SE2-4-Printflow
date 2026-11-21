@@ -15,7 +15,7 @@ const dosDigitos = (n) => String(n).padStart(2, '0');
 const isoCorto = (fecha) =>
   `${fecha.getUTCFullYear()}-${dosDigitos(fecha.getUTCMonth() + 1)}-${dosDigitos(fecha.getUTCDate())}T${dosDigitos(fecha.getUTCHours())}:${dosDigitos(fecha.getUTCMinutes())}`;
 const entero = (texto) => {
-  const n = parseInt(String(texto).replace(/[^\d-]/g, ''), 10);
+  const n = Number.parseInt(String(texto).replace(/[^\d-]/g, ''), 10);
   if (Number.isNaN(n)) throw new Error(`Contador ilegible: "${texto}"`);
   return n;
 };

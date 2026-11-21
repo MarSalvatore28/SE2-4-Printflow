@@ -1,7 +1,7 @@
 // Consumo de un reemplazo de máquina en el consolidado del período afectado (caja 4).
 // Función pura: la usa reportemes.model con las filas que ya trajo de la base.
 
-const aEntero = (valor) => parseInt(valor || 0, 10) || 0;
+const aEntero = (valor) => Number.parseInt(valor || 0, 10) || 0;
 
 // Lectura B/N y color de la fila: la suma de las cuentas de usuario si las tiene, si no los
 // contadores del reporte (las mismas fuentes que usa calcularConsumoNormal).

@@ -10,7 +10,7 @@
 
 const CAMPOS = ['print_bn', 'print_color', 'copia_bn', 'copia_color'];
 
-const aEntero = (valor) => parseInt(valor || 0, 10) || 0;
+const aEntero = (valor) => Number.parseInt(valor || 0, 10) || 0;
 
 /**
  * @param {{print_bn, print_color, copia_bn, copia_color}} actual   lectura al corte del período

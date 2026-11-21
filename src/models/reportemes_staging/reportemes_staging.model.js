@@ -379,8 +379,8 @@ const updateDetalleStaging = async (id_staging_detalle, data) => {
         WHERE id_staging_consolidado = $5
       `;
       await client.query(updateConsolidadoQuery, [
-        parseInt(sums.total_print) || 0, parseInt(sums.total_copy) || 0,
-        parseInt(sums.total_impresion_bn) || 0, parseInt(sums.total_impresion_color) || 0,
+        Number.parseInt(sums.total_print, 10) || 0, Number.parseInt(sums.total_copy, 10) || 0,
+        Number.parseInt(sums.total_impresion_bn, 10) || 0, Number.parseInt(sums.total_impresion_color, 10) || 0,
         consolidadoId
       ]);
     }
@@ -439,7 +439,7 @@ const createStaging = async (reporteData) => {
     let loteId = reporteData.lote_id || reporteData.lote_carga;
     if (!loteId) throw new Error('lote_id o lote_carga es requerido');
 
-    if (typeof loteId === 'string' && isNaN(parseInt(loteId))) {
+    if (typeof loteId === 'string' && Number.isNaN(Number.parseInt(loteId, 10))) {
       const loteQuery = `SELECT id_lote FROM lotes_carga WHERE codigo_referencia = $1`;
       const { rows: loteRows } = await client.query(loteQuery, [loteId]);
       if (loteRows.length > 0) {

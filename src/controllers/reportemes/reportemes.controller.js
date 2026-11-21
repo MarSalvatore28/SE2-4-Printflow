@@ -16,11 +16,11 @@ const getReporteConsolidadoController = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Formato inválido. Use YYYY-MM' });
     }
 
-    const areaId = area_id ? parseInt(area_id) : null;
-    const maquinaId = maquina_id ? parseInt(maquina_id) : null;
+    const areaId = area_id ? Number.parseInt(area_id, 10) : null;
+    const maquinaId = maquina_id ? Number.parseInt(maquina_id, 10) : null;
 
     const resultado = await getReporteConsolidado(
-      parseInt(clienteId),
+      Number.parseInt(clienteId, 10),
       periodo,
       areaId,
       maquinaId
@@ -30,7 +30,7 @@ const getReporteConsolidadoController = async (req, res) => {
       success: true,
       data: resultado, 
       filtros_aplicados: {
-        cliente_id: parseInt(clienteId),
+        cliente_id: Number.parseInt(clienteId, 10),
         periodo,
         area_id: areaId,
         maquina_id: maquinaId
@@ -50,7 +50,7 @@ const getReporteConsolidadoController = async (req, res) => {
 const getPeriodosDisponiblesController = async (req, res) => {
   try {
     const { clienteId } = req.params;
-    const periodos = await getPeriodosDisponibles(parseInt(clienteId));
+    const periodos = await getPeriodosDisponibles(Number.parseInt(clienteId, 10));
     res.status(200).json({ success: true, data: periodos });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -69,11 +69,11 @@ const getReporteDetalladoController = async (req, res) => {
       });
     }
 
-    const areaId = area_id ? parseInt(area_id) : null;
-    const maquinaId = maquina_id ? parseInt(maquina_id) : null;
+    const areaId = area_id ? Number.parseInt(area_id, 10) : null;
+    const maquinaId = maquina_id ? Number.parseInt(maquina_id, 10) : null;
 
     const resultado = await getReporteDetallado(
-      parseInt(clienteId),
+      Number.parseInt(clienteId, 10),
       periodo,
       areaId,
       maquinaId
