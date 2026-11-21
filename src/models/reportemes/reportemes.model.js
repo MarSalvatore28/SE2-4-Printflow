@@ -608,7 +608,7 @@ const getReporteDetallado = async (clienteId, periodo, areaId = null, maquinaId 
       SELECT
         -- DATOS DEL DETALLE (Hijo)
         rd.id_detalle,
-        rd.fecha_transaccion,
+        ${sqlFechaEcuador('rd.fecha_transaccion')} AS fecha_transaccion,
         rd.cuenta_id,
         rd.usuario_trabajo,
 
