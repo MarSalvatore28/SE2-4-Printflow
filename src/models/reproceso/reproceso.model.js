@@ -99,9 +99,9 @@ const reprocesarReporte = async (pool, id, auditoria = {}) => {
     }
 
     const corregido = !motivo;
-    const estado = corregido
-      ? (reporte.estado_maquina === ESTADO_ERROR ? ESTADO_RECUPERADO : reporte.estado_maquina)
-      : ESTADO_ERROR;
+    // Corregido: la que estaba en ERROR pasa a RECUPERADO y las demás conservan su estado
+    const estadoCorregido = reporte.estado_maquina === ESTADO_ERROR ? ESTADO_RECUPERADO : reporte.estado_maquina;
+    const estado = corregido ? estadoCorregido : ESTADO_ERROR;
 
     const { rows } = await client.query(
       `UPDATE reportes_consolidado_staging

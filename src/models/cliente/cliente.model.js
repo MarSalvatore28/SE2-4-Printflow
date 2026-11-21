@@ -332,14 +332,14 @@ const idsBloqueados = async (client, sql, id) => {
 // Cómo estaban esas filas antes del cambio (S3-02)
 const filasAntes = async (client, tabla, ids) => {
   const antes = new Map();
-  for (const idFila of ids) antes.set(idFila, await leerFila(client, tabla, idFila));
+  for (const idFila of ids) antes.set(idFila, await leerFila(client, tabla, idFila)); // NOSONAR: en orden, misma transacción y mismo client
   return antes;
 };
 
 // Registra en la auditoría cada fila que cambió la cascada, con su antes y su después
 const auditarCascada = async (client, tabla, antes, accion, auditoria) => {
   for (const [idFila, fila] of antes) {
-    await auditarFila(client, { tabla, idRegistro: idFila, accion, antes: fila, ...auditoria });
+    await auditarFila(client, { tabla, idRegistro: idFila, accion, antes: fila, ...auditoria }); // NOSONAR: en orden, misma transacción
   }
 };
 

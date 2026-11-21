@@ -32,13 +32,16 @@ const { ACCIONES, leerFila, auditarFila, contextoAuditoria, enTransaccion } = re
 const RUC_VALIDO = /^\d{13}$/;
 const PG_UNIQUE_VIOLATION = '23505';
 
+// Mayor que 0. Un valor que no es número (NaN) no lo es.
+const esPositivo = (valor) => Number(valor) > 0;
+
 // Devuelve el mensaje de error del contrato o null si es válido.
 const validarContrato = (data) => {
   if (!data.fecha_inicio) return 'Fecha de inicio es obligatoria';
   if (data.fecha_fin && new Date(data.fecha_fin) < new Date(data.fecha_inicio)) {
     return 'La fecha fin no puede ser anterior a la de inicio';
   }
-  if (!(Number(data.costo_impresion_bn) > 0) && !(Number(data.costo_impresion_color) > 0)) {
+  if (!esPositivo(data.costo_impresion_bn) && !esPositivo(data.costo_impresion_color)) {
     return 'Al menos un costo (B/N o color) debe ser mayor que 0';
   }
   return null;

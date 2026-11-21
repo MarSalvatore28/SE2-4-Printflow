@@ -4,9 +4,22 @@
 
 const { leerReporte, estadoEsOk } = require('./formatos');
 
+// Lo que va dentro del primer «<...>» que no esté vacío, o null. Sin regex: la que hacía lo mismo
+// retrocede de más con muchos «<» sin cerrar.
+function entreAngulos(texto) {
+  let inicio = texto.indexOf('<');
+  while (inicio !== -1) {
+    const fin = texto.indexOf('>', inicio + 1);
+    if (fin === -1) return null;
+    if (fin > inicio + 1) return texto.slice(inicio + 1, fin);
+    inicio = texto.indexOf('<', inicio + 1);
+  }
+  return null;
+}
+
 // "impresoras@andina.example" -> "andina"
 function codigoRemitente(de) {
-  const correo = (de.match(/<([^>]+)>/) || [null, de])[1].trim().toLowerCase();
+  const correo = (entreAngulos(de) ?? de).trim().toLowerCase();
   const dominio = correo.split('@')[1] || 'desconocido';
   return dominio.split('.')[0];
 }

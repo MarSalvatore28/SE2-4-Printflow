@@ -56,8 +56,10 @@ async function main() {
   const { token } = login.datos;
 
   const clientes = [];
-  for (const c of escenario.clientes) {
-    const { status, datos } = await api(`/api/clientes/ruc/${c.ruc}`, token);
+  // Solo consultas: se piden a la vez y se revisan en orden (el error es el del primer cliente que falte)
+  const respuestas = await Promise.all(escenario.clientes.map((c) => api(`/api/clientes/ruc/${c.ruc}`, token)));
+  for (const [i, c] of escenario.clientes.entries()) {
+    const { status, datos } = respuestas[i];
     const id = (datos.data || datos)?.id_cliente;
     if (status !== 200 || !id) throw new Error(`No existe el cliente ${c.nombre}: carga primero los datos con preparar-datos.js`);
     clientes.push({ ...c, id, ruta: `/api/reportes/consolidado/${id}/${periodo}` });
@@ -67,10 +69,10 @@ async function main() {
   console.log('Cliente                          Máquinas   A facturar     Tiempo (mediana)');
   const resultados = [];
   for (const c of clientes) {
-    const calentamiento = await cronometrar(c.ruta, token);
+    const calentamiento = await cronometrar(c.ruta, token); // NOSONAR: se mide de a una petición
     if (calentamiento.status !== 200) throw new Error(`${c.nombre}: HTTP ${calentamiento.status}`);
     const tiempos = [];
-    for (let i = 0; i < repeticiones; i++) tiempos.push((await cronometrar(c.ruta, token)).ms);
+    for (let i = 0; i < repeticiones; i++) tiempos.push((await cronometrar(c.ruta, token)).ms); // NOSONAR: se mide de a una petición
     const r = { nombre: c.nombre, maquinas: calentamiento.datos.data.resumen.total_maquinas, total: calentamiento.datos.data.resumen.monto_total_general, ms: mediana(tiempos) };
     resultados.push(r);
     console.log(`${r.nombre.padEnd(32)} ${String(r.maquinas).padStart(8)}   $${r.total.padStart(10)}   ${ms(r.ms).padStart(10)}`);

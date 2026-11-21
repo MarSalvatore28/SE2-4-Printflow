@@ -2,8 +2,8 @@
 // Es lo que hacía el flujo n8n de DOX cuando la API no respondía: reintentar con espera
 // creciente, no perder el correo y avisar al administrador si el problema sigue.
 
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
 const { crearCorreo } = require('./correo');
 
 const configuracion = () => ({

@@ -44,7 +44,7 @@ function calcularDiasOperacion(fechaInicio, fechaFin) {
   if (fin < inicio) return 0;
   const diffTime = fin.getTime() - inicio.getTime();
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays > 0 ? diffDays : 0;
+  return Math.max(diffDays, 0) || 0; // || 0: con una fecha inválida diffDays es NaN
 }
 
 // El reporte trae contadores por usuario (reportes_detalle_oficial)
@@ -53,7 +53,7 @@ const tieneDetalleUsuario = (row) =>
   (row.det_cur_cop_bn !== null && row.det_cur_cop_bn !== undefined);
 
 // Un contador que puede venir vacío (null cuenta como 0)
-const contador = (valor) => parseInt(valor || 0);
+const contador = (valor) => Number.parseInt(valor || 0, 10);
 
 // Consumo entre dos lecturas acumuladas; si da negativo (contador reiniciado), la lectura actual
 const consumoAcumulado = (actual, anterior) => {
@@ -102,13 +102,13 @@ function calcularConsumoNormal(row) {
 function lecturaAnteriorDeFila(row, tieneDetalle) {
   if (!tieneDetalle) {
     return {
-      imp_bn: parseInt(row.prev_imp_bn),
-      imp_color: parseInt(row.prev_imp_col),
-      cop_bn: parseInt(row.prev_cop_bn),
-      cop_color: parseInt(row.prev_cop_col),
-      total_contador_bn: parseInt(row.prev_imp_bn) + parseInt(row.prev_cop_bn),
-      total_contador_color: parseInt(row.prev_imp_col) + parseInt(row.prev_cop_col),
-      total_servicio: parseInt(row.prev_total_servicio)
+      imp_bn: Number.parseInt(row.prev_imp_bn, 10),
+      imp_color: Number.parseInt(row.prev_imp_col, 10),
+      cop_bn: Number.parseInt(row.prev_cop_bn, 10),
+      cop_color: Number.parseInt(row.prev_cop_col, 10),
+      total_contador_bn: Number.parseInt(row.prev_imp_bn, 10) + Number.parseInt(row.prev_cop_bn, 10),
+      total_contador_color: Number.parseInt(row.prev_imp_col, 10) + Number.parseInt(row.prev_cop_col, 10),
+      total_servicio: Number.parseInt(row.prev_total_servicio, 10)
     };
   }
   const impBn = contador(row.det_prev_imp_bn);
@@ -130,15 +130,15 @@ function lecturaAnteriorDeFila(row, tieneDetalle) {
 function lecturaActualDeFila(row, tieneDetalle) {
   if (!tieneDetalle) {
     return {
-      imp_bn: parseInt(row.cur_imp_bn),
-      imp_color: parseInt(row.cur_imp_col),
-      cop_bn: parseInt(row.cur_cop_bn),
-      cop_color: parseInt(row.cur_cop_col),
-      total_contador_bn: parseInt(row.cur_imp_bn) + parseInt(row.cur_cop_bn),
-      total_contador_color: parseInt(row.cur_imp_col) + parseInt(row.cur_cop_col),
-      print_total: parseInt(row.cur_print_total),
-      copy_total: parseInt(row.cur_copy_total),
-      total_servicio: parseInt(row.cur_total_servicio)
+      imp_bn: Number.parseInt(row.cur_imp_bn, 10),
+      imp_color: Number.parseInt(row.cur_imp_col, 10),
+      cop_bn: Number.parseInt(row.cur_cop_bn, 10),
+      cop_color: Number.parseInt(row.cur_cop_col, 10),
+      total_contador_bn: Number.parseInt(row.cur_imp_bn, 10) + Number.parseInt(row.cur_cop_bn, 10),
+      total_contador_color: Number.parseInt(row.cur_imp_col, 10) + Number.parseInt(row.cur_cop_col, 10),
+      print_total: Number.parseInt(row.cur_print_total, 10),
+      copy_total: Number.parseInt(row.cur_copy_total, 10),
+      total_servicio: Number.parseInt(row.cur_total_servicio, 10)
     };
   }
   const impBn = contador(row.det_cur_imp_bn);
@@ -239,8 +239,8 @@ function detalleDelConsolidado(row, cambios) {
 
   // Cálculo referencial (solo informativo, por máquina), con las tarifas congeladas si las tiene
   const { contrato: tarifasFila } = tarifasDelReporte(row);
-  const dineroReferencial = (consumoFinal.total_bn * parseFloat(tarifasFila.costo_impresion_bn || 0)) +
-                            (consumoFinal.total_color * parseFloat(tarifasFila.costo_impresion_color || 0));
+  const dineroReferencial = (consumoFinal.total_bn * Number.parseFloat(tarifasFila.costo_impresion_bn || 0)) +
+                            (consumoFinal.total_color * Number.parseFloat(tarifasFila.costo_impresion_color || 0));
   const tipoNombre = row.tipo_impresion_nombre || 'BN';
 
   return {
@@ -570,7 +570,7 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
       serie: r.serie,
       modelo: r.modelo_nombre,
       area: r.area_nombre,
-      costo_mensual: parseFloat(r.costo_renta_mensual)
+      costo_mensual: Number.parseFloat(r.costo_renta_mensual)
     }));
 
     const totalRenta = rentaEquipos.reduce((acc, r) => acc + r.costo_mensual, 0);
@@ -608,7 +608,7 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
       facturacion = completo.resumen.facturacion.map((c) => ({ ...c, filtrado: true }));
     }
 
-    const montoTotalGeneral = facturacion.reduce((acc, c) => acc + parseFloat(c.total), 0);
+    const montoTotalGeneral = facturacion.reduce((acc, c) => acc + Number.parseFloat(c.total), 0);
 
     const resumen = {
       total_bn: detalles.reduce((acc, d) => acc + d.consumo.total_bn, 0),
@@ -738,10 +738,10 @@ const getReporteDetallado = async (clienteId, periodo, areaId = null, maquinaId 
       // contadores = consumo del período (lo que suman la pantalla, el Excel y el PDF)
       const consumo = consumoDeCuenta(lectura, anterior, row.contador_acumulativo);
 
-      const montoImpBN = consumo.print_bn * parseFloat(row.costo_imp_bn || 0);
-      const montoImpCol = consumo.print_color * parseFloat(row.costo_imp_col || 0);
-      const montoCopBN = consumo.copia_bn * parseFloat(row.costo_imp_bn || 0);
-      const montoCopCol = consumo.copia_color * parseFloat(row.costo_imp_col || 0);
+      const montoImpBN = consumo.print_bn * Number.parseFloat(row.costo_imp_bn || 0);
+      const montoImpCol = consumo.print_color * Number.parseFloat(row.costo_imp_col || 0);
+      const montoCopBN = consumo.copia_bn * Number.parseFloat(row.costo_imp_bn || 0);
+      const montoCopCol = consumo.copia_color * Number.parseFloat(row.costo_imp_col || 0);
 
       const montoTotalImpresiones = montoImpBN + montoImpCol;
       const montoTotalCopias = montoCopBN + montoCopCol;
@@ -775,17 +775,17 @@ const getReporteDetallado = async (clienteId, periodo, areaId = null, maquinaId 
           general: consumo.print_bn + consumo.print_color + consumo.copia_bn + consumo.copia_color
         },
         costos: {
-          monto: parseFloat(montoTotal.toFixed(2)),
-          impresion_bn: parseFloat(montoImpBN.toFixed(2)),
-          impresion_color: parseFloat(montoImpCol.toFixed(2)),
-          copia_bn: parseFloat(montoCopBN.toFixed(2)),
-          copia_color: parseFloat(montoCopCol.toFixed(2)),
-          total_impresiones: parseFloat(montoTotalImpresiones.toFixed(2)),
-          total_copias: parseFloat(montoTotalCopias.toFixed(2)),
-          costo_unit_imp_bn: parseFloat(row.costo_imp_bn || 0),
-          costo_unit_imp_col: parseFloat(row.costo_imp_col || 0),
-          costo_unit_cop_bn: parseFloat(row.costo_imp_bn || 0),
-          costo_unit_cop_col: parseFloat(row.costo_imp_col || 0)
+          monto: Number.parseFloat(montoTotal.toFixed(2)),
+          impresion_bn: Number.parseFloat(montoImpBN.toFixed(2)),
+          impresion_color: Number.parseFloat(montoImpCol.toFixed(2)),
+          copia_bn: Number.parseFloat(montoCopBN.toFixed(2)),
+          copia_color: Number.parseFloat(montoCopCol.toFixed(2)),
+          total_impresiones: Number.parseFloat(montoTotalImpresiones.toFixed(2)),
+          total_copias: Number.parseFloat(montoTotalCopias.toFixed(2)),
+          costo_unit_imp_bn: Number.parseFloat(row.costo_imp_bn || 0),
+          costo_unit_imp_col: Number.parseFloat(row.costo_imp_col || 0),
+          costo_unit_cop_bn: Number.parseFloat(row.costo_imp_bn || 0),
+          costo_unit_cop_col: Number.parseFloat(row.costo_imp_col || 0)
         }
       };
     });

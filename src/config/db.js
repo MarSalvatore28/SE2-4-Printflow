@@ -1,5 +1,5 @@
 const { Pool } = require('pg');
-const path = require('path');
+const path = require('node:path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
 // DB_SSL=true solo cuando la base esta fuera del servidor (p. ej. Supabase).

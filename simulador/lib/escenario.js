@@ -1,8 +1,8 @@
 // Escenario de la demo y cálculo de contadores.
 // Los contadores son ACUMULADOS (como los de una impresora real) y deterministas:
 // generar dos veces el mismo período da exactamente los mismos números.
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const CAMPOS = ['impresion_bn', 'impresion_color', 'copia_bn', 'copia_color'];
 
@@ -39,7 +39,7 @@ function fechaCorte(periodo) {
 
 function semilla(texto) {
   let h = 2166136261;
-  for (const c of texto) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+  for (const c of texto) h = Math.imul(h ^ c.codePointAt(0), 16777619);
   return h >>> 0;
 }
 

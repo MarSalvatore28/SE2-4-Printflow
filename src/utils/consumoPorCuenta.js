@@ -10,7 +10,7 @@
 
 const CAMPOS = ['print_bn', 'print_color', 'copia_bn', 'copia_color'];
 
-const aEntero = (valor) => parseInt(valor || 0, 10) || 0;
+const aEntero = (valor) => Number.parseInt(valor || 0, 10) || 0;
 
 /**
  * @param {{print_bn, print_color, copia_bn, copia_color}} actual   lectura al corte del período
@@ -21,8 +21,8 @@ const aEntero = (valor) => parseInt(valor || 0, 10) || 0;
 const consumoDeCuenta = (actual, anterior, acumulativo) => {
   const consumo = {};
   for (const campo of CAMPOS) {
-    const valor = aEntero(actual && actual[campo]);
-    consumo[campo] = acumulativo ? Math.max(0, valor - aEntero(anterior && anterior[campo])) : valor;
+    const valor = aEntero(actual?.[campo]);
+    consumo[campo] = acumulativo ? Math.max(0, valor - aEntero(anterior?.[campo])) : valor;
   }
   return consumo;
 };

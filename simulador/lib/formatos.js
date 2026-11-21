@@ -8,14 +8,20 @@
 //     contadores: { impresion_bn, impresion_color, copia_bn, copia_color },
 //     cuentas: [ { cuenta, nombre, impresion_bn, ... } ] | null }
 
-const ESTADOS_OK = ['lista', 'listo', 'en reposo', 'imprimiendo', 'ok'];
-const estadoEsOk = (estado) => ESTADOS_OK.includes(String(estado || '').trim().toLowerCase());
+const ESTADOS_OK = new Set(['lista', 'listo', 'en reposo', 'imprimiendo', 'ok']);
+const estadoEsOk = (estado) => ESTADOS_OK.has(String(estado || '').trim().toLowerCase());
 
 const dosDigitos = (n) => String(n).padStart(2, '0');
 const isoCorto = (fecha) =>
   `${fecha.getUTCFullYear()}-${dosDigitos(fecha.getUTCMonth() + 1)}-${dosDigitos(fecha.getUTCDate())}T${dosDigitos(fecha.getUTCHours())}:${dosDigitos(fecha.getUTCMinutes())}`;
+// Quita las repeticiones de `caracter` al final del texto. Sin regex: «uno o más al final» retrocede de más
+const sinFinal = (texto, caracter) => {
+  let fin = texto.length;
+  while (fin > 0 && texto[fin - 1] === caracter) fin -= 1;
+  return texto.slice(0, fin);
+};
 const entero = (texto) => {
-  const n = parseInt(String(texto).replace(/[^\d-]/g, ''), 10);
+  const n = Number.parseInt(String(texto).replace(/[^\d-]/g, ''), 10);
   if (Number.isNaN(n)) throw new Error(`Contador ilegible: "${texto}"`);
   return n;
 };
@@ -124,7 +130,7 @@ const textoContadores = {
     for (const linea of texto.split(/\r?\n/)) {
       const partes = linea.split(' : ');
       if (partes.length < 2) continue;
-      const etiqueta = partes[0].replace(/\.+$/, '').trim();
+      const etiqueta = sinFinal(partes[0], '.').trim();
       const clave = Object.keys(ETIQUETAS_TEXTO).find((k) => ETIQUETAS_TEXTO[k] === etiqueta);
       if (clave) valores[clave] = partes.slice(1).join(' : ').trim();
     }
@@ -149,8 +155,8 @@ const textoContadores = {
 // ---------------------------------------------------------------------------
 // 3. xml-estado · estado del equipo en XML (plotters y equipos con servicio web)
 // ---------------------------------------------------------------------------
-const escaparXml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const desescaparXml = (s) => String(s).replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+const escaparXml = (s) => String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+const desescaparXml = (s) => String(s).replaceAll('&quot;', '"').replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&amp;', '&');
 
 const xmlEstado = {
   extension: 'xml',
@@ -178,7 +184,7 @@ const xmlEstado = {
 
   leer(texto) {
     const atributo = (etiqueta, nombre) => {
-      const m = texto.match(new RegExp(`<${etiqueta}[^>]*\\s${nombre}="([^"]*)"`));
+      const m = texto.match(new RegExp(String.raw`<${etiqueta}[^>]*\s${nombre}="([^"]*)"`));
       return m ? desescaparXml(m[1]) : undefined;
     };
     const contador = (tipo, color) => {

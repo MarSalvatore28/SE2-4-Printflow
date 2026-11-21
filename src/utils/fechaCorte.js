@@ -21,7 +21,7 @@ const diaEcuador = (fecha) => new Date(new Date(fecha).getTime() - DESFASE_MS).t
 const extraerFecha = (valor) => {
   if (!valor) return null;
   const s = String(valor).trim();
-  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
   if (iso) {
     // Con hora y zona ('2026-10-31T23:00:00Z'), el día es el de Ecuador; sin zona, el escrito
     if (/[T ]\d{2}:\d{2}.*(Z|[+-]\d{2}:?\d{2})$/i.test(s)) return diaEcuador(s);
@@ -40,7 +40,7 @@ const extraerFecha = (valor) => {
 // 'H:MM', 'HH:MM' o 'HH:MM:SS' → 'HH:MM:SS'; cualquier otra cosa → null
 const normalizarHora = (valor) => {
   if (valor === undefined || valor === null) return null;
-  const m = String(valor).trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(String(valor).trim());
   if (!m) return null;
   const [h, min, seg = '00'] = [Number(m[1]), m[2], m[3]];
   if (h > 23 || Number(min) > 59 || Number(seg) > 59) return null;

@@ -158,7 +158,7 @@ const deleteStagingController = async (req, res) => {
 const limpiarAprobadosController = async (req, res) => {
   try {
     const { dias } = req.query;
-    const diasInt = parseInt(dias) || 90;
+    const diasInt = Number.parseInt(dias, 10) || 90;
 
     const affected = await deleteOldAprobados(diasInt);
 
@@ -176,7 +176,7 @@ const limpiarAprobadosController = async (req, res) => {
 const limpiarRechazadosController = async (req, res) => {
   try {
     const { dias } = req.query;
-    const diasInt = parseInt(dias) || 30;
+    const diasInt = Number.parseInt(dias, 10) || 30;
 
     const affected = await deleteOldRechazados(diasInt);
 
@@ -278,7 +278,7 @@ const updateConsolidadoStagingController = async (req, res) => {
       });
     }
 
-    const updated = await updateConsolidadoStaging(parseInt(id), data);
+    const updated = await updateConsolidadoStaging(Number.parseInt(id, 10), data);
 
     res.status(200).json({
       success: true,
@@ -306,7 +306,7 @@ const updateDetalleStagingController = async (req, res) => {
       });
     }
 
-    const updated = await updateDetalleStaging(parseInt(id), data);
+    const updated = await updateDetalleStaging(Number.parseInt(id, 10), data);
 
     res.status(200).json({
       success: true,

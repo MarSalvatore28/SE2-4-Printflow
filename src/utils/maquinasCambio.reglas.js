@@ -275,7 +275,7 @@ const motivoNoAnulable = ({ cambio, lecturaAprobada, lotePendiente, asignacionEn
   if (!cambio.instalacion_saliente_id) {
     return { status: 409, message: `No se puede anular ${n}: no guarda la asignación de ${sal} que retiró` };
   }
-  if (!asignacionEntrante || !asignacionEntrante.vigente) {
+  if (!asignacionEntrante?.vigente) {
     return {
       status: 409,
       message: `No se puede anular ${n}: la asignación de ${ent} que creó el reemplazo ya no está vigente (se retiró o se reemplazó después)`,

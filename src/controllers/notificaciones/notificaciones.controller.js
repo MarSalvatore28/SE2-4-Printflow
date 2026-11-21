@@ -173,7 +173,7 @@ const marcarVariasLeidasController = async (req, res) => {
     return res.status(400).json({ success: false, message: 'Se requiere un arreglo ids con al menos un ID' });
   }
   const enteros = ids.map(aEntero);
-  if (enteros.some((n) => n === null)) {
+  if (enteros.includes(null)) {
     return res.status(400).json({ success: false, message: 'Todos los ids deben ser enteros positivos' });
   }
   try {

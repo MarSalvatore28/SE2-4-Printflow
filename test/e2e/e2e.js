@@ -44,7 +44,7 @@ const ENV = { ...process.env, WEB_PORT, DB_HOST_PORT: DB_PORT };
 
 // Ruta completa de docker: la de DOCKER_BIN si se define, o la de una instalación conocida
 const DOCKER = process.env.DOCKER_BIN || [
-  'C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe',
+  String.raw`C:\Program Files\Docker\Docker\resources\bin\docker.exe`,
   '/usr/local/bin/docker',
   '/usr/bin/docker',
 ].find((ruta) => fs.existsSync(ruta)) || 'docker';
@@ -140,7 +140,7 @@ const correosEn = (carpeta) => fs.readdirSync(path.join(BUZON, carpeta)).filter(
 function enviarCorreos(periodo, { reemplazos = false } = {}) {
   const antes = correosEn('procesados').length;
   const archivos = generarCorreos({ periodo, reemplazos, buzon: path.join(BUZON, 'entrada'), escenario });
-  const r = compose(['run', '--rm', '--no-deps', '-T', '-v', `${BUZON.replace(/\\/g, '/')}:/simulador/buzon`, 'simulador', 'procesar-buzon.js']);
+  const r = compose(['run', '--rm', '--no-deps', '-T', '-v', `${BUZON.replaceAll('\\', '/')}:/simulador/buzon`, 'simulador', 'procesar-buzon.js']);
   const procesados = correosEn('procesados').length - antes;
   comprobar(r.codigo === 0 && procesados === archivos.length && correosEn('entrada').length === 0,
     `${periodo}: el n8n simulado procesó ${procesados} de ${archivos.length} correos (${archivos.join(', ')})`,
@@ -183,7 +183,7 @@ async function esperarApi(segundos = 180) {
     } catch (error) {
       ultimo = error.cause?.code || error.message;
     }
-    await esperar(2000);
+    await esperar(2000); // NOSONAR: reintento con espera
   }
   return { ok: false, ultimo };
 }
@@ -340,8 +340,10 @@ async function seccionSistemaArriba(ctx) {
   ctx.auditor = await iniciarSesion('auditor');
 
   ctx.ids = {};
-  for (const cliente of escenario.clientes) {
-    const { status, datos } = await api(`/api/clientes/ruc/${cliente.ruc}`, { token: ctx.operador });
+  // Solo consultas: se piden a la vez y se comprueban en orden
+  const respuestas = await Promise.all(escenario.clientes.map((cliente) => api(`/api/clientes/ruc/${cliente.ruc}`, { token: ctx.operador })));
+  for (const [i, cliente] of escenario.clientes.entries()) {
+    const { status, datos } = respuestas[i];
     ctx.ids[cliente.codigo] = (datos.data || datos)?.id_cliente;
     exigir(status === 200 && Boolean(ctx.ids[cliente.codigo]), `Cliente ${cliente.nombre} registrado (#${ctx.ids[cliente.codigo]})`, `HTTP ${status}`);
   }
@@ -363,12 +365,12 @@ async function aprobarLoteDelMes(ctx, lotes, periodo, cliente) {
 
 // 2. Correos de cada mes, ingesta y aprobación por la API
 async function seccionCorreosYAprobacion(ctx) {
-  seccion(`2. Correos de ${MESES[0]} a ${MESES[MESES.length - 1]}, ingesta y aprobación por la API (operador)`);
+  seccion(`2. Correos de ${MESES[0]} a ${MESES.at(-1)}, ingesta y aprobación por la API (operador)`);
   ctx.lotesAprobados = {};
   for (const periodo of MESES) {
     enviarCorreos(periodo);
-    const lotes = await lotesPendientes(ctx.operador, periodo);
-    for (const cliente of escenario.clientes) await aprobarLoteDelMes(ctx, lotes, periodo, cliente);
+    const lotes = await lotesPendientes(ctx.operador, periodo); // NOSONAR: cada mes necesita aprobado el anterior
+    for (const cliente of escenario.clientes) await aprobarLoteDelMes(ctx, lotes, periodo, cliente); // NOSONAR: de a uno, como el operador
   }
 }
 
@@ -377,7 +379,7 @@ async function seccionConsolidado(ctx) {
   seccion('3. Consolidado contra el cálculo a mano del escenario (contadoresAlCierre)');
   for (const periodo of MESES) {
     for (const cliente of escenario.clientes) {
-      const data = await compararConsolidado(ctx.operador, cliente, ctx.ids[cliente.codigo], periodo, { primerMes: periodo === MESES[0] });
+      const data = await compararConsolidado(ctx.operador, cliente, ctx.ids[cliente.codigo], periodo, { primerMes: periodo === MESES[0] }); // NOSONAR: las comprobaciones salen en orden
       if (cliente.codigo === 'horizonte' && periodo === '2026-10') {
         comprobar(data?.resumen?.monto_total_general === '395.48', 'Colegio Horizonte · 2026-10 factura $395,48 (el número de la demo)',
           `obtenido $${data?.resumen?.monto_total_general}`);
@@ -508,7 +510,7 @@ async function aprobarNoviembreHorizonte(ctx) {
   const conError = filas.filter((f) => f.estado_maquina === 'ERROR');
   comprobar(conError.length === 0 && filas.some((f) => f.serie_maquina === datosReemplazo.entrante),
     `${codigoH}: trae a ${datosReemplazo.entrante} en lugar de ${datosReemplazo.saliente}, sin errores`,
-    `${filas.map((f) => `${f.serie_maquina} ${f.estado_maquina} ${f.mensaje_aviso || ''}`).join('; ')}`);
+    filas.map((f) => `${f.serie_maquina} ${f.estado_maquina} ${f.mensaje_aviso || ''}`).join('; '));
   const res = await aprobar(ctx.operador, loteH.loteId, NOVIEMBRE);
   comprobar(res.status === 200, `${codigoH} (#${loteH.loteId}) aprobado`, `HTTP ${res.status}: ${motivosDe(res.datos)}`);
 }
@@ -665,6 +667,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(`Error inesperado en la prueba: ${unaLinea(error && error.stack ? error.stack : error)}`);
+  console.error(`Error inesperado en la prueba: ${unaLinea(error?.stack || error)}`);
   process.exit(1);
 });

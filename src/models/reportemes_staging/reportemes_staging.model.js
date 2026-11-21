@@ -379,8 +379,8 @@ const updateDetalleStaging = async (id_staging_detalle, data) => {
         WHERE id_staging_consolidado = $5
       `;
       await client.query(updateConsolidadoQuery, [
-        parseInt(sums.total_print) || 0, parseInt(sums.total_copy) || 0,
-        parseInt(sums.total_impresion_bn) || 0, parseInt(sums.total_impresion_color) || 0,
+        Number.parseInt(sums.total_print, 10) || 0, Number.parseInt(sums.total_copy, 10) || 0,
+        Number.parseInt(sums.total_impresion_bn, 10) || 0, Number.parseInt(sums.total_impresion_color, 10) || 0,
         consolidadoId
       ]);
     }
@@ -418,7 +418,7 @@ const updateMultiplesDetallesStaging = async (detalles) => {
         valorONull(data.nombre_host), valorONull(data.fecha_lectura),
         id_staging_detalle
       ];
-      const { rows } = await client.query(query, values);
+      const { rows } = await client.query(query, values); // NOSONAR: en orden, misma transacción y mismo client
       updatedDetalles.push(rows[0]);
     }
     await client.query('COMMIT');
@@ -439,7 +439,7 @@ const createStaging = async (reporteData) => {
     let loteId = reporteData.lote_id || reporteData.lote_carga;
     if (!loteId) throw new Error('lote_id o lote_carga es requerido');
 
-    if (typeof loteId === 'string' && isNaN(parseInt(loteId))) {
+    if (typeof loteId === 'string' && Number.isNaN(Number.parseInt(loteId, 10))) {
       const loteQuery = `SELECT id_lote FROM lotes_carga WHERE codigo_referencia = $1`;
       const { rows: loteRows } = await client.query(loteQuery, [loteId]);
       if (loteRows.length > 0) {
@@ -595,7 +595,7 @@ const approveStagingBatch = async (loteId, periodo = null, usuarioId = null, ip 
 
     for (const row of stagingRows) {
       // El consolidado de meses pasados toma el área y las copias de aquí, no de la asignación de hoy
-      const asignacion = await asignacionDelReporte(client, row, periodoFinal);
+      const asignacion = await asignacionDelReporte(client, row, periodoFinal); // NOSONAR: en orden, misma transacción
       // Tarifas del contrato en el momento de aprobar: el importe de este mes ya no cambia
       // aunque después se modifique el contrato (TAREAS-CHRISTIAN.md, sección 2)
       const tarifas = tarifasParaCongelar(asignacion);
@@ -650,7 +650,7 @@ const approveStagingBatch = async (loteId, periodo = null, usuarioId = null, ip 
         usuarioId
       ];
 
-      const { rows: [newOficial] } = await client.query(insertOficialQuery, oficialValues);
+      const { rows: [newOficial] } = await client.query(insertOficialQuery, oficialValues); // NOSONAR: en orden, misma transacción
       idsOficiales.push(newOficial.id_reporte);
 
       const moveDetailsQuery = `
@@ -681,7 +681,7 @@ const approveStagingBatch = async (loteId, periodo = null, usuarioId = null, ip 
         FROM reportes_detalle_staging
         WHERE consolidado_staging_id = $2
       `;
-      await client.query(moveDetailsQuery, [newOficial.id_reporte, row.id_staging_consolidado]);
+      await client.query(moveDetailsQuery, [newOficial.id_reporte, row.id_staging_consolidado]); // NOSONAR: necesita el id del INSERT anterior
     }
 
     // Reemplazo de máquina (caja 4): los reportes de la saliente y de la entrante del período
@@ -829,7 +829,8 @@ const validarLoteStaging = async (loteId) => {
 
   const errores = [];
   for (const [clienteId, reportes] of porCliente) {
-    const prefijo = clienteIds.length > 1 ? `Cliente ${nombres.get(clienteId) || `#${clienteId}`}: ` : '';
+    const nombreCliente = nombres.get(clienteId) || `#${clienteId}`;
+    const prefijo = clienteIds.length > 1 ? `Cliente ${nombreCliente}: ` : '';
     const maquinasDelCliente = maquinasDB.filter((m) => Number(m.cliente_id) === clienteId);
     errores.push(...erroresDelCliente(maquinasDelCliente, reportes, consolidadosConDetalle, prefijo));
   }
@@ -850,19 +851,23 @@ const validarLoteStaging = async (loteId) => {
         AND maquina_id_tentativa IS NOT NULL`,
     [loteId]
   );
-  for (const l of lecturas) {
+  // Solo lee (con el pool, fuera de una transacción): se validan a la vez y los errores quedan
+  // en el orden de las lecturas
+  const rechazos = await Promise.all(lecturas.map((l) => {
     const diaCorte = l.dia_corte || diaEcuador(new Date());
     // El día del corte en Ecuador, no en UTC (un corte a las 23:00 no es del día siguiente)
     const periodoLote = loteRows[0]?.periodo || diaCorte.slice(0, 7);
-    const rechazo = await validarLectura(pool, {
+    return validarLectura(pool, {
       maquinaId: l.maquina_id_tentativa,
       periodo: periodoLote,
       fecha: diaCorte,
       contadorBn: l.impresion_bn || 0,
       contadorColor: l.impresion_color || 0
     });
-    if (rechazo) errores.push(`Máquina ${l.serie_maquina}: ${rechazo.motivo}`);
-  }
+  }));
+  rechazos.forEach((rechazo, i) => {
+    if (rechazo) errores.push(`Máquina ${lecturas[i].serie_maquina}: ${rechazo.motivo}`);
+  });
 
   const erroresUnicos = [...new Set(errores)];
 
