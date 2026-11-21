@@ -3,6 +3,7 @@ const { consumoDelCambio } = require('@utils/maquinasCambio.consumo');
 const { consumoDeCuenta } = require('@utils/consumoPorCuenta');
 const { calcularFacturacion } = require('@utils/facturacion');
 const { sqlFechaEcuador } = require('@utils/fechaCorte');
+const { tarifasDelReporte, preferirTarifas } = require('@utils/tarifasCongeladas');
 
 const getPeriodoAnterior = (periodoActual) => {
   const [year, month] = periodoActual.split('-').map(Number);
@@ -101,11 +102,19 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
         COALESCE(prev.contador_copias_color, 0) as prev_cop_col,
         COALESCE(prev.total_servicio, 0) as prev_total_servicio,
 
-        -- ========== COSTOS ==========
+        -- ========== TARIFAS CONGELADAS AL APROBAR (snap_contrato_id en NULL = sin congelar) ==========
+        ro.snap_contrato_id,
+        ro.fecha_congelacion,
         ro.snap_costo_impresion_bn,
         ro.snap_costo_impresion_color,
-        
-        -- ========== DATOS DEL CONTRATO (el de la asignación de la máquina en el período) ==========
+        ro.snap_impresiones_bn_incluidas,
+        ro.snap_impresiones_color_incluidas,
+        ro.snap_costo_excedente_bn,
+        ro.snap_costo_excedente_color,
+        ro.snap_facturacion_de_impresora,
+
+        -- ========== DATOS DEL CONTRATO ACTUAL (el de la asignación de la máquina en el período) ==========
+        -- Solo se usan si el reporte no tiene tarifas congeladas
         i.contrato_id,
         c.impresiones_bn_incluidas,
         c.impresiones_color_incluidas,
@@ -305,9 +314,10 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
       const cambioCalculado = tieneCambio ? cambios.get(row.maquina_cambio_id) : null;
       const consumoFinal = cambioCalculado ? cambioCalculado.total : calcularConsumoNormal(row);
 
-      // Cálculo referencial (solo informativo, por máquina)
-      const dineroReferencial = (consumoFinal.total_bn * parseFloat(row.costo_contrato_bn || 0)) + 
-                                (consumoFinal.total_color * parseFloat(row.costo_contrato_color || 0));
+      // Cálculo referencial (solo informativo, por máquina), con las tarifas congeladas si las tiene
+      const { contrato: tarifasFila } = tarifasDelReporte(row);
+      const dineroReferencial = (consumoFinal.total_bn * parseFloat(tarifasFila.costo_impresion_bn || 0)) +
+                                (consumoFinal.total_color * parseFloat(tarifasFila.costo_impresion_color || 0));
       const tipoNombre = row.tipo_impresion_nombre || 'BN';
       const esColor = tipoNombre !== 'BN';
 
@@ -529,27 +539,17 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
 
     // --- FACTURACIÓN POR CONTRATO (S3-06): cuota fija + excedente + renta, por contrato y por mes ---
     // Se suma el consumo de todas las máquinas de cada contrato (detalles va en el mismo orden que filasVisibles).
+    // Un mes ya aprobado se factura con las tarifas congeladas al aprobar (src/utils/tarifasCongeladas.js):
+    // si después cambia el contrato, el importe de ese mes no cambia.
     const consumosPorContrato = new Map();
     filasVisibles.forEach((row, indice) => {
-      if (!row.contrato_id) return;
-      if (!consumosPorContrato.has(row.contrato_id)) {
-        consumosPorContrato.set(row.contrato_id, {
-          bn: 0,
-          color: 0,
-          contrato: {
-            impresiones_bn_incluidas: row.impresiones_bn_incluidas,
-            impresiones_color_incluidas: row.impresiones_color_incluidas,
-            costo_impresion_bn: row.costo_contrato_bn,
-            costo_impresion_color: row.costo_contrato_color,
-            costo_x_excedente_impresion_bn: row.costo_x_excedente_impresion_bn,
-            costo_x_excedente_impresion_color: row.costo_x_excedente_impresion_color,
-            facturacion_de_impresora: row.facturacion_de_impresora
-          }
-        });
-      }
-      const acumulado = consumosPorContrato.get(row.contrato_id);
+      const tarifas = tarifasDelReporte(row);
+      if (!tarifas.contratoId) return;
+      const acumulado = consumosPorContrato.get(tarifas.contratoId) || { bn: 0, color: 0, tarifas: null };
+      acumulado.tarifas = preferirTarifas(acumulado.tarifas, tarifas);
       acumulado.bn += detalles[indice].consumo.total_bn;
       acumulado.color += detalles[indice].consumo.total_color;
+      consumosPorContrato.set(tarifas.contratoId, acumulado);
     });
 
     const rentaDelContrato = (contratoId) => rentaEquipos
@@ -559,9 +559,9 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
     const filtrado = Boolean(areaId || maquinaId);
     let facturacion = [...consumosPorContrato.entries()]
       .sort(([a], [b]) => a - b)
-      .map(([contratoId, { bn, color, contrato }]) => ({
+      .map(([contratoId, { bn, color, tarifas }]) => ({
         contrato_id: contratoId,
-        ...calcularFacturacion(contrato, { bn, color }, rentaDelContrato(contratoId), filtrado)
+        ...calcularFacturacion(tarifas.contrato, { bn, color }, rentaDelContrato(contratoId), filtrado)
       }));
 
     // Con filtro por área o máquina, la facturación sigue siendo la del contrato completo (filtrado: true).
