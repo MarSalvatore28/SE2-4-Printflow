@@ -22,6 +22,7 @@ if (process.env.NODE_TEST_CONTEXT) {
 
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const os = require('node:os');
 const path = require('node:path');
 
@@ -426,6 +427,8 @@ async function seccionSeguridad(ctx) {
 
 const SESION_TERMINADA = 'Tu sesión terminó: inicia sesión de nuevo';
 const terminoLaSesion = (res) => res.status === 401 && res.datos.message === SESION_TERMINADA;
+// Contraseñas de un solo uso para estas comprobaciones: al azar en cada corrida, nunca escritas en el código
+const claveAlAzar = () => `Pf${crypto.randomBytes(6).toString('hex')}9`;
 
 // 4b. Cambiar la contraseña o el rol, o desactivar, termina las sesiones abiertas del usuario (migración 033)
 async function seccionSesionRevocada(ctx) {
@@ -433,19 +436,21 @@ async function seccionSesionRevocada(ctx) {
   const roles = lista((await api('/api/usuarios/roles', admin)).datos.data);
   const rolId = (nombre) => roles.find((r) => r.nombre === nombre)?.id_rol;
   const datos = { nombre: 'Sesión', apellido: 'Prueba E2E', email: 'sesion.e2e@printflow.local', rol_id: rolId('operador') };
-  let res = await api('/api/usuarios', { ...admin, metodo: 'POST', cuerpo: { ...datos, password: 'Primera2026' } });
+  const primera = claveAlAzar();
+  const segunda = claveAlAzar();
+  let res = await api('/api/usuarios', { ...admin, metodo: 'POST', cuerpo: { ...datos, password: primera } });
   const id = res.datos.data?.id_usuario;
   if (!comprobar(res.status === 201 && Boolean(id), `Usuario de prueba ${datos.email} creado (201)`, `HTTP ${res.status}: ${res.datos.message}`)) return;
   const entrar = async (password) => api('/api/auth/login', { metodo: 'POST', cuerpo: { email: datos.email, password } });
 
-  const viejo = (await entrar('Primera2026')).datos.token;
-  res = await api(`/api/usuarios/${id}`, { ...admin, metodo: 'PUT', cuerpo: { ...datos, password: 'Segunda2026' } });
+  const viejo = (await entrar(primera)).datos.token;
+  res = await api(`/api/usuarios/${id}`, { ...admin, metodo: 'PUT', cuerpo: { ...datos, password: segunda } });
   const perfil = await api('/api/auth/perfil', { token: viejo });
   const valida = await api('/api/auth/validate-token', { token: viejo });
   comprobar(res.status === 200 && terminoLaSesion(perfil) && terminoLaSesion(valida),
     `El admin le cambia la contraseña: su token de antes → 401 «${perfil.datos.message}» (también en validate-token)`,
     `PUT ${res.status} · perfil ${perfil.status}: ${perfil.datos.message} · validate-token ${valida.status}: ${valida.datos.message}`);
-  const nuevo = await entrar('Segunda2026');
+  const nuevo = await entrar(segunda);
   res = await api('/api/auth/perfil', { token: nuevo.datos.token });
   comprobar(nuevo.status === 200 && res.status === 200, 'Con la contraseña nueva inicia sesión y su token vale (200)', `login ${nuevo.status} · perfil ${res.status}`);
 
@@ -457,7 +462,7 @@ async function seccionSesionRevocada(ctx) {
   res = await api('/api/auth/perfil', { token: nuevo.datos.token });
   comprobar(terminoLaSesion(res), 'Cambiarle el rol termina su sesión (401)', `HTTP ${res.status}: ${res.datos.message}`);
 
-  const otra = (await entrar('Segunda2026')).datos.token;
+  const otra = (await entrar(segunda)).datos.token;
   await api(`/api/usuarios/${id}/activo`, { ...admin, metodo: 'PATCH', cuerpo: { activo: false } });
   await api(`/api/usuarios/${id}/activo`, { ...admin, metodo: 'PATCH', cuerpo: { activo: true } });
   res = await api('/api/auth/perfil', { token: otra });
@@ -466,7 +471,7 @@ async function seccionSesionRevocada(ctx) {
   // El admin cambia su propia contraseña: la respuesta trae un token que sigue valiendo, el de antes no
   const yo = lista((await api('/api/usuarios', admin)).datos.data).find((u) => u.email === 'admin@printflow.local') || {};
   const mio = { nombre: yo.nombre, apellido: yo.apellido, email: yo.email, rol_id: yo.rol_id };
-  res = await api(`/api/usuarios/${yo.id_usuario}`, { ...admin, metodo: 'PUT', cuerpo: { ...mio, password: 'Temporal2026x' } });
+  res = await api(`/api/usuarios/${yo.id_usuario}`, { ...admin, metodo: 'PUT', cuerpo: { ...mio, password: claveAlAzar() } });
   const renovado = res.cabeceras.get('x-nuevo-token');
   const conRenovado = await api('/api/auth/perfil', { token: renovado });
   const conViejo = await api('/api/auth/perfil', admin);

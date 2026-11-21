@@ -25,11 +25,12 @@ SET fecha_rechazo = a.fecha,
     usuario_rechazo_id = a.usuario_id,
     motivo_rechazo = NULLIF(a.valor_nuevo->>'motivo', ''),
     cliente_ids_rechazo = (
-      SELECT array_agg(DISTINCT (r->>'cliente_id_tentativo')::int ORDER BY (r->>'cliente_id_tentativo')::int)
+      SELECT array_agg(DISTINCT c.cliente_id ORDER BY c.cliente_id)
       FROM jsonb_array_elements(
         CASE WHEN jsonb_typeof(a.valor_anterior->'reportes_staging') = 'array'
              THEN a.valor_anterior->'reportes_staging' ELSE '[]'::jsonb END) AS r
-      WHERE r->>'cliente_id_tentativo' IS NOT NULL
+      CROSS JOIN LATERAL (SELECT (r->>'cliente_id_tentativo')::int AS cliente_id) AS c
+      WHERE c.cliente_id IS NOT NULL
     )
 FROM (
   SELECT DISTINCT ON (ra.id_registro) ra.id_registro, ra.fecha, ra.usuario_id, ra.valor_anterior, ra.valor_nuevo
