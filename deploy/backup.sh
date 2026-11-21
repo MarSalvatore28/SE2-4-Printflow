@@ -8,7 +8,7 @@
 #   sh /backup.sh --listar-azure        lista los respaldos guardados en Azure
 #   sh /backup.sh --bajar-azure NOMBRE  baja uno de Azure a /backups (para restaurarlo)
 #
-# Deja /backups/printflow_AAAA-MM-DD_HHMM.dump (formato custom de pg_dump, comprimido) y borra
+# Deja /backups/printflow_AAAA-MM-DD_HHMMSS.dump (formato custom de pg_dump, comprimido) y borra
 # los que tengan más de RETENCION_DIAS días (30 por defecto).
 #
 # Copia fuera de la VM (opcional): si AZURE_BLOB_SAS_URL tiene la URL de un contenedor de Azure Blob
@@ -78,7 +78,7 @@ sincronizar_azure() {
 
 # --- Respaldo local ------------------------------------------------------------------------------
 respaldar() {
-  archivo="$DIR/printflow_$(date +%Y-%m-%d_%H%M).dump"
+  archivo="$DIR/printflow_$(date +%Y-%m-%d_%H%M%S).dump"
   # Se escribe en un temporal y se renombra: nunca queda un respaldo a medias con nombre válido
   # (con «|| return»: dentro de «respaldar || ...» el set -e no rige)
   pg_dump --format=custom --file="$archivo.tmp" || { rm -f "$archivo.tmp"; return 1; }
@@ -110,7 +110,7 @@ case "${1:-}" in
     nombre=${2:-}
     case $nombre in
       printflow_*.dump) ;;
-      *) echo "Uso: sh /backup.sh --bajar-azure printflow_AAAA-MM-DD_HHMM.dump (ver --listar-azure)"; exit 1 ;;
+      *) echo "Uso: sh /backup.sh --bajar-azure printflow_AAAA-MM-DD_HHMMSS.dump (ver --listar-azure)"; exit 1 ;;
     esac
     case $nombre in
       */*) echo "Nombre no válido: $nombre"; exit 1 ;;

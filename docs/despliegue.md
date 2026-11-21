@@ -192,14 +192,14 @@ $P run --rm simulador demo.js
 **Contraseñas de los usuarios de prueba** (`admin@`, `operador@` y `auditor@printflow.local`):
 
 - **Lo recomendado:** `DEMO_PASSWORD` en el `.env` **antes del primer despliegue**, como en el paso 4 de la lista. La base calcula el hash al crearse y los tres usuarios nacen con esa contraseña, nunca con `Printflow2026*`. `demo.js` también la usa. Para verla: `grep DEMO_PASSWORD .env`.
-- **Con la base ya creada**, cambiar `DEMO_PASSWORD` no hace nada (y no se borra la base para eso). Las contraseñas se cambian entrando como admin a **Usuarios** → lápiz de cada uno → **Contraseña** y **Confirmación** → **Actualizar Usuario**. Si alguien levantó la base sin `DEMO_PASSWORD`, los usuarios tienen `Printflow2026*`: cámbialas así antes de mostrarlo.
+- **Con la base ya creada**, cambiar `DEMO_PASSWORD` no hace nada (y no se borra la base para eso). Las contraseñas se cambian entrando como admin a **Usuarios** → lápiz de cada uno → **Contraseña** y **Confirmación** → **Actualizar usuario**. Si alguien levantó la base sin `DEMO_PASSWORD`, los usuarios tienen `Printflow2026*`: cámbialas así antes de mostrarlo.
 - Si la contraseña del **operador** ya no es la `DEMO_PASSWORD` del `.env`, el simulador no puede entrar (`HTTP 401: Credenciales incorrectas`). Pásale la actual: `$P run --rm -e DEMO_PASSWORD='la-del-operador' simulador demo.js`.
 
 Compártelas solo con el equipo y el PO, nunca en el repo ni en el chat del grupo.
 
 ## 5. Respaldos
 
-El servicio `backup` hace un respaldo al arrancar y luego uno cada 24 h, en `./backups/printflow_AAAA-MM-DD_HHMM.dump`. Conserva **30 días** (`RETENCION_DIAS` en el `.env`).
+El servicio `backup` hace un respaldo al arrancar y luego uno cada 24 h, en `./backups/printflow_AAAA-MM-DD_HHMMSS.dump`. Conserva **30 días** (`RETENCION_DIAS` en el `.env`).
 
 ```bash
 ls -lh backups/                                         # ver los respaldos
@@ -236,7 +236,7 @@ En la misma VM (o en una nueva, ya preparada con las secciones 1 a 4 y el mismo 
 
 ```bash
 $P run --rm backup --listar-azure                                   # elige uno
-$P run --rm backup --bajar-azure printflow_2026-12-20_0300.dump     # queda en ./backups/
+$P run --rm backup --bajar-azure printflow_2026-12-20_030000.dump     # queda en ./backups/
 ```
 
 y sigue con «Restaurar un respaldo» (abajo). Sin VM, se baja desde el portal (contenedor `respaldos` → el archivo → **Descargar**) o con `curl -o printflow_....dump "https://CUENTA.blob.core.windows.net/respaldos/printflow_....dump?<SAS>"`, y se copia a `./backups/` de la VM nueva.
@@ -244,7 +244,7 @@ y sigue con «Restaurar un respaldo» (abajo). Sin VM, se baja desde el portal (
 ### Restaurar un respaldo
 
 ```bash
-$P exec backup pg_restore --clean --if-exists --no-owner -d printflow /backups/printflow_2026-12-20_0300.dump
+$P exec backup pg_restore --clean --if-exists --no-owner -d printflow /backups/printflow_2026-12-20_030000.dump
 $P restart api
 ```
 
