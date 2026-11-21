@@ -9,9 +9,11 @@
 #   - Respaldo diario de la base, con retención de RETENCION_DIAS días (30 por defecto) en ./backups,
 #     y copia en Azure Blob Storage si está AZURE_BLOB_SAS_URL.
 #
-# Variables nuevas en el .env de producción (ver docs/despliegue.md):
+# Variables nuevas en el .env de producción (ver docs/despliegue.md y el final de .env.example):
 #   DOMINIO=printflow-demo.eastus.cloudapp.azure.com   (o localhost para probar en la PC)
 #   AZURE_BLOB_SAS_URL=https://CUENTA.blob.core.windows.net/respaldos?sv=...   (opcional: copia fuera de la VM)
+#   RETENCION_DIAS=30                                   (opcional: días que se guardan los respaldos)
+#   HTTP_PORT=80 / HTTPS_PORT=443                       (opcional: solo para probar en una PC)
 
 services:
   db:
@@ -38,8 +40,10 @@ services:
     environment:
       DOMINIO: ${DOMINIO:?Falta DOMINIO en el .env}
     ports:
-      - "80:80"
-      - "443:443"
+      # En la VM, 80 y 443. Para probar en una PC donde están ocupados: HTTP_PORT y HTTPS_PORT en el .env
+      # (p. ej. 8480 y 8443; se entra por https://localhost:8443). Ver docs/despliegue.md, «Probarlo en tu PC».
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

@@ -7,6 +7,8 @@ const {
   searchAreas,
   createArea,
   updateArea,
+  getAreaParaCambio,
+  getAreaConMismoNombre,
   deleteArea,
   deleteAreaPermanente,
   activarArea,
@@ -14,6 +16,27 @@ const {
   getEstadisticasArea,
   getHistorialCambiosArea
 } = require('@models/area/area.model');
+const { getClienteById } = require('@models/cliente/cliente.model');
+const { validarArea } = require('@utils/areas.validacion');
+
+const PG_FOREIGN_KEY_VIOLATION = '23503';
+
+// Mensaje si el cliente ya tiene un área con ese nombre, o null
+const nombreRepetido = async (clienteId, nombre, excluirId = null) => {
+  const otra = await getAreaConMismoNombre(clienteId, nombre, excluirId);
+  if (!otra) return null;
+  return otra.activo
+    ? `El cliente ya tiene un área llamada «${otra.nombre}»`
+    : `El cliente ya tiene un área inactiva llamada «${otra.nombre}»: actívela en lugar de crear otra`;
+};
+
+// Mensaje si el cliente no existe o está inactivo (para crear o mover un área), o null
+const problemaCliente = async (clienteId) => {
+  const cliente = await getClienteById(clienteId);
+  if (!cliente) return { estado: 404, mensaje: 'Cliente no encontrado' };
+  if (!cliente.activo) return { estado: 409, mensaje: 'El cliente está inactivo: actívelo antes de agregarle áreas' };
+  return null;
+};
 
 
 const fetchAllAreas = async (req, res) => {
@@ -153,16 +176,16 @@ const searchAreasController = async (req, res) => {
 
 const crearAreaController = async (req, res) => {
   try {
-    const { cliente_id, nombre, descripcion } = req.body;
+    const { error, datos } = validarArea(req.body, { esCreacion: true });
+    if (error) return res.status(400).json({ success: false, message: error });
 
-    if (!cliente_id || !nombre) {
-      return res.status(400).json({
-        success: false,
-        message: 'Cliente y nombre son obligatorios'
-      });
-    }
+    const problema = await problemaCliente(datos.cliente_id);
+    if (problema) return res.status(problema.estado).json({ success: false, message: problema.mensaje });
 
-    const nuevoId = await createArea({ cliente_id, nombre, descripcion });
+    const repetido = await nombreRepetido(datos.cliente_id, datos.nombre);
+    if (repetido) return res.status(409).json({ success: false, message: repetido });
+
+    const nuevoId = await createArea(datos);
 
     res.status(201).json({
       success: true,
@@ -170,6 +193,9 @@ const crearAreaController = async (req, res) => {
       data: { id_area: nuevoId }
     });
   } catch (error) {
+    if (error.code === PG_FOREIGN_KEY_VIOLATION) {
+      return res.status(404).json({ success: false, message: 'Cliente no encontrado' });
+    }
     console.error('Error al crear área:', error);
     res.status(500).json({
       success: false,
@@ -179,24 +205,37 @@ const crearAreaController = async (req, res) => {
   }
 };
 
+// Por qué no se puede guardar la edición de un área ({ estado, mensaje }), o null
+const problemaEdicion = async (area, datos, id) => {
+  const cambiaCliente = datos.cliente_id !== undefined && Number(datos.cliente_id) !== Number(area.cliente_id);
+  if (cambiaCliente) {
+    // Sus asignaciones (y sus lecturas) quedarían en el cliente equivocado
+    if (area.instalaciones_totales > 0) {
+      return { estado: 409, mensaje: 'No se puede cambiar el cliente de un área que ya tiene máquinas asignadas (vigentes o retiradas)' };
+    }
+    const problema = await problemaCliente(datos.cliente_id);
+    if (problema) return problema;
+  }
+  const clienteFinal = cambiaCliente ? datos.cliente_id : area.cliente_id;
+  const repetido = await nombreRepetido(clienteFinal, datos.nombre ?? area.nombre, id);
+  return repetido ? { estado: 409, mensaje: repetido } : null;
+};
+
+// Edita nombre, descripción o cliente. Lo que no viene conserva su valor; el estado (activo)
+// cambia solo con DELETE y PATCH /:id/activar.
 const actualizarAreaController = async (req, res) => {
   try {
     const { id } = req.params;
-    const { cliente_id, nombre, descripcion, activo } = req.body;
+    const { error, datos } = validarArea(req.body, { esCreacion: false });
+    if (error) return res.status(400).json({ success: false, message: error });
 
-    if (!cliente_id || !nombre) {
-      return res.status(400).json({
-        success: false,
-        message: 'Cliente y nombre son obligatorios'
-      });
-    }
+    const area = await getAreaParaCambio(id);
+    if (!area) return res.status(404).json({ success: false, message: 'Área no encontrada' });
 
-    const affectedRows = await updateArea(id, { 
-      cliente_id, 
-      nombre, 
-      descripcion, 
-      activo 
-    });
+    const problema = await problemaEdicion(area, datos, Number(id));
+    if (problema) return res.status(problema.estado).json({ success: false, message: problema.mensaje });
+
+    const affectedRows = await updateArea(id, datos);
 
     if (affectedRows === 0) {
       return res.status(404).json({
@@ -210,6 +249,9 @@ const actualizarAreaController = async (req, res) => {
       message: 'Área actualizada exitosamente'
     });
   } catch (error) {
+    if (error.code === PG_FOREIGN_KEY_VIOLATION) {
+      return res.status(404).json({ success: false, message: 'Cliente no encontrado' });
+    }
     console.error('Error al actualizar área:', error);
     res.status(500).json({
       success: false,
@@ -222,6 +264,20 @@ const actualizarAreaController = async (req, res) => {
 const eliminarAreaController = async (req, res) => {
   try {
     const { id } = req.params;
+    const area = await getAreaParaCambio(id);
+    if (!area) return res.status(404).json({ success: false, message: 'Área no encontrada' });
+
+    // Una máquina asignada a un área inactiva seguiría recibiendo lecturas sin que el área aparezca
+    if (area.instalaciones_activas > 0) {
+      const una = area.instalaciones_activas === 1;
+      const maquinas = una ? '1 máquina asignada' : `${area.instalaciones_activas} máquinas asignadas`;
+      const accion = una ? 'retírela o muévala' : 'retírelas o muévalas';
+      return res.status(409).json({
+        success: false,
+        message: `El área «${area.nombre}» tiene ${maquinas}: ${accion} en Asignaciones antes de desactivarla`
+      });
+    }
+
     const affectedRows = await deleteArea(id);
 
     if (affectedRows === 0) {
@@ -282,6 +338,16 @@ const eliminarAreaPermanenteController = async (req, res) => {
 const activarAreaController = async (req, res) => {
   try {
     const { id } = req.params;
+    const area = await getAreaParaCambio(id);
+    if (!area) return res.status(404).json({ success: false, message: 'Área no encontrada' });
+    if (area.cliente_activo === false) {
+      return res.status(409).json({ success: false, message: 'El cliente del área está inactivo: actívelo primero' });
+    }
+    const otra = await getAreaConMismoNombre(area.cliente_id, area.nombre, Number(id));
+    if (otra?.activo) {
+      return res.status(409).json({ success: false, message: `El cliente ya tiene un área activa llamada «${otra.nombre}»` });
+    }
+
     const affectedRows = await activarArea(id);
 
     if (affectedRows === 0) {

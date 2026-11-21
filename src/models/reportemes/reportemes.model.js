@@ -1,7 +1,7 @@
 const pool = require('@config/db');
 const { consumoDelCambio } = require('@utils/maquinasCambio.consumo');
 const { consumoDeCuenta } = require('@utils/consumoPorCuenta');
-const { calcularFacturacion } = require('@utils/facturacion');
+const { calcularFacturacion, vigenciaDelContrato } = require('@utils/facturacion');
 const { sqlFechaEcuador } = require('@utils/fechaCorte');
 const { tarifasDelReporte, preferirTarifas } = require('@utils/tarifasCongeladas');
 
@@ -594,11 +594,24 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
       .filter((r) => r.contrato_id === contratoId)
       .reduce((acc, r) => acc + r.costo_mensual, 0);
 
+    // Vigencia de cada contrato: la pantalla, el PDF y el Excel lo nombran por sus fechas, no por su id
+    const idsContratos = [...consumosPorContrato.keys()];
+    const { rows: vigencias } = idsContratos.length === 0 ? { rows: [] } : await pool.query(
+      `SELECT id_contrato,
+              TO_CHAR(fecha_inicio, 'YYYY-MM-DD') AS fecha_inicio,
+              TO_CHAR(fecha_fin, 'YYYY-MM-DD') AS fecha_fin
+         FROM contratos
+        WHERE id_contrato = ANY($1::int[])`,
+      [idsContratos]
+    );
+    const vigenciaPorContrato = new Map(vigencias.map((v) => [Number(v.id_contrato), v]));
+
     const filtrado = Boolean(areaId || maquinaId);
     let facturacion = [...consumosPorContrato.entries()]
       .sort(([a], [b]) => a - b)
       .map(([contratoId, { bn, color, tarifas }]) => ({
         contrato_id: contratoId,
+        ...vigenciaDelContrato(vigenciaPorContrato.get(Number(contratoId))),
         ...calcularFacturacion(tarifas.contrato, { bn, color }, rentaDelContrato(contratoId), filtrado)
       }));
 

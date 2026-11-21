@@ -12,7 +12,8 @@
  * @param {boolean} filtrado - Indica si el consolidado se pidió filtrado por área o máquina.
  * @returns {Object} Desglose de la facturación.
  */
-const TODO_COMO_COLOR = 'Todo como color';
+// El modo de color único se reconoce sin distinguir mayúsculas (la web lo guardaba con la «C» mayúscula)
+const { esTodoColor } = require('./contratos.validacion');
 
 const aNumero = (valor) => Number(valor) || 0;
 const redondear = (valor) => Math.round(valor * 100) / 100;
@@ -48,7 +49,7 @@ function calcularFacturacion(contrato, consumos, renta = 0, filtrado = false) {
   const consumoColor = aNumero(consumos.color);
 
   // 2. Aplicar la regla según el tipo de facturación del contrato
-  const todoColor = contrato.facturacion_de_impresora === TODO_COMO_COLOR;
+  const todoColor = esTodoColor(contrato.facturacion_de_impresora);
   const bn = todoColor
     ? tramo(0, 0, 0, 0) // Todas las páginas (B/N + color) cuentan como color
     : tramo(consumoBn, incluidasBn, costoBn, costoExcBn);
@@ -70,4 +71,12 @@ function calcularFacturacion(contrato, consumos, renta = 0, filtrado = false) {
   };
 }
 
-module.exports = { calcularFacturacion };
+// Fechas del contrato que acompañan a su facturación (resumen.facturacion[]): con ellas la
+// pantalla, el PDF y el Excel nombran el contrato («Contrato del 2026/01/01 al 2026/12/31»)
+// en lugar de mostrar su id. `vigencia` es la fila de contratos con las fechas en AAAA-MM-DD.
+const vigenciaDelContrato = (vigencia) => ({
+  contrato_fecha_inicio: vigencia?.fecha_inicio ?? null,
+  contrato_fecha_fin: vigencia?.fecha_fin ?? null,
+});
+
+module.exports = { calcularFacturacion, vigenciaDelContrato };

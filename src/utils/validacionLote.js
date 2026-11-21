@@ -87,4 +87,13 @@ const erroresSinCliente = (reportes) => reportes.flatMap((stg) => {
   return errores;
 });
 
-module.exports = { agruparPorCliente, erroresDelCliente, erroresSinCliente };
+// Cómo se nombra a un cliente en los errores de un lote con varios clientes: su nombre, o su RUC,
+// nunca el id de la base. `cliente` es la fila de clientes ({ nombre, ruc }) o null si no está.
+const nombreDelCliente = (cliente) => {
+  const nombre = typeof cliente?.nombre === 'string' ? cliente.nombre.trim() : '';
+  if (nombre) return nombre;
+  const ruc = typeof cliente?.ruc === 'string' ? cliente.ruc.trim() : '';
+  return ruc ? `con RUC ${ruc}` : 'sin nombre registrado';
+};
+
+module.exports = { agruparPorCliente, erroresDelCliente, erroresSinCliente, nombreDelCliente };

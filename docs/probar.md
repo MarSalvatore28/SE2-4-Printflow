@@ -176,7 +176,7 @@ Tarda unos segundos. **Deberías ver** que los lotes de cada mes se aprueban (`�
 ```text
 Colegio Horizonte (demo) · 2026-10
   ...
-  Contrato #1: B/N 13.960 págs. (incluidas 5.000): cuota $100.00 + excedente $224.00 · color 679 págs. (incluidas 500): cuota $50.00 + excedente $21.48 · renta $0.00 = $395.48
+  Contrato desde el 2026-01-01: B/N 13.960 págs. (incluidas 5.000): cuota $100.00 + excedente $224.00 · color 679 págs. (incluidas 500): cuota $50.00 + excedente $21.48 · renta $0.00 = $395.48
   Total del cliente: 14.639 páginas · a facturar $395.48
 ```
 

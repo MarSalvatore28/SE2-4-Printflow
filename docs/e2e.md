@@ -34,7 +34,7 @@ Empieza **siempre** con una base vacía (`down -v` del proyecto de la prueba) y,
 
 ## Qué comprueba
 
-Cada comprobación sale en pantalla con ✓ o ✗. Hoy son **115**.
+Cada comprobación sale en pantalla con ✓ o ✗. Hoy son **136**.
 
 1. **Base limpia y sistema arriba:** existe el `.env` con sus claves, Docker responde, `down -v` y `up -d --build db api web`, la API contesta, `preparar-datos.js` registra los clientes, contratos, áreas y las 5 máquinas, y los tres usuarios de prueba inician sesión.
 2. **Agosto, septiembre y octubre de 2026:** el simulador genera los correos de cada mes, el «n8n» simulado los procesa (dentro de Docker, como en la demo), cada cliente tiene su lote en staging sin lecturas en ERROR y el **operador** lo aprueba por la API (`POST /api/staging/approve-batch`).
@@ -55,6 +55,7 @@ Cada comprobación sale en pantalla con ✓ o ✗. Hoy son **115**.
    - octubre sigue en $395,48;
    - **anular el reemplazo** con noviembre aprobado → 409.
 7. **Lote de noviembre de Andina:** SIMC0003 queda en ERROR con «Retroceso de contador…», SIMD0004 con «Salto anómalo…» y SIME0005 con «Lectura duplicada…» (`procesar_lectura = false`). Aprobar el lote responde **409** con los tres motivos, cada uno con su máquina («Máquina SIMC0003: Retroceso de contador…»), y el lote sigue pendiente.
+8. **Clientes, contratos y áreas:** RUC con provincia inválida (400), nombre de solo espacios (400), RUC repetido (409), el operador no crea clientes (403) y un id que no es número (400). Un cliente nuevo con un contrato «Todo como Color» (como lo mandaba la web) queda guardado como «Todo como color», el valor que entiende la facturación; un costo negativo responde 400; editar solo un costo conserva lo demás, y reenviar lo que devolvió el GET (con `costo_x_excedente_*`) conserva el excedente; un contrato superpuesto se guarda con un aviso que describe el otro por sus fechas, sin su id. Al desactivar el cliente caen sus contratos y al reactivarlo vuelve **solo** el que cayó con él (no el que se había desactivado aparte). En áreas: nombre repetido en el mismo cliente (409, sin distinguir mayúsculas), desactivar un área con máquinas asignadas (409, sigue activa), moverla a otro cliente (409) y editar sin mandar «activo» la deja activa.
 
 ## Cómo leer el resultado
 
@@ -62,7 +63,7 @@ Al final siempre sale el resumen, y el código de salida es **1** si algo falló
 
 ```text
 ======================================================================
-115 comprobaciones, 0 fallos · 41 s
+136 comprobaciones, 0 fallos · 41 s
 ======================================================================
 ```
 
@@ -72,7 +73,7 @@ Si algo falla, la línea lleva ✗ y debajo el detalle: casi siempre `esperado �
   ✗ 2026-10 · SIMB0002: consumo B/N 9.930 · color 0
       lectura esperado {"bn":373108,"color":0}, obtenido {"bn":373108,"color":0}; consumo esperado {"bn":9930,"color":0}, obtenido {"bn":373108,"color":0}
 ...
-115 comprobaciones, 1 fallos · 42 s
+136 comprobaciones, 1 fallos · 42 s
 
 Fallos:
   ✗ [3. Consolidado contra el cálculo a mano del escenario (contadoresAlCierre)] 2026-10 · SIMB0002: consumo B/N 9.930 · color 0 — ...

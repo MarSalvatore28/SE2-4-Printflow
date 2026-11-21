@@ -256,10 +256,11 @@ const validarDatosAnulacion = (body) => {
  */
 const motivoNoAnulable = ({ cambio, lecturaAprobada, lotePendiente, asignacionEntrante, asignacionSaliente, ipEnUso } = {}) => {
   if (!cambio) return { status: 404, message: 'Reemplazo no encontrado' };
-  const n = `el reemplazo #${cambio.id_maquina_cambio}`;
   const sal = cambio.snap_maquina_saliente_serie;
   const ent = cambio.snap_maquina_entrante_serie;
-  if (cambio.activo === false) return { status: 409, message: `El reemplazo #${cambio.id_maquina_cambio} ya está anulado` };
+  // El reemplazo se nombra por sus máquinas, no por su id interno
+  const n = `el reemplazo de ${sal} por ${ent}`;
+  if (cambio.activo === false) return { status: 409, message: `El reemplazo de ${sal} por ${ent} ya está anulado` };
   if (lecturaAprobada) {
     return {
       status: 409,

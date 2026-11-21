@@ -38,6 +38,8 @@ La lectura manual, el reprocesar, la ingesta y la aprobación del lote ya rechaz
   "resumen": { "...lo de hoy...": 0,
     "facturacion": [ {
       "contrato_id": 1, "modo": "DIFERENCIAR",            // o "TODO_COLOR"
+      "contrato_fecha_inicio": "2026-01-01",               // para nombrar el contrato en pantalla
+      "contrato_fecha_fin": null,                          // sin fecha de fin: vigente
       "bn":    { "consumo": 13960, "incluidas": 5000, "excedente": 8960, "cuota_fija": "100.00", "monto_excedente": "224.00" },
       "color": { "consumo": 679,   "incluidas": 500,  "excedente": 179,  "cuota_fija": "50.00",  "monto_excedente": "21.48" },
       "renta": "0.00",

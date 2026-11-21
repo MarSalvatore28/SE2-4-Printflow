@@ -166,6 +166,10 @@ const marcarTodasLeidas = async (usuarioId) => {
   return rowCount;
 };
 
+// Se puede eliminar una notificación sin lote o la de un lote ya aprobado (la aprobación queda en
+// lotes_carga). La de un lote pendiente o rechazado no: el rechazo solo se guarda en ella.
+const sePuedeEliminar = (notificacion) => !notificacion.lote_id || Boolean(notificacion.fecha_aprobacion);
+
 const eliminarNotificacion = async (id) => {
   const { rowCount } = await pool.query('DELETE FROM notificaciones WHERE id_notificacion = $1', [id]);
   return rowCount;
@@ -177,6 +181,9 @@ const eliminarLeidasAntiguas = async (dias) => {
   const { rowCount } = await pool.query(
     `DELETE FROM notificaciones n
      WHERE n.fecha_creacion < NOW() - make_interval(days => $1)
+       -- Igual que sePuedeEliminar: la de un lote pendiente o rechazado se conserva
+       AND (n.lote_id IS NULL OR EXISTS (
+         SELECT 1 FROM lotes_carga l WHERE l.id_lote = n.lote_id AND l.fecha_aprobacion IS NOT NULL))
        AND (n.leida OR NOT EXISTS (
          SELECT 1 FROM usuarios u
          WHERE u.activo = true AND NOT EXISTS (
@@ -370,6 +377,7 @@ module.exports = {
   marcarLeida,
   marcarVariasLeidas,
   marcarTodasLeidas,
+  sePuedeEliminar,
   eliminarNotificacion,
   eliminarLeidasAntiguas,
   ESTADOS_LOTE,

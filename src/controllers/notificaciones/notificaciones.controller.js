@@ -18,6 +18,13 @@ const esFechaValida = (texto) => {
   return !Number.isNaN(fecha.getTime()) && fecha.toISOString().slice(0, 10) === texto;
 };
 
+// 404/409 que lanza staging al revisar el lote dentro de la transacción (doble clic,
+// aprobar y rechazar a la vez, otro período); lo demás es un 500
+const errorDeLaAccion = (res, mensaje, err) => {
+  if (err.status) return res.status(err.status).json({ success: false, message: err.message, errores: [err.message] });
+  return error500(res, mensaje, err);
+};
+
 const error500 = (res, mensaje, err) => {
   console.error(`${mensaje}:`, err);
   return res.status(500).json({ success: false, message: mensaje });
@@ -204,6 +211,14 @@ const eliminarController = async (req, res) => {
     if (!notificacion.leida) {
       return res.status(409).json({ success: false, message: 'Solo se pueden eliminar notificaciones leídas' });
     }
+    // La notificación de un lote pendiente o rechazado es su historial: el rechazo (motivo, fecha y
+    // clientes) solo queda ahí, y borrarla también se la quitaría a los demás usuarios
+    if (!Notificaciones.sePuedeEliminar(notificacion)) {
+      return res.status(409).json({
+        success: false,
+        message: 'La notificación de un lote pendiente o rechazado no se elimina: guarda su estado y el motivo del rechazo',
+      });
+    }
     await Notificaciones.eliminarNotificacion(id);
     avisarCambio({ id_notificacion: id });
     res.json({ success: true, data: { id_notificacion: id }, message: 'Notificación eliminada' });
@@ -357,7 +372,7 @@ const accionLotePorId = (accion, mensajeError) => async (req, res) => {
   try {
     await accion(loteId, req, res);
   } catch (err) {
-    error500(res, mensajeError, err);
+    errorDeLaAccion(res, mensajeError, err);
   }
 };
 
@@ -373,7 +388,7 @@ const accionLotePorNotificacion = (accion, mensajeError) => async (req, res) => 
     }
     await accion(notificacion.lote_id, req, res);
   } catch (err) {
-    error500(res, mensajeError, err);
+    errorDeLaAccion(res, mensajeError, err);
   }
 };
 

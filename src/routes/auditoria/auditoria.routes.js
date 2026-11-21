@@ -9,7 +9,7 @@ const { listarAuditoriaController } = require('@controllers/auditoria/auditoria.
  *   get:
  *     summary: Consultar la bitácora de cambios (S3-02)
  *     description: >
- *       Quién cambió qué, cuándo y desde qué IP: contratos, asignaciones (instalaciones), reemplazos
+ *       Quién cambió qué, cuándo y desde qué IP: contratos, máquinas (maquinas), asignaciones (instalaciones), reemplazos
  *       (maquinas_cambio), aprobación y rechazo de lotes (lotes_carga), usuarios, lecturas manuales
  *       (reportes_oficiales) y reprocesos (reportes_consolidado_staging). Cada registro trae la fila
  *       antes (valor_anterior) y después (valor_nuevo) del cambio, nunca contraseñas.
@@ -20,7 +20,7 @@ const { listarAuditoriaController } = require('@controllers/auditoria/auditoria.
  *         name: tabla
  *         schema:
  *           type: string
- *           enum: [contratos, instalaciones, maquinas_cambio, lotes_carga, usuarios, reportes_oficiales, reportes_consolidado_staging]
+ *           enum: [contratos, instalaciones, maquinas, maquinas_cambio, lotes_carga, usuarios, reportes_oficiales, reportes_consolidado_staging]
  *       - in: query
  *         name: id_registro
  *         description: Clave primaria del registro en esa tabla (exige tabla)
@@ -47,7 +47,7 @@ const { listarAuditoriaController } = require('@controllers/auditoria/auditoria.
  *                       id: { type: integer }
  *                       tabla: { type: string, example: lotes_carga }
  *                       id_registro: { type: integer, example: 3 }
- *                       accion: { type: string, enum: [CREAR, ACTUALIZAR, ACTIVAR, DESACTIVAR, RETIRAR, APROBAR, RECHAZAR, REPROCESAR] }
+ *                       accion: { type: string, enum: [CREAR, ACTUALIZAR, ACTIVAR, DESACTIVAR, RETIRAR, APROBAR, RECHAZAR, REPROCESAR, ANULAR] }
  *                       fecha: { type: string, format: date-time }
  *                       ip: { type: string, example: 172.18.0.1 }
  *                       usuario_id: { type: integer }

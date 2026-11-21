@@ -1,5 +1,5 @@
 -- PrintFlow: usuarios de PRUEBA, uno por rol. SOLO para desarrollo local y la demo con datos simulados.
--- En la demo usar contraseñas nuevas (caja 13, docs/despliegue.md).
+-- En la demo usar contraseñas nuevas: DEMO_PASSWORD en el .env de la VM (docs/despliegue.md, sección 4).
 --
 -- La contraseña de los tres NO está en el repo: llega en la variable de psql «clave», que
 -- docker/postgres/init.sh toma de DEMO_PASSWORD (si está vacía, la de siempre: Printflow2026*).

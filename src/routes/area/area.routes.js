@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { requireRole } = require('@middlewares/role.middleware');
+const { idValido } = require('@middlewares/idParam.middleware');
+
+// Un :id que no es un entero positivo responde 400
+router.param('id', idValido);
 
 const {
   fetchAllAreas,

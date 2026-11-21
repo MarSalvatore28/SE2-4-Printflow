@@ -209,18 +209,25 @@ Se definen en `.env`. `npm run configurar` lo crea a partir de [`.env.example`](
 │   ├── routes/              # rutas por módulo, con su documentación Swagger
 │   ├── controllers/         # lógica de cada endpoint
 │   ├── models/              # consultas SQL
-│   └── middlewares/         # autenticación, roles y token de ingesta
+│   ├── services/            # reglas compartidas: validación de lecturas, auditoría, correo
+│   ├── utils/               # funciones puras con pruebas: facturación, fechas, validaciones
+│   └── middlewares/         # autenticación, roles, límite de login, cabeceras y token de ingesta
 ├── db/
-│   ├── migrations/          # esquema, en orden numérico
-│   └── seeds/               # catálogos y usuarios de prueba
-├── n8n/                     # flujo de ingesta exportado, sin credenciales
+│   ├── migrations/          # esquema, en orden numérico (no se editan una vez en main)
+│   ├── seeds/               # catálogos y usuarios de prueba
+│   └── migrar.sh            # aplica las migraciones pendientes (npm run migrar)
+├── simulador/               # los correos de las impresoras con datos ficticios (reemplaza a n8n en la demo)
+├── deploy/                  # producción: compose, Caddy, respaldos y actualizar.sh
+├── docs/                    # guías: probar, arquitectura, despliegue, e2e, demo y rendimiento
+├── scripts/configurar.js    # crea el .env con claves propias (npm run configurar)
+├── test/                    # pruebas unitarias (npm test) y la de punta a punta (test/e2e, npm run e2e)
 ├── docker/postgres/init.sh  # inicializa la base en Docker
 ├── docker-compose.yml
 ├── Dockerfile
-└── PLAN.md                  # equipos, fases y calendario
+└── PLAN.md                  # equipos, fases y decisiones del equipo (sección 9)
 ```
 
-Los módulos se incorporan por fases según [`PLAN.md`](PLAN.md). Algunas carpetas aparecen a medida que cada equipo integra su parte.
+El flujo de n8n con el buzón de DOX no está en el repo (es de la empresa): en la demo lo reemplaza el simulador. Ver [`docs/despliegue.md`](docs/despliegue.md), sección 9.
 
 ## Flujo de trabajo
 

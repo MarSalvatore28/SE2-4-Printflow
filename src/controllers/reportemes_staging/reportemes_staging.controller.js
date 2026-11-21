@@ -209,6 +209,9 @@ const approveStagingBatchController = async (req, res) => {
   try {
     const { loteId, periodo } = req.body;
     if (!loteId) return res.status(400).json({ success: false, message: 'Falta loteId' });
+    if (periodo !== undefined && periodo !== null && periodo !== '' && !/^\d{4}-(0[1-9]|1[0-2])$/.test(String(periodo))) {
+      return res.status(400).json({ success: false, message: 'El período debe tener el formato AAAA-MM' });
+    }
 
     const { approveStagingBatch, validarLoteStaging } = require('@models/reportemes_staging/reportemes_staging.model');
 
@@ -225,6 +228,8 @@ const approveStagingBatchController = async (req, res) => {
     const result = await approveStagingBatch(loteId, periodo, req.user?.id ?? null, req.ip);
     res.status(200).json({ success: true, message: result.message || 'Lote aprobado correctamente' });
   } catch (err) {
+    // 404/409: el lote no existe, ya se aprobó o rechazó, o se pidió otro período
+    if (err.status) return res.status(err.status).json({ success: false, message: err.message });
     console.error('Error aprobando lote:', err);
     res.status(500).json({ success: false, message: 'Error al aprobar lote' });
   }
@@ -238,6 +243,7 @@ const rejectStagingBatchController = async (req, res) => {
     await require('@models/reportemes_staging/reportemes_staging.model').rejectStagingBatch(loteId, { ...contextoAuditoria(req), motivo });
     res.status(200).json({ success: true, message: 'Lote rechazado correctamente' });
   } catch (err) {
+    if (err.status) return res.status(err.status).json({ success: false, message: err.message });
     console.error('Error rechazando lote:', err);
     res.status(500).json({ success: false, message: 'Error al rechazar lote' });
   }

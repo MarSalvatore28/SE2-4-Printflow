@@ -279,12 +279,13 @@ const createCliente = async (clienteData) => {
     RETURNING id_cliente
   `;
 
-  const { rows } = await pool.query(query, [nombre, ruc, razon_social || nombre]);
+  const { rows } = await pool.query(query, [nombre, ruc, razon_social ?? nombre]);
   return rows[0].id_cliente;
 };
 
+// El estado (activo) no se cambia aquí: deleteCliente y activarCliente hacen la cascada
 const updateCliente = async (id, clienteData) => {
-  const { nombre, ruc, razon_social, activo } = clienteData;
+  const { nombre, ruc, razon_social } = clienteData;
 
   const updates = [];
   const values = [];
@@ -301,10 +302,6 @@ const updateCliente = async (id, clienteData) => {
   if (razon_social !== undefined) {
     updates.push(`razon_social = $${paramCounter++}`);
     values.push(razon_social);
-  }
-  if (activo !== undefined) {
-    updates.push(`activo = $${paramCounter++}`);
-    values.push(activo);
   }
 
   if (updates.length === 0) {
@@ -336,10 +333,14 @@ const filasAntes = async (client, tabla, ids) => {
   return antes;
 };
 
+// Marca en la auditoría de la cascada: al reactivar el cliente solo vuelven los contratos que se
+// desactivaron con él, no los que el admin había desactivado antes uno por uno.
+const POR_BAJA_DEL_CLIENTE = 'por_baja_del_cliente';
+
 // Registra en la auditoría cada fila que cambió la cascada, con su antes y su después
-const auditarCascada = async (client, tabla, antes, accion, auditoria) => {
+const auditarCascada = async (client, tabla, antes, accion, auditoria, extra = null) => {
   for (const [idFila, fila] of antes) {
-    await auditarFila(client, { tabla, idRegistro: idFila, accion, antes: fila, ...auditoria }); // NOSONAR: en orden, misma transacción
+    await auditarFila(client, { tabla, idRegistro: idFila, accion, antes: fila, ...auditoria, extra }); // NOSONAR: en orden, misma transacción
   }
 };
 
@@ -386,7 +387,7 @@ const deleteCliente = async (id, auditoria = {}, db = pool) => {
     await client.query(`UPDATE contratos SET activo = FALSE WHERE cliente_id = $1`, [id]);
 
     await auditarCascada(client, 'instalaciones', instalacionesAntes, ACCIONES.RETIRAR, auditoria);
-    await auditarCascada(client, 'contratos', contratosAntes, ACCIONES.DESACTIVAR, auditoria);
+    await auditarCascada(client, 'contratos', contratosAntes, ACCIONES.DESACTIVAR, auditoria, { [POR_BAJA_DEL_CLIENTE]: true });
 
     await client.query('COMMIT');
     return 1;
@@ -403,6 +404,8 @@ const deleteCliente = async (id, auditoria = {}, db = pool) => {
 /**
  * Reactiva el cliente con sus áreas y contratos, en una transacción. Los contratos que vuelven a
  * estar activos quedan en la auditoría (ACTIVAR, S3-02). Las asignaciones retiradas no vuelven.
+ * Un contrato cuya última baja fue individual (DESACTIVAR sin la marca de la cascada) sigue
+ * inactivo: si no, reaparecía junto al contrato nuevo del cliente.
  */
 const activarCliente = async (id, auditoria = {}, db = pool) => {
   const client = await db.connect();
@@ -411,15 +414,25 @@ const activarCliente = async (id, auditoria = {}, db = pool) => {
     await client.query('BEGIN');
 
     const contratos = await idsBloqueados(client, `
-      SELECT id_contrato AS id FROM contratos
-      WHERE cliente_id = $1 AND activo IS DISTINCT FROM TRUE
-      ORDER BY id_contrato
-      FOR UPDATE`, id);
+      SELECT c.id_contrato AS id FROM contratos c
+      WHERE c.cliente_id = $1 AND c.activo IS DISTINCT FROM TRUE
+        AND NOT EXISTS (
+          SELECT 1 FROM (
+            SELECT ra.accion, ra.valor_nuevo FROM registro_auditoria ra
+            WHERE ra.tabla = 'contratos' AND ra.id_registro = c.id_contrato
+            ORDER BY ra.fecha DESC, ra.id DESC
+            LIMIT 1
+          ) ultima
+          WHERE ultima.accion = '${ACCIONES.DESACTIVAR}'
+            AND COALESCE(ultima.valor_nuevo ->> '${POR_BAJA_DEL_CLIENTE}', 'false') <> 'true'
+        )
+      ORDER BY c.id_contrato
+      FOR UPDATE OF c`, id);
     const contratosAntes = await filasAntes(client, 'contratos', contratos);
 
     await client.query(`UPDATE clientes SET activo = TRUE WHERE id_cliente = $1`, [id]);
     await client.query(`UPDATE areas SET activo = TRUE WHERE cliente_id = $1`, [id]);
-    await client.query(`UPDATE contratos SET activo = TRUE WHERE cliente_id = $1`, [id]);
+    await client.query(`UPDATE contratos SET activo = TRUE WHERE id_contrato = ANY($1::int[])`, [contratos]);
 
     await auditarCascada(client, 'contratos', contratosAntes, ACCIONES.ACTIVAR, auditoria);
 
@@ -505,7 +518,7 @@ const getContratoById = async (contratoId) => {
 // Otro contrato ACTIVO del mismo cliente cuyas fechas se cruzan (fecha_fin NULL = sin fin).
 const getContratoSuperpuesto = async (clienteId, fechaInicio, fechaFin, excluirId = null) => {
   const query = `
-    SELECT id_contrato
+    SELECT id_contrato, fecha_inicio, fecha_fin
     FROM contratos
     WHERE cliente_id = $1
       AND activo = true
