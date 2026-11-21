@@ -35,7 +35,9 @@ app.use((req, _res, next) => {
   next();
 });
 
-app.get('/health', async (_req, res) => {
+// /api/health es la misma comprobación, accesible desde internet por el proxy (monitoreo, S4-04).
+// Va antes del middleware de /api, así que no pide token. Solo dice si la API y la base responden.
+app.get(['/health', '/api/health'], async (_req, res) => {
   try {
     const result = await pool.query('SELECT NOW() AS now');
     res.json({ status: 'ok', db_time: result.rows[0].now });
