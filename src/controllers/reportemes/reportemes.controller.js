@@ -4,33 +4,38 @@ const {
   getPeriodosDisponibles,
 } = require('@models/reportemes/reportemes.model');
 
+const PERIODO = /^\d{4}-(0[1-9]|1[0-2])$/;
+// Entero positivo que cabe en integer: un texto o un número enorme daban 500 en PostgreSQL
+const ENTERO = /^[1-9]\d{0,8}$/;
+const opcional = (valor) => (valor === undefined || valor === '' ? null : valor);
+
+// Cliente, período (AAAA-MM, mes 01 a 12) y filtros opcionales de área y máquina.
+// Devuelve { error } (mensaje para el 400) o { datos }.
+const leerParametros = ({ clienteId, periodo }, { area_id, maquina_id } = {}) => {
+  if (!ENTERO.test(String(clienteId))) return { error: 'ID de cliente inválido' };
+  if (!PERIODO.test(String(periodo))) return { error: 'Formato inválido. Use YYYY-MM' };
+  for (const [nombre, valor] of [['area_id', opcional(area_id)], ['maquina_id', opcional(maquina_id)]]) {
+    if (valor !== null && !ENTERO.test(String(valor))) return { error: `${nombre} inválido` };
+  }
+  const entero = (valor) => (opcional(valor) === null ? null : Number(valor));
+  return {
+    datos: { clienteId: Number(clienteId), periodo, areaId: entero(area_id), maquinaId: entero(maquina_id) },
+  };
+};
+
 const getReporteConsolidadoController = async (req, res) => {
   try {
-    const { clienteId, periodo } = req.params;
-    const { area_id, maquina_id } = req.query;
+    const { error, datos } = leerParametros(req.params, req.query);
+    if (error) return res.status(400).json({ success: false, message: error });
+    const { clienteId, periodo, areaId, maquinaId } = datos;
 
-    if (!clienteId || !periodo) {
-      return res.status(400).json({ success: false, message: 'Cliente ID y Periodo son requeridos' });
-    }
-    if (!/^\d{4}-\d{2}$/.test(periodo)) {
-      return res.status(400).json({ success: false, message: 'Formato inválido. Use YYYY-MM' });
-    }
-
-    const areaId = area_id ? Number.parseInt(area_id, 10) : null;
-    const maquinaId = maquina_id ? Number.parseInt(maquina_id, 10) : null;
-
-    const resultado = await getReporteConsolidado(
-      Number.parseInt(clienteId, 10),
-      periodo,
-      areaId,
-      maquinaId
-    );
+    const resultado = await getReporteConsolidado(clienteId, periodo, areaId, maquinaId);
 
     res.status(200).json({
       success: true,
       data: resultado, 
       filtros_aplicados: {
-        cliente_id: Number.parseInt(clienteId, 10),
+        cliente_id: clienteId,
         periodo,
         area_id: areaId,
         maquina_id: maquinaId
@@ -57,25 +62,11 @@ const getPeriodosDisponiblesController = async (req, res) => {
 
 const getReporteDetalladoController = async (req, res) => {
   try {
-    const { clienteId, periodo } = req.params;
-    const { area_id, maquina_id } = req.query;
+    const { error, datos } = leerParametros(req.params, req.query);
+    if (error) return res.status(400).json({ success: false, message: error });
+    const { clienteId, periodo, areaId, maquinaId } = datos;
 
-    if (!clienteId || !periodo) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Faltan parámetros requeridos (clienteId, periodo)' 
-      });
-    }
-
-    const areaId = area_id ? Number.parseInt(area_id, 10) : null;
-    const maquinaId = maquina_id ? Number.parseInt(maquina_id, 10) : null;
-
-    const resultado = await getReporteDetallado(
-      Number.parseInt(clienteId, 10),
-      periodo,
-      areaId,
-      maquinaId
-    );
+    const resultado = await getReporteDetallado(clienteId, periodo, areaId, maquinaId);
 
     res.status(200).json({
       success: true,

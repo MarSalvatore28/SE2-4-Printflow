@@ -2,7 +2,7 @@ const pool = require('@config/db');
 
 const { validarLectura } = require('@services/validacionLecturas');
 const { sqlFechaEcuador, sqlDiaEcuador, diaEcuador } = require('@utils/fechaCorte');
-const { agruparPorCliente, erroresDelCliente, erroresSinCliente } = require('@utils/validacionLote');
+const { agruparPorCliente, erroresDelCliente, erroresSinCliente, nombreDelCliente } = require('@utils/validacionLote');
 const { tarifasParaCongelar, COLUMNAS_CONGELADAS } = require('@utils/tarifasCongeladas');
 const { ACCIONES, leerFila, auditarFila } = require('@services/auditoria');
 
@@ -11,6 +11,32 @@ const valorONull = (valor) => (valor === undefined ? null : valor);
 
 // Registro que no existe: el controlador responde 404 con este mensaje
 const noEncontrado = (message) => Object.assign(new Error(message), { status: 404 });
+// Acción que el estado del lote no permite: el controlador responde 409 con este mensaje
+const conflicto = (message) => Object.assign(new Error(message), { status: 409 });
+
+/**
+ * ¿Se puede aprobar o rechazar el lote? Se revisa con la fila BLOQUEADA, dentro de la transacción:
+ * dos clics seguidos, o un aprobar y un rechazar a la vez, esperan aquí y el segundo recibe 409.
+ *   lote: fila de lotes_carga (o null) · reportes: cuántos tiene en staging
+ *   periodo: el que pidió el usuario al aprobar (opcional)
+ * Lanza 404/409; si se puede, devuelve el período con el que se aprueba.
+ */
+const periodoParaAprobar = (lote, reportes, periodo = null) => {
+  if (!lote) throw noEncontrado('Lote no encontrado');
+  if (lote.fecha_aprobacion) throw conflicto('El lote ya fue aprobado');
+  if (reportes === 0) throw conflicto('El lote fue rechazado y no se puede aprobar');
+  // El lote se valida con su período: aprobarlo en otro mes guardaría sus lecturas en ese mes
+  if (lote.periodo && periodo && periodo !== lote.periodo) {
+    throw conflicto(`El lote es del período ${lote.periodo}: no se puede aprobar como ${periodo}`);
+  }
+  return lote.periodo || periodo || new Date().toISOString().slice(0, 7);
+};
+
+const verificarRechazable = (lote, reportes) => {
+  if (!lote) throw noEncontrado('Lote no encontrado');
+  if (lote.fecha_aprobacion) throw conflicto('El lote ya fue aprobado y no se puede rechazar');
+  if (reportes === 0) throw conflicto('El lote ya fue rechazado');
+};
 
 // print_total, copy_total y totalservicio a guardar al editar un consolidado.
 // El SELECT devuelve consolidado_print_total = print_total - copy_total (impresiones puras).
@@ -590,11 +616,7 @@ const approveStagingBatch = async (loteId, periodo = null, usuarioId = null, ip 
     `;
     const { rows: stagingRows } = await client.query(getStagingQuery, [loteId]);
 
-    if (stagingRows.length === 0) {
-      throw new Error('No se encontraron registros para este lote');
-    }
-
-    const periodoFinal = periodo || new Date().toISOString().slice(0, 7);
+    const periodoFinal = periodoParaAprobar(loteAntes, stagingRows.length, periodo);
     const idsOficiales = [];
 
     for (const row of stagingRows) {
@@ -754,14 +776,15 @@ const rejectStagingBatch = async (loteId, { usuarioId = null, ip = null, motivo 
       'SELECT * FROM reportes_consolidado_staging WHERE lote_id = $1 ORDER BY id_staging_consolidado',
       [loteId]
     );
+    verificarRechazable(loteAntes, stagingRows.length);
 
     await client.query(`DELETE FROM reportes_detalle_staging WHERE lote_id = $1`, [loteId]);
 
     await client.query(`DELETE FROM reportes_consolidado_staging WHERE lote_id = $1`, [loteId]);
 
     await client.query(
-      `UPDATE notificaciones 
-       SET leida = true, 
+      `UPDATE notificaciones
+       SET leida = true,
            fecha_lectura = NOW(),
            mensaje = CONCAT(mensaje, ' (RECHAZADO)')
        WHERE lote_id = $1`,
@@ -819,10 +842,10 @@ const validarLoteStaging = async (loteId) => {
   const nombres = new Map();
   if (clienteIds.length > 1) {
     const { rows } = await pool.query(
-      'SELECT id_cliente, nombre FROM clientes WHERE id_cliente = ANY($1::int[])',
+      'SELECT id_cliente, nombre, ruc FROM clientes WHERE id_cliente = ANY($1::int[])',
       [clienteIds]
     );
-    rows.forEach((c) => nombres.set(Number(c.id_cliente), c.nombre));
+    rows.forEach((c) => nombres.set(Number(c.id_cliente), nombreDelCliente(c)));
   }
 
   const { rows: stagingDetalle } = await pool.query(
@@ -833,7 +856,7 @@ const validarLoteStaging = async (loteId) => {
 
   const errores = [];
   for (const [clienteId, reportes] of porCliente) {
-    const nombreCliente = nombres.get(clienteId) || `#${clienteId}`;
+    const nombreCliente = nombres.get(clienteId) || nombreDelCliente(null);
     const prefijo = clienteIds.length > 1 ? `Cliente ${nombreCliente}: ` : '';
     const maquinasDelCliente = maquinasDB.filter((m) => Number(m.cliente_id) === clienteId);
     errores.push(...erroresDelCliente(maquinasDelCliente, reportes, consolidadosConDetalle, prefijo));
@@ -905,5 +928,5 @@ module.exports = {
   createStaging, updateStaging, deleteStaging, deleteOldAprobados, deleteOldRechazados, getEstadisticasStaging,
   approveStagingBatch, rejectStagingBatch, getConsolidadoConDetallesByLote, updateConsolidadoStaging,
   updateDetalleStaging, updateMultiplesDetallesStaging, validarLoteStaging,
-  getAlertasPorLote
+  getAlertasPorLote, periodoParaAprobar, verificarRechazable
 };
