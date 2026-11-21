@@ -246,6 +246,7 @@ En la PC, lo mismo es `npm run migrar` (y `npm run migrar -- --estado`).
 - Nombre `0NN_descripcion.sql` (letras, números, `_`, `-`, `.`). Nunca renombrar ni editar una que ya está en `main`: se agrega otra.
 - Sin `BEGIN`/`COMMIT` propios ni `CREATE INDEX CONCURRENTLY` (el script ya la envuelve en una transacción y las rechaza).
 - Si cambia datos, que se pueda repetir sin daño (`WHERE`, `ON CONFLICT DO NOTHING`).
+- Una base nueva las aplica en orden alfabético y una vieja, en el orden en que llegaron. Si se mergea una con número menor que otra ya aplicada (p. ej. la `022` después de la `030`), las dos bases terminan con las mismas tablas, columnas y restricciones, pero las columnas que ambas agregan a una misma tabla pueden quedar en otro **orden**. La app no depende de ese orden: lee las columnas por nombre.
 
 **Bases creadas antes de `schema_migrations` («adopción»)**
 
