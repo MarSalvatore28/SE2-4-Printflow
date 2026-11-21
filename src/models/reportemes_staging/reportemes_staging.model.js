@@ -35,7 +35,7 @@ const periodoParaAprobar = (lote, reportes, periodo = null) => {
 const verificarRechazable = (lote, reportes) => {
   if (!lote) throw noEncontrado('Lote no encontrado');
   if (lote.fecha_aprobacion) throw conflicto('El lote ya fue aprobado y no se puede rechazar');
-  if (reportes === 0) throw conflicto('El lote ya fue rechazado');
+  if (lote.fecha_rechazo || reportes === 0) throw conflicto('El lote ya fue rechazado');
 };
 
 // print_total, copy_total y totalservicio a guardar al editar un consolidado.
@@ -764,6 +764,12 @@ const approveStagingBatch = async (loteId, periodo = null, usuarioId = null, ip 
   }
 };
 
+// Clientes (sin repetir y en orden) de los reportes de staging de un lote
+const clientesDelStaging = (stagingRows) => [...new Set(stagingRows
+  .map((r) => r.cliente_id_tentativo)
+  .filter((id) => id !== null && id !== undefined)
+  .map(Number))].sort((a, b) => a - b);
+
 // auditoria (S3-02): { usuarioId, ip, motivo } de la petición
 const rejectStagingBatch = async (loteId, { usuarioId = null, ip = null, motivo = null } = {}) => {
   const client = await pool.connect();
@@ -782,11 +788,24 @@ const rejectStagingBatch = async (loteId, { usuarioId = null, ip = null, motivo 
 
     await client.query(`DELETE FROM reportes_consolidado_staging WHERE lote_id = $1`, [loteId]);
 
+    // El rechazo queda en el lote (migración 034), con los clientes que tenía: el staging ya se borró
+    await client.query(
+      `UPDATE lotes_carga
+       SET fecha_rechazo = NOW(),
+           usuario_rechazo_id = $2,
+           motivo_rechazo = $3,
+           cliente_ids_rechazo = $4::int[]
+       WHERE id_lote = $1`,
+      [loteId, usuarioId, motivo || null, clientesDelStaging(stagingRows)]
+    );
+
+    // Sus notificaciones quedan resueltas para todos
     await client.query(
       `UPDATE notificaciones
        SET leida = true,
-           fecha_lectura = NOW(),
-           mensaje = CONCAT(mensaje, ' (RECHAZADO)')
+           fecha_lectura = COALESCE(fecha_lectura, NOW()),
+           mensaje = CONCAT(mensaje, ' (RECHAZADO)'),
+           datos_adicionales = COALESCE(datos_adicionales, '{}'::jsonb) || '{"estado_lote": "DESCARTADO"}'::jsonb
        WHERE lote_id = $1`,
       [loteId]
     );
@@ -926,7 +945,7 @@ const getAlertasPorLote = async (lote_id) => {
 module.exports = {
   getAllStaging, getStagingById, getStagingByLote, getStagingPendientes, getStagingByCliente, getStagingByPeriodo,
   createStaging, updateStaging, deleteStaging, deleteOldAprobados, deleteOldRechazados, getEstadisticasStaging,
-  approveStagingBatch, rejectStagingBatch, getConsolidadoConDetallesByLote, updateConsolidadoStaging,
+  approveStagingBatch, rejectStagingBatch, clientesDelStaging, getConsolidadoConDetallesByLote, updateConsolidadoStaging,
   updateDetalleStaging, updateMultiplesDetallesStaging, validarLoteStaging,
   getAlertasPorLote, periodoParaAprobar, verificarRechazable
 };

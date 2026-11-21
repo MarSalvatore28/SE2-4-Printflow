@@ -681,6 +681,36 @@ async function seccionLoteAndina(ctx) {
     `HTTP ${res.status}: ${errores.join('; ') || res.datos.message}`);
   const pendiente = (await lotesPendientes(ctx.operador, NOVIEMBRE))[codigoA];
   comprobar(Boolean(pendiente), `${codigoA} sigue pendiente (no se aprobó nada)`);
+  await rechazarLoteAndina(ctx, loteA.loteId, codigoA);
+}
+
+// 7b. El rechazo queda en el lote (migración 034): su notificación ya se puede borrar sin perderlo
+async function rechazarLoteAndina(ctx, loteId, codigo) {
+  const operador = { token: ctx.operador };
+  const [notificacion] = lista((await api(`/api/notificaciones/lote/${loteId}`, operador)).datos.data);
+  if (!comprobar(Boolean(notificacion), `${codigo} tiene su notificación`)) return;
+  await api(`/api/notificaciones/${notificacion.id_notificacion}/marcar-leida`, { ...operador, metodo: 'PATCH' });
+  let res = await api(`/api/notificaciones/${notificacion.id_notificacion}`, { ...operador, metodo: 'DELETE' });
+  comprobar(res.status === 409, `Borrar la notificación de ${codigo} con el lote pendiente → 409: «${res.datos.message}»`, `HTTP ${res.status}`);
+
+  const motivo = 'Prueba E2E: contadores «dudosos» de noviembre';
+  res = await api(`/api/notificaciones/lotes/${loteId}/rechazar`, { ...operador, metodo: 'POST', cuerpo: { motivo } });
+  comprobar(res.status === 200 && res.datos.data?.estado === 'DESCARTADO', `Rechazar ${codigo} con motivo → 200 y queda DESCARTADO`,
+    `HTTP ${res.status}: ${res.datos.message}`);
+  const enBase = psql(`SELECT l.motivo_rechazo, u.email, l.fecha_rechazo IS NOT NULL, array_to_string(l.cliente_ids_rechazo, ',')
+    FROM lotes_carga l LEFT JOIN usuarios u ON u.id_usuario = l.usuario_rechazo_id WHERE l.id_lote = ${Number(loteId)}`);
+  const esperado = [motivo, 'operador@printflow.local', 't', String(ctx.ids.andina)].join('|');
+  comprobar(enBase.codigo === 0 && enBase.salida.trim() === esperado,
+    'lotes_carga guarda el motivo, quién rechazó, cuándo y el cliente del lote', `esperado «${esperado}», obtenido «${enBase.salida.trim()}»`);
+
+  res = await api(`/api/notificaciones/${notificacion.id_notificacion}`, { ...operador, metodo: 'DELETE' });
+  comprobar(res.status === 200, `Con el lote rechazado, su notificación se borra (200)`, `HTTP ${res.status}: ${res.datos.message}`);
+  const lote = (await api(`/api/notificaciones/lotes/${loteId}`, operador)).datos.data || {};
+  const filtrados = lista((await api(`/api/notificaciones/lotes?estado=DESCARTADO&cliente_id=${ctx.ids.andina}`, operador)).datos.data);
+  comprobar(lote.estado === 'DESCARTADO' && lote.motivo === motivo && lote.usuario_rechazo_nombre && Boolean(lote.fecha_procesamiento)
+      && lista(lote.clientes).some((c) => c.id_cliente === ctx.ids.andina) && filtrados.some((l) => l.id_lote === loteId),
+    'Sin la notificación, el lote sigue mostrando el motivo, quién y cuándo, y su cliente (también en el filtro de la lista)',
+    JSON.stringify({ estado: lote.estado, motivo: lote.motivo, usuario: lote.usuario_rechazo_nombre, clientes: lote.clientes, filtrados: filtrados.length }));
 }
 
 // Clientes, contratos y áreas: validaciones y cascada (revisión del módulo de catálogos).

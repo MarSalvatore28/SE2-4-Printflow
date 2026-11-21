@@ -5,7 +5,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const pool = require('../src/config/db');
 const {
-  approveStagingBatch, rejectStagingBatch, periodoParaAprobar, verificarRechazable,
+  approveStagingBatch, rejectStagingBatch, periodoParaAprobar, verificarRechazable, clientesDelStaging,
 } = require('../src/models/reportemes_staging/reportemes_staging.model');
 
 const fila = (cambios = {}) => ({
@@ -161,6 +161,8 @@ test('verificarRechazable: no rechaza un lote aprobado ni uno ya rechazado', () 
   assert.throws(() => verificarRechazable(null, 2), { status: 404 });
   assert.throws(() => verificarRechazable({ ...LOTE, fecha_aprobacion: '2026-11-01' }, 0), { status: 409, message: 'El lote ya fue aprobado y no se puede rechazar' });
   assert.throws(() => verificarRechazable(LOTE, 0), { status: 409, message: 'El lote ya fue rechazado' });
+  // Con el rechazo guardado en el lote (migración 034)
+  assert.throws(() => verificarRechazable({ ...LOTE, fecha_rechazo: '2026-11-21' }, 2), { status: 409, message: 'El lote ya fue rechazado' });
 });
 
 test('aprobar un lote en otro período: 409 y no guarda nada', async (t) => {
@@ -183,4 +185,32 @@ test('rechazar un lote ya aprobado: 409 y no borra ni audita', async (t) => {
   await assert.rejects(rejectStagingBatch(7, { motivo: 'tarde' }), { status: 409 });
   assert.ok(!consultas.some((c) => /DELETE FROM|UPDATE notificaciones|registro_auditoria/.test(c.sql)));
   assert.ok(consultas.some((c) => c.sql === 'ROLLBACK'));
+});
+
+test('rechazar guarda en el lote la fecha, el usuario, el motivo y sus clientes, dentro de la transacción', async (t) => {
+  const staging = [fila({ cliente_id_tentativo: 3 }), fila({ id_staging_consolidado: 11, cliente_id_tentativo: 1 }),
+    fila({ id_staging_consolidado: 12, cliente_id_tentativo: 3 }), fila({ id_staging_consolidado: 13, cliente_id_tentativo: null })];
+  const consultas = usarClienteFalso(t, { staging });
+  await rejectStagingBatch(7, { usuarioId: 9, ip: '10.0.0.1', motivo: 'Correo «repetido»' });
+
+  const indice = (re) => consultas.findIndex((c) => re.test(c.sql));
+  const update = consultas[indice(/UPDATE lotes_carga/)];
+  assert.match(update.sql, /fecha_rechazo = NOW\(\)/);
+  assert.deepEqual(update.params, [7, 9, 'Correo «repetido»', [1, 3]]);
+  assert.ok(indice(/^BEGIN$/) < indice(/UPDATE lotes_carga/));
+  assert.ok(indice(/DELETE FROM reportes_consolidado_staging/) < indice(/UPDATE lotes_carga/));
+  assert.ok(indice(/UPDATE lotes_carga/) < indice(/^COMMIT$/));
+  // Las notificaciones del lote quedan resueltas
+  assert.match(consultas[indice(/UPDATE notificaciones/)].sql, /leida = true/);
+});
+
+test('rechazar sin motivo guarda null', async (t) => {
+  const consultas = usarClienteFalso(t, { staging: [fila()] });
+  await rejectStagingBatch(7, { usuarioId: 2 });
+  assert.deepEqual(consultas.find((c) => /UPDATE lotes_carga/.test(c.sql)).params, [7, 2, null, [1]]);
+});
+
+test('clientesDelStaging: sin repetir, sin nulos y en orden', () => {
+  assert.deepEqual(clientesDelStaging([{ cliente_id_tentativo: 5 }, { cliente_id_tentativo: '2' }, { cliente_id_tentativo: 5 }, {}]), [2, 5]);
+  assert.deepEqual(clientesDelStaging([]), []);
 });
