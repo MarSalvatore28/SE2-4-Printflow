@@ -159,7 +159,7 @@ const bdCliente = (opciones) => {
   const estado = { instalacionActiva: true, contratoActivo: opciones.contratoActivo ?? true };
   return clienteFalso((sql) => {
     if (/SELECT id_instalacion AS id FROM instalaciones/.test(sql)) return { rows: estado.instalacionActiva ? [{ id: 51 }] : [] };
-    if (/SELECT id_contrato AS id FROM contratos/.test(sql)) {
+    if (/SELECT (c\.)?id_contrato AS id FROM contratos/.test(sql)) {
       const activos = /activo = TRUE/.test(sql);
       return { rows: estado.contratoActivo === activos ? [{ id: 31 }] : [] };
     }
@@ -185,7 +185,8 @@ test('desactivar cliente: la asignación retirada y el contrato desactivado qued
   assert.ok(bloqueos.length === 2 && bloqueos.every((c) => /FOR UPDATE/.test(c.sql)), 'las filas de la cascada se bloquean antes de leerlas');
   assert.deepEqual(bd.auditorias(), [
     { tabla: 'instalaciones', id: 51, accion: 'RETIRAR', usuario: USUARIO.id, antes: { id_instalacion: 51, activo: true }, despues: { id_instalacion: 51, activo: false }, ip: IP },
-    { tabla: 'contratos', id: 31, accion: 'DESACTIVAR', usuario: USUARIO.id, antes: { id_contrato: 31, activo: true }, despues: { id_contrato: 31, activo: false }, ip: IP },
+    // La marca distingue la baja en cascada de la baja individual del contrato
+    { tabla: 'contratos', id: 31, accion: 'DESACTIVAR', usuario: USUARIO.id, antes: { id_contrato: 31, activo: true }, despues: { id_contrato: 31, activo: false, por_baja_del_cliente: true }, ip: IP },
   ]);
   assert.ok(bd.liberado());
 });
@@ -201,6 +202,12 @@ test('activar cliente: los contratos que vuelven a estar activos quedan en la au
   assert.deepEqual(bd.auditorias(), [
     { tabla: 'contratos', id: 31, accion: 'ACTIVAR', usuario: USUARIO.id, antes: { id_contrato: 31, activo: false }, despues: { id_contrato: 31, activo: true }, ip: IP },
   ]);
+  // Solo vuelven los contratos que se desactivaron con el cliente, no los desactivados uno por uno
+  const seleccion = bd.consultas.find((c) => /SELECT c\.id_contrato AS id FROM contratos/.test(c.sql));
+  assert.match(seleccion.sql, /por_baja_del_cliente/);
+  const reactivacion = bd.consultas.find((c) => /UPDATE contratos SET activo = TRUE/.test(c.sql));
+  assert.match(reactivacion.sql, /id_contrato = ANY/);
+  assert.deepEqual(reactivacion.params, [[31]]);
 });
 
 test('desactivar o activar un cliente que no existe responde 404 sin abrir la transacción', async (t) => {
