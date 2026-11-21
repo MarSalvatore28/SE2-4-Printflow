@@ -212,6 +212,8 @@ const getInstalacionesActivasByCliente = async (cliente_id) => {
       c.razon_social as cliente_razon_social,
       
       co.id_contrato,
+      TO_CHAR(co.fecha_inicio, 'YYYY-MM-DD') AS contrato_fecha_inicio,
+      TO_CHAR(co.fecha_fin, 'YYYY-MM-DD') AS contrato_fecha_fin,
       co.costo_impresion_bn,
       co.costo_impresion_color,
       co.renta_equipo
@@ -263,6 +265,8 @@ const getTodasInstalacionesActivas = async () => {
       c.razon_social as cliente_razon_social,
       
       co.id_contrato,
+      TO_CHAR(co.fecha_inicio, 'YYYY-MM-DD') AS contrato_fecha_inicio,
+      TO_CHAR(co.fecha_fin, 'YYYY-MM-DD') AS contrato_fecha_fin,
       co.costo_impresion_bn,
       co.costo_impresion_color,
       co.renta_equipo
