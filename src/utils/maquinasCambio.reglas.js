@@ -150,7 +150,7 @@ const validarDatosReemplazo = (body, hoy = hoyEcuador()) => {
 };
 
 /**
- * Filtros de GET /api/maquinas-cambio (?cliente_id=&periodo=&maquina_id=).
+ * Filtros de GET /api/maquinas-cambio (?cliente_id=&periodo=&maquina_id=&incluir_anulados=).
  * Devuelve { error } o { data }.
  */
 const validarFiltrosListado = (query) => {
@@ -170,6 +170,12 @@ const validarFiltrosListado = (query) => {
     data.periodo = String(q.periodo).trim();
     if (!esPeriodo(data.periodo)) return error(400, 'El período debe tener el formato AAAA-MM');
   }
+  // Los anulados no se listan salvo que se pidan (?incluir_anulados=true)
+  if (!vacio(q.incluir_anulados)) {
+    const valor = String(q.incluir_anulados).trim().toLowerCase();
+    if (!['true', 'false', '1', '0'].includes(valor)) return error(400, 'incluir_anulados debe ser true o false');
+    data.incluir_anulados = valor === 'true' || valor === '1';
+  }
   return { data };
 };
 
@@ -188,8 +194,92 @@ const contadorMenorQueLectura = (rotulo, serie, ingresado, lectura) => {
   return null;
 };
 
+/**
+ * Cuerpo de POST /api/maquinas-cambio/:id/anular: { motivo? }. El motivo es opcional.
+ * Devuelve { error } o { data: { motivo } } (motivo null si no viene).
+ */
+const validarDatosAnulacion = (body) => {
+  const b = body && typeof body === 'object' ? body : {};
+  if (b.motivo !== undefined && b.motivo !== null && typeof b.motivo !== 'string') {
+    return error(400, 'El motivo de la anulación debe ser un texto');
+  }
+  const motivo = typeof b.motivo === 'string' ? b.motivo.trim().replace(/\s+/g, ' ') : '';
+  if (motivo.length > RAZON_MAX) return error(400, `El motivo de la anulación admite hasta ${RAZON_MAX} caracteres`);
+  return { data: { motivo: motivo || null } };
+};
+
+/**
+ * ¿Se puede anular el reemplazo? Recibe lo que el modelo leyó dentro de la transacción:
+ *   cambio              fila de maquinas_cambio (null si no existe)
+ *   lecturaAprobada     { serie, periodo } de una lectura aprobada que lo impide, o null:
+ *                       un reporte oficial enlazado al cambio, o de cualquiera de las dos
+ *                       máquinas en el período afectado o después
+ *   lotePendiente       { serie, codigo } de un lote sin aprobar con lecturas de esas
+ *                       máquinas desde el período afectado, o null
+ *   asignacionEntrante  la asignación que el registro creó para la entrante, con `vigente`
+ *                       (activa y sin retiro), o null si ya no existe
+ *   asignacionSaliente  asignación vigente que la saliente tenga HOY (null si está libre)
+ *   ipEnUso             serie de otra máquina que hoy usa la IP de la saliente, o null
+ * Devuelve { status, message } o null si se puede anular.
+ */
+const motivoNoAnulable = ({ cambio, lecturaAprobada, lotePendiente, asignacionEntrante, asignacionSaliente, ipEnUso } = {}) => {
+  if (!cambio) return { status: 404, message: 'Reemplazo no encontrado' };
+  const n = `el reemplazo #${cambio.id_maquina_cambio}`;
+  const sal = cambio.snap_maquina_saliente_serie;
+  const ent = cambio.snap_maquina_entrante_serie;
+  if (cambio.activo === false) return { status: 409, message: `El reemplazo #${cambio.id_maquina_cambio} ya está anulado` };
+  if (lecturaAprobada) {
+    return {
+      status: 409,
+      message: `No se puede anular ${n}: el período ${lecturaAprobada.periodo} ya tiene lecturas aprobadas de ${lecturaAprobada.serie}. Un período aprobado no se recalcula`,
+    };
+  }
+  if (lotePendiente) {
+    return {
+      status: 409,
+      message: `No se puede anular ${n}: el lote pendiente ${lotePendiente.codigo} trae lecturas de ${lotePendiente.serie}. Rechace ese lote, anule el reemplazo y vuelva a cargar el lote`,
+    };
+  }
+  if (!cambio.instalacion_saliente_id) {
+    return { status: 409, message: `No se puede anular ${n}: no guarda la asignación de ${sal} que retiró` };
+  }
+  if (!asignacionEntrante || !asignacionEntrante.vigente) {
+    return {
+      status: 409,
+      message: `No se puede anular ${n}: la asignación de ${ent} que creó el reemplazo ya no está vigente (se retiró o se reemplazó después)`,
+    };
+  }
+  if (asignacionSaliente) {
+    return {
+      status: 409,
+      message: `No se puede anular ${n}: ${sal} ya está asignada de nuevo a ${asignacionSaliente.cliente_nombre} · ${asignacionSaliente.area_nombre}`,
+    };
+  }
+  if (ipEnUso) {
+    return { status: 409, message: `No se puede anular ${n}: la IP de ${sal} ya la usa la máquina ${ipEnUso}` };
+  }
+  return null;
+};
+
+/**
+ * Observaciones de la asignación de la saliente sin la nota que agregó el registro del
+ * reemplazo (`<antes> | RETIRO: reemplazo #N ...`), para que vuelva a quedar como estaba.
+ */
+const quitarNotaRetiro = (observaciones, cambioId) => {
+  if (typeof observaciones !== 'string') return observaciones ?? null;
+  const marca = `RETIRO: reemplazo #${cambioId} `;
+  const i = observaciones.lastIndexOf(marca);
+  if (i === -1) return observaciones;
+  if (i === 0) return null;
+  const separador = ' | ';
+  return observaciones.slice(i - separador.length, i) === separador ? observaciones.slice(0, i - separador.length) : observaciones;
+};
+
 module.exports = {
   TIPOS_CAMBIO,
+  validarDatosAnulacion,
+  motivoNoAnulable,
+  quitarNotaRetiro,
   parseId,
   parseContador,
   parseFecha,
