@@ -65,7 +65,9 @@ const tokenUsuario = async (req, res) => {
 
   try {
     const data = verifyToken(token);
-    const usuario = await Usuario.findByEmail(data.email);
+    // Por el id, como protect: si el admin le cambió el correo (o le dio el viejo a otro
+    // usuario), el token sigue siendo de la misma persona
+    const usuario = await Usuario.findById(data.id);
 
     if (!usuario) {
       return res.status(401).json({

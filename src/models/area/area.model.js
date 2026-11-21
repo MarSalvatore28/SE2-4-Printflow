@@ -216,29 +216,58 @@ const createArea = async (areaData) => {
 };
 
 /**
- * Actualizar área
+ * Actualizar área: cambia solo los campos que vienen (cliente_id, nombre, descripcion).
+ * El estado (activo) cambia con deleteArea y activarArea.
  */
 const updateArea = async (id_area, areaData) => {
-  const { cliente_id, nombre, descripcion, activo } = areaData;
-  
-  const query = `
-    UPDATE areas
-    SET cliente_id = $1,
-        nombre = $2,
-        descripcion = $3,
-        activo = $4
-    WHERE id_area = $5
-  `;
-  
-  const { rowCount } = await pool.query(query, [
-    cliente_id,
-    nombre,
-    descripcion,
-    activo,
-    id_area
-  ]);
-  
+  const columnas = ['cliente_id', 'nombre', 'descripcion'].filter((c) => areaData[c] !== undefined);
+  if (columnas.length === 0) return 0;
+
+  const asignaciones = columnas.map((c, i) => `${c} = $${i + 1}`).join(', ');
+  const { rowCount } = await pool.query(
+    `UPDATE areas SET ${asignaciones} WHERE id_area = $${columnas.length + 1}`,
+    [...columnas.map((c) => areaData[c]), id_area]
+  );
   return rowCount;
+};
+
+/**
+ * El área con lo necesario para validar un cambio: su cliente (y si está activo) y cuántas
+ * asignaciones tiene (vigentes y en total). null si no existe.
+ */
+const getAreaParaCambio = async (id_area) => {
+  const { rows } = await pool.query(`
+    SELECT
+      a.id_area,
+      a.cliente_id,
+      a.nombre,
+      a.activo,
+      c.activo AS cliente_activo,
+      (SELECT COUNT(*)::int FROM instalaciones i
+        WHERE i.area_id = a.id_area AND i.activo = TRUE AND i.fecha_retiro IS NULL) AS instalaciones_activas,
+      (SELECT COUNT(*)::int FROM instalaciones i WHERE i.area_id = a.id_area) AS instalaciones_totales
+    FROM areas a
+    LEFT JOIN clientes c ON c.id_cliente = a.cliente_id
+    WHERE a.id_area = $1
+  `, [id_area]);
+  return rows[0] || null;
+};
+
+/**
+ * Otra área del mismo cliente con el mismo nombre (sin distinguir mayúsculas ni espacios de más),
+ * activa o no. null si no hay.
+ */
+const getAreaConMismoNombre = async (cliente_id, nombre, excluirId = null) => {
+  const { rows } = await pool.query(`
+    SELECT id_area, nombre, activo
+    FROM areas
+    WHERE cliente_id = $1
+      AND LOWER(REGEXP_REPLACE(TRIM(nombre), '[[:space:]]+', ' ', 'g')) = LOWER($2)
+      AND ($3::int IS NULL OR id_area <> $3::int)
+    ORDER BY activo DESC, id_area
+    LIMIT 1
+  `, [cliente_id, nombre, excluirId]);
+  return rows[0] || null;
 };
 
 /**
@@ -416,6 +445,8 @@ module.exports = {
   searchAreas,
   createArea,
   updateArea,
+  getAreaParaCambio,
+  getAreaConMismoNombre,
   deleteArea,
   deleteAreaPermanente,
   activarArea,

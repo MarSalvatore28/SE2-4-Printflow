@@ -76,13 +76,18 @@ const silenciarErrores = (t) => {
 
 // ------------------------------ Contratos ------------------------------
 
+// Respuesta del pool global: el cliente #4 existe y está activo; lo demás, vacío
+const clienteActivo = async (sql) => (/FROM clientes\s+WHERE id_cliente/.test(sql)
+  ? { rows: [{ id_cliente: 4, activo: true }] }
+  : { rows: [] });
+
 const CONTRATO = {
   fecha_inicio: '2026-01-01', fecha_fin: null, costo_impresion_bn: 0.02, costo_impresion_color: 0.12,
 };
 
 test('crear contrato: el alta y su auditoría en la misma transacción, con usuario e IP', async (t) => {
-  // La advertencia de superposición consulta con el pool global
-  reemplazar(t, pool, { query: async () => ({ rows: [] }) });
+  // El cliente y la advertencia de superposición se consultan con el pool global
+  reemplazar(t, pool, { query: clienteActivo });
   const bd = clienteFalso((sql) => {
     if (/INSERT INTO contratos/.test(sql)) return { rows: [{ id_contrato: 31 }] };
     if (/to_jsonb\(t\) AS fila FROM contratos/.test(sql)) return { rows: [{ fila: { id_contrato: 31, cliente_id: 4, activo: true } }] };
@@ -133,7 +138,7 @@ test('actualizar contrato: guarda la fila antes (bloqueada) y después del cambi
 
 test('si la auditoría falla, el contrato no se crea (ROLLBACK y 500)', async (t) => {
   silenciarErrores(t);
-  reemplazar(t, pool, { query: async () => ({ rows: [] }) });
+  reemplazar(t, pool, { query: clienteActivo });
   const bd = clienteFalso((sql) => {
     if (/INSERT INTO contratos/.test(sql)) return { rows: [{ id_contrato: 32 }] };
     if (/to_jsonb/.test(sql)) return { rows: [] };
@@ -154,7 +159,7 @@ const bdCliente = (opciones) => {
   const estado = { instalacionActiva: true, contratoActivo: opciones.contratoActivo ?? true };
   return clienteFalso((sql) => {
     if (/SELECT id_instalacion AS id FROM instalaciones/.test(sql)) return { rows: estado.instalacionActiva ? [{ id: 51 }] : [] };
-    if (/SELECT id_contrato AS id FROM contratos/.test(sql)) {
+    if (/SELECT (c\.)?id_contrato AS id FROM contratos/.test(sql)) {
       const activos = /activo = TRUE/.test(sql);
       return { rows: estado.contratoActivo === activos ? [{ id: 31 }] : [] };
     }
@@ -168,7 +173,8 @@ const bdCliente = (opciones) => {
   }, opciones);
 };
 
-test('desactivar cliente: la asignación retirada y el contrato desactivado quedan en la auditoría, en la misma transacción', async () => {
+test('desactivar cliente: la asignación retirada y el contrato desactivado quedan en la auditoría, en la misma transacción', async (t) => {
+  reemplazar(t, pool, { query: clienteActivo });
   const bd = bdCliente({});
   const res = respuesta();
   await eliminarClienteController({ params: { id: '4' }, pool: bd.pool, user: USUARIO, ip: IP }, res);
@@ -179,12 +185,14 @@ test('desactivar cliente: la asignación retirada y el contrato desactivado qued
   assert.ok(bloqueos.length === 2 && bloqueos.every((c) => /FOR UPDATE/.test(c.sql)), 'las filas de la cascada se bloquean antes de leerlas');
   assert.deepEqual(bd.auditorias(), [
     { tabla: 'instalaciones', id: 51, accion: 'RETIRAR', usuario: USUARIO.id, antes: { id_instalacion: 51, activo: true }, despues: { id_instalacion: 51, activo: false }, ip: IP },
-    { tabla: 'contratos', id: 31, accion: 'DESACTIVAR', usuario: USUARIO.id, antes: { id_contrato: 31, activo: true }, despues: { id_contrato: 31, activo: false }, ip: IP },
+    // La marca distingue la baja en cascada de la baja individual del contrato
+    { tabla: 'contratos', id: 31, accion: 'DESACTIVAR', usuario: USUARIO.id, antes: { id_contrato: 31, activo: true }, despues: { id_contrato: 31, activo: false, por_baja_del_cliente: true }, ip: IP },
   ]);
   assert.ok(bd.liberado());
 });
 
-test('activar cliente: los contratos que vuelven a estar activos quedan en la auditoría', async () => {
+test('activar cliente: los contratos que vuelven a estar activos quedan en la auditoría', async (t) => {
+  reemplazar(t, pool, { query: clienteActivo });
   const bd = bdCliente({ contratoActivo: false });
   const res = respuesta();
   await activarClienteController({ params: { id: '4' }, pool: bd.pool, user: USUARIO, ip: IP }, res);
@@ -194,10 +202,28 @@ test('activar cliente: los contratos que vuelven a estar activos quedan en la au
   assert.deepEqual(bd.auditorias(), [
     { tabla: 'contratos', id: 31, accion: 'ACTIVAR', usuario: USUARIO.id, antes: { id_contrato: 31, activo: false }, despues: { id_contrato: 31, activo: true }, ip: IP },
   ]);
+  // Solo vuelven los contratos que se desactivaron con el cliente, no los desactivados uno por uno
+  const seleccion = bd.consultas.find((c) => /SELECT c\.id_contrato AS id FROM contratos/.test(c.sql));
+  assert.match(seleccion.sql, /por_baja_del_cliente/);
+  const reactivacion = bd.consultas.find((c) => /UPDATE contratos SET activo = TRUE/.test(c.sql));
+  assert.match(reactivacion.sql, /id_contrato = ANY/);
+  assert.deepEqual(reactivacion.params, [[31]]);
+});
+
+test('desactivar o activar un cliente que no existe responde 404 sin abrir la transacción', async (t) => {
+  reemplazar(t, pool, { query: async () => ({ rows: [] }) });
+  for (const controlador of [eliminarClienteController, activarClienteController]) {
+    const bd = bdCliente({});
+    const res = respuesta();
+    await controlador({ params: { id: '404' }, pool: bd.pool, user: USUARIO, ip: IP }, res);
+    assert.equal(res.statusCode, 404);
+    assert.deepEqual(bd.consultas, []);
+  }
 });
 
 test('si la auditoría de la cascada falla, el cliente no se desactiva (ROLLBACK y 500)', async (t) => {
   silenciarErrores(t);
+  reemplazar(t, pool, { query: clienteActivo });
   const bd = bdCliente({ fallarAuditoria: true });
   const res = respuesta();
   await eliminarClienteController({ params: { id: '4' }, pool: bd.pool, user: USUARIO, ip: IP }, res);

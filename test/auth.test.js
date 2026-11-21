@@ -84,3 +84,23 @@ test('protect deja pasar un token válido y agrega la cabecera X-Nuevo-Token', a
   assert.equal(datos.id, 1, 'el token renovado es del mismo usuario');
   assert.equal(datos.loginAt, '2026-11-20T10:00:00.000Z', 'conserva la hora de inicio de la sesión');
 });
+
+test('validate-token busca al usuario por el id del token, no por el correo', async (t) => {
+  const { tokenUsuario } = require('@controllers/usuario/usuario.controller');
+  const consultas = [];
+  t.mock.method(pool, 'query', async (sql, params) => {
+    consultas.push({ sql, params });
+    if (/FROM usuarios\s+WHERE id_usuario/.test(sql)) return { rows: [{ ...USUARIO, id_usuario: 7, email: 'nuevo@printflow.local' }] };
+    if (/FROM roles r/.test(sql)) return { rows: [{ id_rol: 1, nombre: 'admin', descripcion: '' }] };
+    return { rows: [] };
+  });
+  // Token con el correo viejo: el admin le cambió el correo después del login
+  const token = generateToken({ id: 7, email: 'viejo@printflow.local', rol: 'admin' });
+  const r = { status: 200 };
+  const res = { status(c) { r.status = c; return this; }, json(b) { r.cuerpo = b; return this; } };
+  await tokenUsuario({ headers: { authorization: `Bearer ${token}` } }, res);
+  assert.equal(r.status, 200);
+  assert.equal(r.cuerpo.usuario.id, 7);
+  assert.equal(r.cuerpo.usuario.email, 'nuevo@printflow.local');
+  assert.ok(consultas.every((c) => !/LOWER\(email\)/.test(c.sql)), 'no busca por correo');
+});

@@ -12,7 +12,8 @@
  * @param {boolean} filtrado - Indica si el consolidado se pidió filtrado por área o máquina.
  * @returns {Object} Desglose de la facturación.
  */
-const TODO_COMO_COLOR = 'Todo como color';
+// El modo de color único se reconoce sin distinguir mayúsculas (la web lo guardaba con la «C» mayúscula)
+const { esTodoColor } = require('./contratos.validacion');
 
 const aNumero = (valor) => Number(valor) || 0;
 const redondear = (valor) => Math.round(valor * 100) / 100;
@@ -48,7 +49,7 @@ function calcularFacturacion(contrato, consumos, renta = 0, filtrado = false) {
   const consumoColor = aNumero(consumos.color);
 
   // 2. Aplicar la regla según el tipo de facturación del contrato
-  const todoColor = contrato.facturacion_de_impresora === TODO_COMO_COLOR;
+  const todoColor = esTodoColor(contrato.facturacion_de_impresora);
   const bn = todoColor
     ? tramo(0, 0, 0, 0) // Todas las páginas (B/N + color) cuentan como color
     : tramo(consumoBn, incluidasBn, costoBn, costoExcBn);
