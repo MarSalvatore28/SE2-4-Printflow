@@ -39,6 +39,10 @@ FRONT=$(sed -n 's/^FRONTEND_PATH=//p' .env | tail -n 1 | tr -d '\r"')
 FRONT=${FRONT:-../SE2-4-Printflow-Frontend}
 [ -d "$FRONT/.git" ] || { echo "No encuentro el repo del frontend en $FRONT"; exit 1; }
 
+# Las carpetas que se montan en los contenedores las crea el usuario del despliegue: si las crea
+# Docker quedan de root, y ni el respaldo ni la API (corren sin root, UID 1000) pueden escribir.
+mkdir -p backups buzon-salida
+
 if [ "${1:-}" != "--despues-del-pull" ]; then
   COMMIT=${1:-}
   case $COMMIT in
@@ -73,8 +77,6 @@ if [ "${1:-}" != "--despues-del-pull" ]; then
 fi
 
 paso "3/6 Construye las imágenes"
-# El servicio de respaldos corre sin root: la carpeta la crea el usuario del despliegue
-mkdir -p backups
 dc build
 
 paso "4/6 Migraciones pendientes"
