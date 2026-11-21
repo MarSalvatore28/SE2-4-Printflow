@@ -1,0 +1,117 @@
+# PrintFlow · despliegue automático a la VM de producción (S4-04). Ver docs/despliegue.md, sección 6.
+#
+# Cuándo corre:
+#   - solo, cuando «CI backend» termina BIEN sobre un push a main (un PR mergeado);
+#   - a mano: Actions → «Despliegue» → Run workflow, con la rama main (despliega lo último de main y
+#     del frontend; desde otra rama no hace nada).
+# GitHub solo usa la versión de este archivo que está en main: empujar otra rama no despliega nada.
+#
+# Qué hace: entra a la VM por SSH y corre deploy/actualizar.sh (respaldo, git pull de los dos repos,
+# build, migraciones pendientes, up -d y comprobación de /health). Si algo falla, el job queda en rojo
+# con el log del script.
+#
+# Secretos (Settings → Secrets and variables → Actions → Secrets). Nunca en el repo:
+#   DEPLOY_HOST          dominio de la VM (p. ej. printflow-demo.eastus.cloudapp.azure.com)
+#   DEPLOY_USER          usuario SSH de la VM (p. ej. azureuser)
+#   DEPLOY_SSH_KEY       clave privada SSH completa (con las líneas BEGIN/END), autorizada en la VM
+#   DEPLOY_KNOWN_HOSTS   (recomendado) salida de `ssh-keyscan -H DOMINIO`, para verificar que es la VM
+# Variable (pestaña Variables), opcional:
+#   DEPLOY_DIR           carpeta del backend en la VM, relativa al home (por defecto SE2-4-Printflow)
+#
+# Si faltan los secretos, el job termina en verde con un aviso «Despliegue no configurado».
+name: Despliegue
+
+on:
+  workflow_run:
+    workflows: ["CI backend"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Un despliegue a la vez; si llegan dos merges seguidos, el segundo espera al primero.
+concurrency:
+  group: despliegue-produccion
+  cancel-in-progress: false
+
+jobs:
+  desplegar:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_DIR: ${{ vars.DEPLOY_DIR || 'SE2-4-Printflow' }}
+      # Con workflow_run se despliega exactamente el commit que pasó el CI; a mano, lo último de main.
+      COMMIT: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Revisa que el despliegue esté configurado
+        id: config
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          faltan=""
+          [ -n "$DEPLOY_HOST" ] || faltan="$faltan DEPLOY_HOST"
+          [ -n "$DEPLOY_USER" ] || faltan="$faltan DEPLOY_USER"
+          [ -n "$DEPLOY_SSH_KEY" ] || faltan="$faltan DEPLOY_SSH_KEY"
+          if [ -n "$faltan" ]; then
+            echo "::warning title=Despliegue no configurado::Faltan los secretos:$faltan. No se desplegó nada. Ver docs/despliegue.md, sección 6."
+            {
+              echo "### Despliegue no configurado"
+              echo "Faltan los secretos:$faltan (Settings → Secrets and variables → Actions)."
+              echo "No se desplegó nada. Ver \`docs/despliegue.md\`, sección 6."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "listo=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          case $DEPLOY_DIR in
+            *[!A-Za-z0-9._/-]*) echo "::error::DEPLOY_DIR solo admite letras, números y . _ / -"; exit 1 ;;
+          esac
+          echo "listo=true" >> "$GITHUB_OUTPUT"
+
+      - name: Prepara la conexión SSH
+        if: steps.config.outputs.listo == 'true'
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          if [ -n "$DEPLOY_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            echo "::warning::Sin el secreto DEPLOY_KNOWN_HOSTS se acepta la huella que muestre la VM ahora (ssh-keyscan)."
+            ssh-keyscan -T 20 -H "$DEPLOY_HOST" > ~/.ssh/known_hosts
+          fi
+
+      - name: Actualiza producción (deploy/actualizar.sh en la VM)
+        if: steps.config.outputs.listo == 'true'
+        run: |
+          echo "Commit: ${COMMIT:-lo último de main}"
+          ssh -i ~/.ssh/deploy \
+            -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd '$DEPLOY_DIR' && sh deploy/actualizar.sh $COMMIT"
+
+      - name: Resumen
+        if: always() && steps.config.outputs.listo == 'true'
+        env:
+          RESULTADO: ${{ job.status }}
+        run: |
+          {
+            echo "### Despliegue: $RESULTADO"
+            echo "- Commit del backend: \`${COMMIT:-lo último de main}\`"
+            echo "- Disparado por: ${{ github.event_name }}"
+            echo "- El log completo está en el paso «Actualiza producción»."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Borra la clave SSH del runner
+        if: always()
+        run: rm -f ~/.ssh/deploy
