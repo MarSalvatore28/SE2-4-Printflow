@@ -351,11 +351,13 @@ docker run --rm -v "${PWD}:/app" -v printflow_test_modules:/app/node_modules -w 
    git checkout feature/nombre-de-la-rama
    ```
 
-2. **¿El PR agrega un archivo en `db/migrations/`?** Las migraciones solo se aplican al **crear** la base, así que hay que recrearla. Esto **borra tus datos locales**:
+2. **¿El PR agrega un archivo en `db/migrations/`?** Aplícalo a tu base, sin borrar tus datos (la base tiene que estar prendida):
 
    ```powershell
-   docker compose down -v
+   npm run migrar
    ```
+
+   Sin Node: `docker compose exec -T db sh /printflow-db/migrar.sh`. Tiene que terminar en `migración(es) aplicada(s)` o `está al día`. Si prefieres empezar de cero, `docker compose down -v` (**borra tus datos locales**).
 
 3. **Levanta con su código**, carga los datos si recreaste la base (paso 5) y sigue lo que dice su «Cómo probarlo»:
 
@@ -378,7 +380,7 @@ Todo desde `C:\printflow\SE2-4-Printflow`:
 |---|---|---|
 | Apagar el sistema | `docker compose down` | No |
 | Volver a prenderlo | `docker compose up -d` | No |
-| Traer lo último de `develop` | `git checkout develop`, `git pull` y `docker compose up -d --build` (y lo mismo con `git pull` en el frontend) | No |
+| Traer lo último de `develop` | `git checkout develop`, `git pull`, `docker compose up -d --build` y `npm run migrar` (y lo mismo con `git pull` en el frontend) | No |
 | Empezar de cero (base nueva y migraciones nuevas) | `docker compose down -v`, `docker compose up -d --build` y luego el paso 5 | **Sí** |
 | Ver los mensajes de la API (para un error) | `docker compose logs -f api` (sales con Ctrl+C) | No |
 
@@ -399,7 +401,7 @@ Todo desde `C:\printflow\SE2-4-Printflow`:
 | 403 en `/api/ingesta` desde Postman o el navegador | Es a propósito: la ingesta solo se acepta desde dentro de Docker | Usa el simulador: `docker compose run --rm simulador procesar-buzon.js` |
 | 503 «Ingesta no configurada» | `INGESTA_TOKEN` vacío en tu `.env` | `npm run configurar` y luego `docker compose up -d` |
 | `password authentication failed for user "postgres"` | La base se creó con otra `DB_PASSWORD` | `docker compose down -v` y vuelve a levantar |
-| Una tabla o columna nueva «does not exist» | Una migración nueva no se aplicó: solo corren al crear la base | `docker compose down -v`, `docker compose up -d --build` y el paso 5 |
+| Una tabla o columna nueva «does not exist» | Una migración nueva no se aplicó a tu base | `npm run migrar` (sin Node: `docker compose exec -T db sh /printflow-db/migrar.sh`) |
 | 404 «Ruta no encontrada» | La dirección está mal escrita o tu código es viejo | Revísala en Swagger; haz `git pull` y `docker compose up -d --build` |
 | Los cambios que hiciste no se ven | La imagen se armó con el código anterior | `docker compose up -d --build` (el `--build` es lo que la rehace) |
 
