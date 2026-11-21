@@ -29,14 +29,18 @@ function configuracion() {
   };
 }
 
+// El cifrado lo decide el .env: SMTP_SECURE=true para TLS directo (puerto 465); si no, nodemailer
+// pasa a TLS con STARTTLS cuando el servidor lo ofrece (puerto 587, el de DOX). Mailpit, solo local,
+// no ofrece TLS.
 let transporteSmtp;
-const crearTransporteSmtp = (smtp) => {
-  if (!transporteSmtp) transporteSmtp = nodemailer.createTransport(smtp);
+const crearTransporteSmtp = ({ host, port, secure, auth }) => {
+  transporteSmtp ||= nodemailer.createTransport({ host, port, secure, auth });
   return transporteSmtp;
 };
 
-// Arma el .eml con el mismo formato MIME que se enviaría por SMTP
-const transporteArchivo = nodemailer.createTransport({ streamTransport: true, buffer: true, newline: 'windows' });
+// Arma el .eml con el mismo formato MIME que se enviaría por SMTP. No abre ninguna conexión: el
+// mensaje queda en memoria y se guarda en el buzón de salida.
+const transporteArchivo = nodemailer.createTransport({ streamTransport: true, buffer: true, newline: 'windows' }); // NOSONAR: no usa la red
 
 const nombreArchivo = (asunto, fecha = new Date()) => {
   const marca = fecha.toISOString().replace(/[:.]/g, '-');

@@ -13,9 +13,11 @@ const { procesarBuzon } = require('./procesar-buzon');
 const { validarPeriodo, sumarMeses } = require('./lib/escenario');
 const { escenarioDeArgs } = require('./lib/escenarioGrande');
 
-const API_URL = process.env.API_URL || 'http://api:9000';
+// Por defecto, la API dentro de la red privada de Docker (el simulador corre en un contenedor)
+const API_URL = process.env.API_URL || 'http://api:9000'; // NOSONAR: red interna de Docker, sin salir del equipo
 const USUARIO = process.env.DEMO_EMAIL || 'operador@printflow.local';
 const CLAVE = process.env.DEMO_PASSWORD || 'Printflow2026*';
+const ROLES = ['admin', 'operador', 'auditor'];
 
 const args = process.argv.slice(2);
 const valor = (nombre, porDefecto) => {
@@ -41,7 +43,9 @@ async function api(ruta, { token, metodo = 'GET', cuerpo } = {}) {
 async function iniciarSesion() {
   const { status, datos } = await api('/api/auth/login', { metodo: 'POST', cuerpo: { email: USUARIO, password: CLAVE } });
   if (status !== 200) throw new Error(`No se pudo iniciar sesión como ${USUARIO} (HTTP ${status}: ${datos.message})`);
-  console.log(`Sesión iniciada como ${USUARIO} (${datos.usuario?.rol?.nombre || 'sin rol'})`);
+  // El rol que devuelve la API no se muestra tal cual: solo si es uno de los conocidos
+  const rol = ROLES.find((nombre) => nombre === datos.usuario?.rol?.nombre) || 'sin rol';
+  console.log(`Sesión iniciada como ${USUARIO} (${rol})`);
   return datos.token;
 }
 
