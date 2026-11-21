@@ -75,6 +75,9 @@ nano .env
 | `CORREO_MODO` y `SMTP_*` | Los datos del SMTP que pone DOX (ver `docs/avisos-por-correo.md`) |
 | `APP_URL` | `https://DOMINIO` (el enlace que va en los avisos) |
 | `AZURE_BLOB_SAS_URL` | (opcional, recomendado) URL del contenedor de Azure con SAS, para copiar los respaldos fuera de la VM (sección 5) |
+| `LOGIN_MAX_INTENTOS` | (opcional) intentos fallidos de inicio de sesión por IP cada 15 minutos; vacío = 10 |
+
+Con `NODE_ENV=production` la API **no arranca** (lo dice en `docker compose logs api`) si falta `INGESTA_TOKEN` o si `SECRET_KEY` tiene menos de 32 caracteres. Con los comandos `openssl` de la tabla se cumple.
 
 ## 4. Levantar
 
