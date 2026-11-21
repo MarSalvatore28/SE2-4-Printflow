@@ -22,7 +22,7 @@ const CLAVES_GENERADAS = {
   INGESTA_TOKEN: 32,
 };
 
-const LINEA_VARIABLE = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/;
+const LINEA_VARIABLE = /^\s*([A-Za-z_]\w*)\s*=(.*)$/;
 
 const generarClave = (bytes) => crypto.randomBytes(bytes).toString('hex');
 

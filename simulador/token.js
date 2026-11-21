@@ -9,7 +9,10 @@
 // Opciones: --url <dirección de la API>, --email <correo>, --clave <contraseña>.
 // El token dura 30 minutos sin uso. Si vence o ves «Token inválido», vuelve a pedir uno.
 
-const ROLES = ['admin', 'operador', 'auditor'];
+const ROLES = new Set(['admin', 'operador', 'auditor']);
+
+// Lo que llega de la API se muestra sin saltos de línea (no puede inventar líneas en la salida).
+const limpio = (valor) => String(valor ?? '').replaceAll(/[\r\n]+/g, ' ');
 
 const leerOpciones = (argumentos) => {
   const opciones = { rol: 'admin', solo: false };
@@ -19,7 +22,7 @@ const leerOpciones = (argumentos) => {
     else if (arg === '--url') opciones.url = argumentos[++i];
     else if (arg === '--email') opciones.email = argumentos[++i];
     else if (arg === '--clave') opciones.clave = argumentos[++i];
-    else if (ROLES.includes(arg)) opciones.rol = arg;
+    else if (ROLES.has(arg)) opciones.rol = arg;
     else throw new Error(`No entiendo «${arg}». Usa: admin, operador o auditor (y opcionalmente --solo, --url, --email, --clave).`);
   }
   return {
@@ -56,13 +59,13 @@ const main = async () => {
   const { token, usuario } = await pedirToken(opciones);
 
   if (opciones.solo) {
-    console.log(token);
+    console.log(limpio(token));
     return;
   }
 
   const rol = usuario.rol?.nombre || usuario.rol || '?';
-  console.log(`Sesión iniciada como ${usuario.email} (rol: ${rol}). El token dura 30 min sin uso.\n`);
-  console.log(token);
+  console.log(`Sesión iniciada como ${limpio(usuario.email)} (rol: ${limpio(rol)}). El token dura 30 min sin uso.\n`);
+  console.log(limpio(token));
   console.log(`
 Cómo usarlo:
   Postman  · importa docs/postman/PrintFlow.postman_collection.json y ejecuta «Iniciar sesión»:
