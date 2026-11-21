@@ -10,8 +10,8 @@
 
 | # | Tarea | Puntos | Rama (frontend) |
 |---|---|---|---|
-| 1 | **SonarCloud en verde: accesibilidad de los componentes compartidos** | 2 | `fix/accesibilidad-shared` |
-| 2 | **La web usable en el celular** | 2 | `feature/web-responsive` |
+| 1 | ~~SonarCloud en verde: accesibilidad de los componentes compartidos~~ **Hecho** (frontend #38) | 2 | `fix/accesibilidad-shared` |
+| 2 | ~~La web usable en el celular~~ **Hecho** (frontend #39) | 2 | `feature/web-responsive` |
 
 Lo que antes estaba en tu lista (informes con facturación, PDF y limpieza) ya lo está haciendo Marlo. No lo toques.
 

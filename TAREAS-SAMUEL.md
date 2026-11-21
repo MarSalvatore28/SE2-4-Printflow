@@ -18,11 +18,11 @@ Te toca **lo más delicado del backend**: que el sistema rechace las lecturas ma
 | # | Tarea | Puntos | Rama |
 |---|---|---|---|
 | 1 | ~~S3-01 · Validaciones de lecturas~~ **Hecho** (#58, aprobado y en `main`) | 5 | `feature/f3-validaciones` |
-| 2 | **S3-02 · Auditoría** | 3 | `feature/f3-auditoria` |
-| 3 | Tests de login y seguridad (caja 3, mejora 3.5) | 2 | `test/f0-login` |
-| 4 | Cuatro fallos del backend (abajo) | 2 | `fix/staging-ingesta` |
-| 5 | **S4-06 · Prueba E2E y defectos de la UAT con el PO** | 3 | `feature/f4-e2e` |
-| 6 | **S4-04 · Despliegue en Azure: puesta en marcha y migraciones** (con Christian) | 3 | `feature/f4-migraciones-produccion` |
+| 2 | ~~S3-02 · Auditoría~~ **Hecho** (#67) | 3 | `feature/f3-auditoria` |
+| 3 | ~~Tests de login y seguridad (caja 3, mejora 3.5)~~ **Hecho** (#68) | 2 | `test/f0-login` |
+| 4 | ~~Cuatro fallos del backend~~ **Hecho** (#64) | 2 | `fix/staging-ingesta` |
+| 5 | ~~S4-06 · Prueba E2E~~ **Hecha** (#73, `npm run e2e`). **Falta la UAT con el PO** | 3 | `feature/f4-e2e` |
+| 6 | ~~Migraciones en producción~~ **Hecho** (#69, `npm run migrar`). **Falta poner la VM en marcha** (con Christian) | 3 | `feature/f4-migraciones-produccion` |
 
 Tus migraciones van de `010` a `019`.
 

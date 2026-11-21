@@ -10,9 +10,9 @@ Tus tareas de la Fase 0 ya están en `main`: CODEOWNERS en los dos repos, la API
 
 | # | Tarea | Puntos | Rama |
 |---|---|---|---|
-| 1 | **S4-02 · Excel del consolidado** | 2 | `feature/f4-excel` |
+| 1 | ~~S4-02 · Excel del consolidado~~ **Hecho** (frontend #36) | 2 | `feature/f4-excel` |
 | 2 | **QA de cada PR** de Samuel, Christian, Roberto, Gabriela y Marlo | — | — |
-| 3 | Guion de la demo para el sponsor | 1 | — |
+| 3 | ~~Guion de la demo para el sponsor~~ **Hecho** ([`docs/guion-demo.md`](docs/guion-demo.md)) | 1 | — |
 
 Tus migraciones, si las necesitas, van de `040` a `049`.
 
