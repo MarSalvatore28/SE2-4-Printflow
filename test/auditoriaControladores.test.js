@@ -272,6 +272,8 @@ const bdLote = () => {
     if (/SELECT \* FROM reportes_consolidado_staging WHERE lote_id/.test(sql)) return { rows: STAGING };
     if (/INSERT INTO reportes_oficiales/.test(sql)) { id += 1; return { rows: [{ id_reporte: id }] }; }
     if (/UPDATE lotes_carga/.test(sql)) { aprobado = true; return { rows: [] }; }
+    // Asignación del período (área y tarifas congeladas): sin asignación en esta prueba
+    if (/FROM instalaciones i\s+JOIN areas a/.test(sql)) return { rows: [] };
     if (/INSERT INTO reportes_detalle_oficial|UPDATE reportes_oficiales|DELETE FROM|UPDATE notificaciones/.test(sql)) return { rows: [] };
     return undefined;
   });
@@ -285,9 +287,11 @@ test('aprobar un lote: guarda quién aprobó en cada lectura y audita el lote an
   const inserts = bd.consultas.filter((c) => /INSERT INTO reportes_oficiales/.test(c.sql));
   assert.equal(inserts.length, 2);
   for (const insert of inserts) {
-    assert.match(insert.sql, /usuario_validacion_id/);
     assert.equal(insert.params[0], 5, 'lote_origen_id');
-    assert.equal(insert.params[12], 9, 'usuario_validacion_id');
+    // usuario_validacion_id va después de fecha_corte, con el último parámetro
+    assert.match(insert.sql, /fecha_corte,\s+usuario_validacion_id,/);
+    assert.match(insert.sql, new RegExp(`NOW\\(\\), \\$15,\\s+\\$${insert.params.length},`));
+    assert.equal(insert.params.at(-1), 9, 'usuario_validacion_id');
   }
 
   const [registro] = bd.auditorias();

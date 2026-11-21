@@ -1,6 +1,9 @@
 const pool = require('@config/db');
 
 const { validarLectura } = require('@services/validacionLecturas');
+const { sqlFechaEcuador, sqlDiaEcuador, diaEcuador } = require('@utils/fechaCorte');
+const { agruparPorCliente, erroresDelCliente, erroresSinCliente } = require('@utils/validacionLote');
+const { tarifasParaCongelar, COLUMNAS_CONGELADAS } = require('@utils/tarifasCongeladas');
 const { ACCIONES, leerFila, auditarFila } = require('@services/auditoria');
 
 // S3-02: lo que la auditoría guarda de cada reporte del lote antes de aprobarlo o rechazarlo
@@ -160,7 +163,8 @@ const getConsolidadoConDetallesByLote = async (lote_id) => {
       CAST(COALESCE(c.print_total, 0) - COALESCE(c.copy_total, 0) AS INTEGER) as consolidado_print_total,
       c.copy_total as consolidado_copy_total,
       c.fecha_lectura as consolidado_fecha_lectura,
-      c.fecha_corte as consolidado_fecha_corte, 
+      -- En hora de Ecuador con su desfase: en UTC, un corte a las 23:00 se veía del día siguiente
+      ${sqlFechaEcuador('c.fecha_corte')} as consolidado_fecha_corte,
       c.maquina_id_tentativa,
       c.cliente_id_tentativo,
       c.serie_maquina,
@@ -529,6 +533,39 @@ const getEstadisticasStaging = async () => {
   return rows;
 };
 
+// Asignación de la máquina en el período que se aprueba (la misma regla que INSTALACION_DEL_PERIODO
+// del consolidado): prefiere la del cliente del reporte, luego la que cubre el período y luego la
+// vigente. De ahí salen el área y las tarifas de su contrato, que quedan guardadas (congeladas)
+// en el reporte oficial.
+const ASIGNACION_DEL_PERIODO = `
+  SELECT a.nombre AS area_nombre,
+         i.contrato_id,
+         c.impresiones_bn_incluidas,
+         c.impresiones_color_incluidas,
+         c.costo_impresion_bn,
+         c.costo_impresion_color,
+         c.costo_x_excedente_impresion_bn,
+         c.costo_x_excedente_impresion_color,
+         c.facturacion_de_impresora
+  FROM instalaciones i
+  JOIN areas a ON a.id_area = i.area_id
+  LEFT JOIN contratos c ON c.id_contrato = i.contrato_id
+  WHERE i.maquina_id = $1
+  ORDER BY
+    (a.cliente_id = $2::int) DESC NULLS LAST,
+    (i.fecha_instalacion < TO_DATE($3::text || '-01', 'YYYY-MM-DD') + INTERVAL '1 month'
+      AND (i.fecha_retiro IS NULL OR i.fecha_retiro >= TO_DATE($3::text || '-01', 'YYYY-MM-DD'))) DESC NULLS LAST,
+    (i.activo AND i.fecha_retiro IS NULL) DESC NULLS LAST,
+    i.fecha_instalacion DESC,
+    i.id_instalacion DESC
+  LIMIT 1`;
+
+const asignacionDelReporte = async (db, row, periodo) => {
+  if (!row.maquina_id_tentativa) return null;
+  const { rows } = await db.query(ASIGNACION_DEL_PERIODO, [row.maquina_id_tentativa, row.cliente_id_tentativo ?? null, periodo]);
+  return rows[0] || null;
+};
+
 // ip (S3-02): la de la petición, para la auditoría de la aprobación
 const approveStagingBatch = async (loteId, periodo = null, usuarioId = null, ip = null) => {
   const client = await pool.connect();
@@ -546,9 +583,16 @@ const approveStagingBatch = async (loteId, periodo = null, usuarioId = null, ip 
       throw new Error('No se encontraron registros para este lote');
     }
 
-    const periodoOficial = periodo || new Date().toISOString().slice(0, 7);
+    const periodoFinal = periodo || new Date().toISOString().slice(0, 7);
     const idsOficiales = [];
+
     for (const row of stagingRows) {
+      // El consolidado de meses pasados toma el área y las copias de aquí, no de la asignación de hoy
+      const asignacion = await asignacionDelReporte(client, row, periodoFinal);
+      // Tarifas del contrato en el momento de aprobar: el importe de este mes ya no cambia
+      // aunque después se modifique el contrato (TAREAS-CHRISTIAN.md, sección 2)
+      const tarifas = tarifasParaCongelar(asignacion);
+
       const insertOficialQuery = `
         INSERT INTO reportes_oficiales (
           lote_origen_id, 
@@ -557,32 +601,44 @@ const approveStagingBatch = async (loteId, periodo = null, usuarioId = null, ip 
           cliente_id,
           contador_impresiones_bn, 
           contador_impresiones_color,
+          contador_copias_bn,
+          contador_copias_color,
           snap_maquina_serie, 
           snap_maquina_ip,
+          snap_area_nombre,
           print_total,
           copy_total,
           total_servicio,
           fecha_procesamiento,
           fecha_corte,
-          usuario_validacion_id
+          usuario_validacion_id,
+          ${COLUMNAS_CONGELADAS.join(',\n          ')},
+          fecha_congelacion
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), $12, $13)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), $15,
+          $${16 + COLUMNAS_CONGELADAS.length},
+          ${COLUMNAS_CONGELADAS.map((_, i) => `$${16 + i}`).join(', ')},
+          CASE WHEN $16::int IS NULL THEN NULL ELSE NOW() END)
         RETURNING id_reporte
       `;
 
       const oficialValues = [
         row.lote_id,
-        periodoOficial,
+        periodoFinal,
         row.maquina_id_tentativa,
         row.cliente_id_tentativo,
         row.impresion_bn || 0,
         row.impresion_color || 0,
+        row.copia_bn || 0,
+        row.copia_color || 0,
         row.serie_maquina,
         row.ip_detectada,
+        asignacion?.area_nombre ?? null,
         (row.print_total || 0) - (row.copy_total || 0),
         row.copy_total || 0,
         row.totalservicio || 0,
         row.fecha_corte || null,
+        ...COLUMNAS_CONGELADAS.map((col) => (tarifas ? tarifas[col] : null)),
         // S3-02: trazabilidad de la lectura, quién aprobó el lote que la trajo
         usuarioId
       ];
@@ -659,7 +715,7 @@ const approveStagingBatch = async (loteId, periodo = null, usuarioId = null, ip 
       idRegistro: loteId,
       accion: ACCIONES.APROBAR,
       antes: { ...loteAntes, reportes_staging: resumenStaging(stagingRows) },
-      extra: { estado: 'PROCESADO', periodo: periodoOficial, reportes_oficiales: idsOficiales },
+      extra: { estado: 'PROCESADO', periodo: periodoFinal, reportes_oficiales: idsOficiales },
       usuarioId,
       ip,
     });
@@ -723,82 +779,64 @@ const rejectStagingBatch = async (loteId, { usuarioId = null, ip = null, motivo 
 };
 
 const validarLoteStaging = async (loteId) => {
-  const getClienteQuery = `SELECT cliente_id_tentativo FROM reportes_consolidado_staging WHERE lote_id = $1 LIMIT 1`;
-  const { rows: clienteRows } = await pool.query(getClienteQuery, [loteId]);
+  const { rows: stagingConsolidado } = await pool.query(
+    `SELECT id_staging_consolidado, ip_detectada, serie_maquina, procesar_lectura, mensaje_aviso, cliente_id_tentativo
+       FROM reportes_consolidado_staging
+      WHERE lote_id = $1
+      ORDER BY id_staging_consolidado`,
+    [loteId]
+  );
 
-  if (clienteRows.length === 0) {
+  if (stagingConsolidado.length === 0) {
     return { esValido: false, errores: ["El lote está vacío o no contiene registros consolidados."] };
   }
 
-  const cliente_id = clienteRows[0].cliente_id_tentativo;
+  // Cada cliente del lote se valida con sus propias máquinas (antes: el del primer reporte, LIMIT 1)
+  const { porCliente, sinCliente } = agruparPorCliente(stagingConsolidado);
+  const clienteIds = [...porCliente.keys()];
 
-  const queryMaquinasDB = `
-    SELECT i.ip_address, m.serie, i.contabilidad_por_usuario
-    FROM instalaciones i INNER JOIN maquinas m ON i.maquina_id = m.id_maquina INNER JOIN areas a ON i.area_id = a.id_area
-    WHERE a.cliente_id = $1 AND i.activo = TRUE AND i.fecha_retiro IS NULL
-  `;
-  const { rows: maquinasDB } = await pool.query(queryMaquinasDB, [cliente_id]);
+  const { rows: maquinasDB } = clienteIds.length === 0 ? { rows: [] } : await pool.query(
+    `SELECT a.cliente_id, i.ip_address, m.serie, i.contabilidad_por_usuario
+       FROM instalaciones i
+       INNER JOIN maquinas m ON i.maquina_id = m.id_maquina
+       INNER JOIN areas a ON i.area_id = a.id_area
+      WHERE a.cliente_id = ANY($1::int[]) AND i.activo = TRUE AND i.fecha_retiro IS NULL`,
+    [clienteIds]
+  );
 
-  const queryStagingConsolidado = `
-    SELECT id_staging_consolidado, ip_detectada, serie_maquina, procesar_lectura, mensaje_aviso 
-    FROM reportes_consolidado_staging 
-    WHERE lote_id = $1
-  `;
-  const { rows: stagingConsolidado } = await pool.query(queryStagingConsolidado, [loteId]);
+  // Con varios clientes, cada error dice de cuál es
+  const nombres = new Map();
+  if (clienteIds.length > 1) {
+    const { rows } = await pool.query(
+      'SELECT id_cliente, nombre FROM clientes WHERE id_cliente = ANY($1::int[])',
+      [clienteIds]
+    );
+    rows.forEach((c) => nombres.set(Number(c.id_cliente), c.nombre));
+  }
+
+  const { rows: stagingDetalle } = await pool.query(
+    'SELECT DISTINCT consolidado_staging_id FROM reportes_detalle_staging WHERE lote_id = $1',
+    [loteId]
+  );
+  const consolidadosConDetalle = new Set(stagingDetalle.map((d) => d.consolidado_staging_id));
 
   const errores = [];
-
-  if (maquinasDB.length !== stagingConsolidado.length) {
-    errores.push(`Cantidad inconsistente: El cliente tiene ${maquinasDB.length} máquinas instaladas, pero el lote trajo ${stagingConsolidado.length} reportes.`);
+  for (const [clienteId, reportes] of porCliente) {
+    const prefijo = clienteIds.length > 1 ? `Cliente ${nombres.get(clienteId) || `#${clienteId}`}: ` : '';
+    const maquinasDelCliente = maquinasDB.filter((m) => Number(m.cliente_id) === clienteId);
+    errores.push(...erroresDelCliente(maquinasDelCliente, reportes, consolidadosConDetalle, prefijo));
   }
+  errores.push(...erroresSinCliente(sinCliente));
 
-  stagingConsolidado.forEach(stg => {
-    const maquinaBD = maquinasDB.find(m => m.serie === stg.serie_maquina);
-
-    if (!maquinaBD) {
-      errores.push(`La máquina con Serie ${stg.serie_maquina} (IP: ${stg.ip_detectada}) reportada en el lote no está asignada a este cliente en el sistema.`);
-    } else if (maquinaBD.ip_address !== stg.ip_detectada) {
-      errores.push(`Discrepancia de IP en la máquina ${stg.serie_maquina}: El archivo indica ${stg.ip_detectada}, pero en el sistema está registrada con ${maquinaBD.ip_address}.`);
-    }
-
-    if (stg.procesar_lectura === false) {
-      errores.push(stg.mensaje_aviso || `La máquina ${stg.serie_maquina} tiene un error de estado y sus lecturas fueron bloqueadas.`);
-    }
-  });
-
-  maquinasDB.forEach(m => {
-    const estaEnStaging = stagingConsolidado.some(stg => stg.serie_maquina === m.serie);
-    if (!estaEnStaging) {
-      errores.push(`Falta el reporte de la máquina: Serie ${m.serie} (IP: ${m.ip_address}).`);
-    }
-  });
-
-  const maquinasConContabilidadDB = maquinasDB.filter(m => m.contabilidad_por_usuario === true);
-
-  if (maquinasConContabilidadDB.length > 0) {
-    const queryStagingDetalle = `SELECT DISTINCT consolidado_staging_id FROM reportes_detalle_staging WHERE lote_id = $1`;
-    const { rows: stagingDetalle } = await pool.query(queryStagingDetalle, [loteId]);
-    const consolidadosConDetalle = new Set(stagingDetalle.map(d => d.consolidado_staging_id));
-
-    maquinasConContabilidadDB.forEach(m => {
-      const reporteConsolidado = stagingConsolidado.find(stg => stg.serie_maquina === m.serie);
-
-      if (reporteConsolidado) {
-        if (reporteConsolidado.procesar_lectura !== false && !consolidadosConDetalle.has(reporteConsolidado.id_staging_consolidado)) {
-          errores.push(`La máquina Serie ${m.serie} (IP: ${m.ip_address}) requiere contabilidad por usuario, pero no se reportaron los contadores de los usuarios.`);
-        }
-      }
-    });
-  }
-
-    // S3-01: volver a validar cada lectura. Entre la ingesta y la aprobación pudo
+  // S3-01: volver a validar cada lectura. Entre la ingesta y la aprobación pudo
   // aprobarse otra lectura de la misma máquina y período.
   const { rows: loteRows } = await pool.query(
     'SELECT periodo FROM lotes_carga WHERE id_lote = $1',
     [loteId]
   );
   const { rows: lecturas } = await pool.query(
-    `SELECT serie_maquina, maquina_id_tentativa, impresion_bn, impresion_color, fecha_corte
+    `SELECT serie_maquina, maquina_id_tentativa, impresion_bn, impresion_color,
+            ${sqlDiaEcuador('fecha_corte')} AS dia_corte
        FROM reportes_consolidado_staging
       WHERE lote_id = $1
         AND procesar_lectura IS DISTINCT FROM FALSE
@@ -806,11 +844,13 @@ const validarLoteStaging = async (loteId) => {
     [loteId]
   );
   for (const l of lecturas) {
-    const periodoLote = loteRows[0]?.periodo || new Date(l.fecha_corte).toISOString().slice(0, 7);
+    const diaCorte = l.dia_corte || diaEcuador(new Date());
+    // El día del corte en Ecuador, no en UTC (un corte a las 23:00 no es del día siguiente)
+    const periodoLote = loteRows[0]?.periodo || diaCorte.slice(0, 7);
     const rechazo = await validarLectura(pool, {
       maquinaId: l.maquina_id_tentativa,
       periodo: periodoLote,
-      fecha: new Date(l.fecha_corte).toISOString().slice(0, 10),
+      fecha: diaCorte,
       contadorBn: l.impresion_bn || 0,
       contadorColor: l.impresion_color || 0
     });
