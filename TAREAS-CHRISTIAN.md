@@ -6,6 +6,7 @@ Te toca **lo que se factura**: que el consolidado deje de salir en $0 (S3-06), q
 > - El repo es **`MarSalvatore28/SE2-4-Printflow`** (y el frontend, `MarSalvatore28/SE2-4-Printflow-Frontend`). Acepta las invitaciones que te llegaron por correo; si no, no podrás hacer push.
 > - Actualiza tu copia (`git checkout develop && git pull`) y crea cada rama desde ahí. `reportemes.model.js` cambió hace poco: el informe por usuario ahora calcula el consumo del período.
 > - El backend ahora también tiene SonarCloud: tu PR mostrará su revisión.
+> - **Para probar** (crear tu `.env`, sacar el token, Postman, Swagger y la seguridad): [`docs/probar.md`](docs/probar.md). No hay que pedirle claves a nadie: `npm run configurar` genera las tuyas.
 
 > **Necesitamos dejar esto listo ya. Lo hacemos ahora, empezando por la tarea 1.** No hay fecha de entrega: es urgente para el medio parcial.
 > Una tarea está **terminada** solo cuando tiene las 4 cosas:
@@ -93,7 +94,7 @@ Hoy no se puede deshacer un reemplazo registrado por error.
 
 - `GET /api/reportes/periodo/:periodo` y `GET /api/reportes/cliente/:id` responden **501**. Impleméntalos o bórralos, junto con sus rutas y su Swagger.
 - **Borra** `src/services/maquina_asignacion/` y `src/types/maquina_asignacion/` del **frontend**: nadie los importa (caja 6, mejora 3.4). Comprueba con `npm run build`.
-- `src/config/swagger.js`: el título dice «BackContadores API» y el servidor, `http://localhost:3000`. Pon «PrintFlow API» y quita el servidor fijo.
+- ~~`src/config/swagger.js`: título y servidor fijo.~~ **Hecho** (Swagger ya funciona en http://localhost:8080/api-docs).
 
 ## 6. S4-04 · Despliegue automático, respaldos fuera de la VM y monitoreo (con Samuel)
 

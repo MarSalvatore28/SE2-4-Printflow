@@ -43,10 +43,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Crea un .env de prueba
+      - name: Crea un .env de prueba (npm run configurar, como cualquier integrante)
         run: |
-          cp .env.example .env
-          sed -i 's/^DB_PASSWORD=$/DB_PASSWORD=ci-clave/; s/^SECRET_KEY=$/SECRET_KEY=ci-secreto/' .env
+          node scripts/configurar.js
           echo "FRONTEND_PATH=." >> .env
 
       - name: Levanta la base y la API
@@ -74,6 +73,13 @@ jobs:
               .then(async (r) => { const b = await r.json(); console.log(r.status, b.message || ''); process.exit(r.ok && b.token ? 0 : 1); })
               .catch((e) => { console.error(e); process.exit(1); });
           " || { docker compose logs api db; exit 1; }
+
+      - name: npm run token funciona sin Node (simulador, los 3 roles)
+        run: |
+          for rol in admin operador auditor; do
+            docker compose run --rm -T simulador token.js "$rol" --solo > /dev/null || { docker compose logs api; exit 1; }
+            echo "OK: token de $rol"
+          done
 
       - name: Apaga todo
         if: always()

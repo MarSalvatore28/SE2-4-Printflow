@@ -12,8 +12,12 @@ const { protect } = require('@middlewares/auth.middleware');
  * @swagger
  * /api/auth/login:
  *   post:
- *     summary: Login user
+ *     summary: Iniciar sesión (devuelve el token para «Authorize»)
+ *     description: >
+ *       Usuarios de prueba: admin@printflow.local, operador@printflow.local y auditor@printflow.local,
+ *       contraseña Printflow2026*. El token dura 30 min sin uso.
  *     tags: [Auth]
+ *     security: []
  *     requestBody:
  *       required: true
  *       content:
@@ -26,8 +30,10 @@ const { protect } = require('@middlewares/auth.middleware');
  *             properties:
  *               email:
  *                 type: string
+ *                 example: admin@printflow.local
  *               password:
  *                 type: string
+ *                 example: Printflow2026*
  *     responses:
  *       200:
  *         description: Login successful

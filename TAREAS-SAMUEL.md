@@ -6,6 +6,7 @@ Te toca **lo más delicado del backend**: que el sistema rechace las lecturas ma
 > - El repo es **`MarSalvatore28/SE2-4-Printflow`**. Acepta la invitación que te llegó por correo; si no, no podrás hacer push.
 > - Actualiza tu copia (`git checkout develop && git pull`) y crea cada rama desde ahí.
 > - El backend ahora también tiene SonarCloud: tu PR mostrará su revisión.
+> - **Para probar** (crear tu `.env`, sacar el token, Postman, Swagger y la seguridad): [`docs/probar.md`](docs/probar.md). No hay que pedirle claves a nadie: `npm run configurar` genera las tuyas.
 
 > **Necesitamos dejar esto listo ya. Lo hacemos ahora, empezando por la tarea 1.** No hay fecha de entrega: es urgente para el medio parcial.
 > Una tarea está **terminada** solo cuando tiene las 4 cosas:
@@ -66,7 +67,7 @@ Avisa en el grupo antes de tocar los controladores de los demás. Son 1 o 2 lín
 
 ## 3. Tests de login y seguridad
 
-En `test/auth.test.js`, como pedía la caja 3. Al inicio pon `process.env.SECRET_KEY = 'test'` y `require('module-alias/register')`.
+En `test/auth.test.js`, como pedía la caja 3. Cómo está armada la seguridad y qué debe responder cada caso: [`docs/probar.md`](docs/probar.md), sección 4 (la colección de Postman ya trae esos casos para probarlos a mano). Al inicio pon `process.env.SECRET_KEY = 'test'` y `require('module-alias/register')`.
 - `generateToken` y `verifyToken` devuelven el mismo `id`.
 - Un token firmado con otra clave lanza error.
 - `protect` sin cabecera responde 401 y con un token falso, también 401.
