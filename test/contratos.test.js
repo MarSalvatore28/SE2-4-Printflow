@@ -130,3 +130,33 @@ test('el aviso de superposición describe el otro contrato por sus fechas, sin s
     'Se superpone con el contrato vigente del 01/01/2026 al 31/12/2026'
   );
 });
+
+test('el excedente se acepta con el nombre del GET (costo_x_excedente_*) o el de la web, y sin ninguno se conserva', () => {
+  // Fila como la devuelve GET /api/contratos/:id (Andina)
+  const fila = {
+    id_contrato: 2, cliente_id: 2, fecha_inicio: new Date(2026, 0, 1), fecha_fin: new Date(2026, 11, 31),
+    impresiones_bn_incluidas: 8000, impresiones_color_incluidas: 1000, costo_impresion_bn: '0.0180', costo_impresion_color: '0.0900',
+    costo_x_excedente_impresion_bn: 0.022, costo_x_excedente_impresion_color: 0.11,
+    renta_equipo: false, software_control: false, facturacion_de_impresora: 'Diferenciar B/N de Color',
+  };
+  const base = contratoComoCuerpo(fila);
+  // Reenviar lo que dio el GET (antes el excedente se guardaba en 0)
+  let { datos } = validarContrato({ ...fila, fecha_inicio: '2026-01-01T00:00:00.000Z', fecha_fin: '2026-12-31T00:00:00.000Z' }, base);
+  assert.equal(datos.costo_excedente_impresion_bn, 0.022);
+  assert.equal(datos.costo_excedente_impresion_color, 0.11);
+  // Uno de los dos nombres llega vacío: gana el que trae valor
+  ({ datos } = validarContrato({ costo_excedente_impresion_color: null, costo_x_excedente_impresion_color: 0.15 }, base));
+  assert.equal(datos.costo_excedente_impresion_color, 0.15);
+  ({ datos } = validarContrato({ costo_excedente_impresion_bn: 0.03, costo_x_excedente_impresion_bn: 0.022 }, base));
+  assert.equal(datos.costo_excedente_impresion_bn, 0.03);
+  // Ninguno llega (o llega vacío): conserva el guardado, no 0
+  ({ datos } = validarContrato({ costo_excedente_impresion_bn: '', costo_impresion_color: 0.1 }, base));
+  assert.equal(datos.costo_excedente_impresion_bn, 0.022);
+  assert.equal(datos.costo_excedente_impresion_color, 0.11);
+  // Al crear, sin excedente es 0
+  ({ datos } = validarContrato({ fecha_inicio: '2026-11-01', costo_impresion_bn: 0.02, costo_x_excedente_impresion_color: null }));
+  assert.equal(datos.costo_excedente_impresion_color, 0);
+  // Un 0 que llega sí cuenta como valor
+  ({ datos } = validarContrato({ costo_x_excedente_impresion_bn: 0 }, base));
+  assert.equal(datos.costo_excedente_impresion_bn, 0);
+});

@@ -212,6 +212,8 @@ const lecturaEsperada = (maquina, periodo) =>
 
 // Dinero en milésimas de dólar (enteros) para no arrastrar errores de coma flotante
 const milesimas = (valor) => Math.round(Number(valor) * 1000);
+// Un costo de 4 decimales como entero: se compara sin errores de punto flotante
+const diezmilesimas = (valor) => Math.round(Number(valor) * 10000);
 const aDolares = (mil) => (Math.round(mil / 10) / 100).toFixed(2);
 
 // Regla del contrato (S3-06): por separado para B/N y color, cuota fija de las páginas incluidas
@@ -644,7 +646,8 @@ async function seccionCatalogos(ctx) {
   const clienteId = res.datos.data?.id_cliente;
   if (!comprobar(res.status === 201 && Boolean(clienteId), `Cliente «${nombre}» creado`, `HTTP ${res.status}: ${res.datos.message}`)) return;
 
-  // «Todo como Color», como lo mandaba la web, se guarda con el valor que entiende la facturación
+  // El modo de color único con la «C» mayúscula, como lo mandaba la web, se guarda con el valor
+  // que entiende la facturación
   const contrato = {
     cliente_id: clienteId, fecha_inicio: '2026-11-01', impresiones_bn_incluidas: 1500, impresiones_color_incluidas: 250,
     costo_impresion_bn: 0.0125, costo_impresion_color: 0.0875, costo_excedente_impresion_bn: 0.0175, costo_excedente_impresion_color: 0.1125,
@@ -658,10 +661,16 @@ async function seccionCatalogos(ctx) {
   res = await api(`/api/contratos/${contratoId}`, { ...admin, metodo: 'PUT', cuerpo: { costo_impresion_bn: 0.013 } });
   const guardado = (await api(`/api/contratos/${contratoId}`, admin)).datos.data || {};
   comprobar(res.status === 200 && guardado.cliente_id === clienteId && guardado.facturacion_de_impresora === 'Todo como color'
-    && guardado.costo_impresion_bn === '0.0130' && guardado.impresiones_color_incluidas === 250 && guardado.costo_x_excedente_impresion_color === 0.1125
+    && guardado.costo_impresion_bn === '0.0130' && guardado.impresiones_color_incluidas === 250 && diezmilesimas(guardado.costo_x_excedente_impresion_color) === 1125
     && guardado.renta_equipo === true,
     'Editar solo un costo conserva lo demás; el contrato queda «Todo como color» y ligado a su cliente',
     JSON.stringify(guardado));
+  // Reenviar tal cual lo que dio el GET (costo_x_excedente_*) no pone el excedente en 0
+  res = await api(`/api/contratos/${contratoId}`, { ...admin, metodo: 'PUT', cuerpo: guardado });
+  const reenviado = (await api(`/api/contratos/${contratoId}`, admin)).datos.data || {};
+  comprobar(res.status === 200 && diezmilesimas(reenviado.costo_x_excedente_impresion_bn) === 175
+    && diezmilesimas(reenviado.costo_x_excedente_impresion_color) === 1125,
+    'Reenviar el contrato que devolvió el GET conserva los costos por excedente', JSON.stringify(reenviado));
 
   // Superposición: se guarda con aviso, sin mostrar ids
   res = await api('/api/contratos', { ...admin, metodo: 'POST', cuerpo: { ...contrato, fecha_inicio: '2027-01-01' } });

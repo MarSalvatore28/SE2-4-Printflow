@@ -10,7 +10,8 @@ const FACTURACION = Object.freeze({
   DIFERENCIAR: 'Diferenciar B/N de Color',
 });
 
-// «Todo como Color», «todo como color» o «TODO COMO COLOR» son el mismo modo.
+// El modo se reconoce sin distinguir mayúsculas ni espacios de más (la web lo mandaba con la «C»
+// mayúscula).
 // Devuelve el valor canónico o null si no es ninguno de los dos.
 const normalizarFacturacion = (valor) => {
   if (typeof valor !== 'string') return null;
@@ -52,11 +53,12 @@ const numeroContrato = (valor, etiqueta, { entero = false, maximo } = {}) => {
 
 const booleano = (valor) => valor === true || valor === 'true' || valor === 1 || valor === '1';
 
-// Primer valor definido entre los nombres que usa la API para un mismo dato
-const primero = (body, ...claves) => {
-  for (const clave of claves) if (body[clave] !== undefined) return body[clave];
-  return undefined;
-};
+// Un dato «llega» si no es undefined, null ni texto vacío (false y 0 sí son valores)
+const tieneValor = (v) => v !== undefined && v !== null && v !== '';
+
+// Primer valor que llega entre los nombres que usa la API para un mismo dato: el GET devuelve
+// costo_x_excedente_*, la web manda costo_excedente_*; se acepta cualquiera de los dos.
+const primero = (objeto, ...claves) => claves.map((clave) => objeto[clave]).find(tieneValor);
 
 const CAMPOS_NUMERICOS = [
   ['impresiones_bn_incluidas', ['impresiones_bn_incluidas'], 'Las impresiones B/N incluidas', { entero: true, maximo: ENTERO_MAX }],
@@ -85,56 +87,68 @@ const contratoComoCuerpo = (fila) => ({
   facturacion_de_impresora: fila.facturacion_de_impresora,
 });
 
+// Fechas de inicio y fin: { error } o { fecha_inicio, fecha_fin }
+const validarFechas = (inicioCrudo, finCrudo) => {
+  if (!inicioCrudo) return { error: 'Fecha de inicio es obligatoria' };
+  const fechaInicio = fechaIso(String(inicioCrudo));
+  if (!fechaInicio) return { error: 'La fecha de inicio no es válida' };
+  if (!finCrudo) return { fecha_inicio: fechaInicio, fecha_fin: null };
+  const fechaFin = fechaIso(String(finCrudo));
+  if (!fechaFin) return { error: 'La fecha fin no es válida' };
+  if (fechaFin < fechaInicio) return { error: 'La fecha fin no puede ser anterior a la de inicio' };
+  return { fecha_inicio: fechaInicio, fecha_fin: fechaFin };
+};
+
+// Cantidades y costos: { error } o { numeros }
+const validarNumeros = (valor) => {
+  const numeros = {};
+  for (const [campo, claves, etiqueta, opciones] of CAMPOS_NUMERICOS) {
+    const { error, valor: numero } = numeroContrato(valor(...claves), etiqueta, opciones);
+    if (error) return { error };
+    numeros[campo] = numero;
+  }
+  const algunCosto = numeros.costo_impresion_bn > 0 || numeros.costo_impresion_color > 0;
+  if (!algunCosto) return { error: 'Al menos un costo (B/N o color) debe ser mayor que 0' };
+  return { numeros };
+};
+
+// Modo de facturación: sin valor, «Diferenciar»; uno desconocido es un error
+const validarModo = (valor) => {
+  if (!tieneValor(valor)) return { modo: FACTURACION.DIFERENCIAR };
+  const modo = normalizarFacturacion(valor);
+  return modo ? { modo } : { error: `La facturación debe ser «${FACTURACION.DIFERENCIAR}» o «${FACTURACION.TODO_COLOR}»` };
+};
+
 /**
  * Valida y normaliza un contrato (POST /api/contratos o PUT /api/contratos/:id).
- * `base`: el contrato guardado, al editar; los campos que no vienen en `body` conservan su valor.
- * Acepta los nombres alternativos que manda la web (tiene_renta, tiene_software_control, printer_bill).
+ * `base`: el contrato guardado, al editar; los campos que no llegan en `body` (o llegan vacíos)
+ * conservan su valor. La fecha fin es la excepción: un null explícito la quita.
+ * Acepta los nombres alternativos que manda la web (tiene_renta, tiene_software_control, printer_bill)
+ * y los del GET (costo_x_excedente_*).
  * Devuelve { error } o { datos } con los nombres de las columnas que usa el modelo.
  */
 const validarContrato = (body, base = {}) => {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return { error: 'Faltan los datos del contrato' };
-  const valor = (...claves) => {
-    const enCuerpo = primero(body, ...claves);
-    return enCuerpo === undefined ? primero(base, ...claves) : enCuerpo;
+  const valor = (...claves) => primero(body, ...claves) ?? primero(base, ...claves);
+
+  const fechas = validarFechas(valor('fecha_inicio'), body.fecha_fin === undefined ? base.fecha_fin : body.fecha_fin);
+  if (fechas.error) return { error: fechas.error };
+
+  const { error, numeros } = validarNumeros(valor);
+  if (error) return { error };
+
+  const { error: errorModo, modo } = validarModo(valor('facturacion_de_impresora', 'printer_bill'));
+  if (errorModo) return { error: errorModo };
+
+  return {
+    datos: {
+      ...fechas,
+      ...numeros,
+      renta_equipo: booleano(valor('renta_equipo', 'tiene_renta')),
+      software_control: booleano(valor('software_control', 'tiene_software_control')),
+      facturacion_de_impresora: modo,
+    },
   };
-
-  const inicioCrudo = valor('fecha_inicio');
-  if (!inicioCrudo) return { error: 'Fecha de inicio es obligatoria' };
-  const fechaInicio = fechaIso(String(inicioCrudo));
-  if (!fechaInicio) return { error: 'La fecha de inicio no es válida' };
-
-  const finCrudo = valor('fecha_fin');
-  let fechaFin = null;
-  if (finCrudo) {
-    fechaFin = fechaIso(String(finCrudo));
-    if (!fechaFin) return { error: 'La fecha fin no es válida' };
-    if (fechaFin < fechaInicio) return { error: 'La fecha fin no puede ser anterior a la de inicio' };
-  }
-
-  const datos = { fecha_inicio: fechaInicio, fecha_fin: fechaFin };
-  for (const [campo, claves, etiqueta, opciones] of CAMPOS_NUMERICOS) {
-    const { error, valor: numero } = numeroContrato(valor(...claves), etiqueta, opciones);
-    if (error) return { error };
-    datos[campo] = numero;
-  }
-  if (!(datos.costo_impresion_bn > 0) && !(datos.costo_impresion_color > 0)) {
-    return { error: 'Al menos un costo (B/N o color) debe ser mayor que 0' };
-  }
-
-  datos.renta_equipo = booleano(valor('renta_equipo', 'tiene_renta'));
-  datos.software_control = booleano(valor('software_control', 'tiene_software_control'));
-
-  const facturacion = valor('facturacion_de_impresora', 'printer_bill');
-  if (facturacion === undefined || facturacion === null || facturacion === '') {
-    datos.facturacion_de_impresora = FACTURACION.DIFERENCIAR;
-  } else {
-    datos.facturacion_de_impresora = normalizarFacturacion(facturacion);
-    if (!datos.facturacion_de_impresora) {
-      return { error: `La facturación debe ser «${FACTURACION.DIFERENCIAR}» o «${FACTURACION.TODO_COLOR}»` };
-    }
-  }
-
-  return { datos };
 };
 
 // 'AAAA-MM-DD' → 'DD/MM/AAAA'
