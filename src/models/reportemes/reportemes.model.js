@@ -33,6 +33,251 @@ const INSTALACION_DEL_PERIODO = `
     LIMIT 1
   ) i ON TRUE`;
 
+// --- Una fila del consolidado (getReporteConsolidado) ---------------------------------------
+
+function calcularDiasOperacion(fechaInicio, fechaFin) {
+  if (!fechaInicio || !fechaFin) return 0;
+  const inicio = new Date(fechaInicio);
+  const fin = new Date(fechaFin);
+  inicio.setHours(0, 0, 0, 0);
+  fin.setHours(0, 0, 0, 0);
+  if (fin < inicio) return 0;
+  const diffTime = fin.getTime() - inicio.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays > 0 ? diffDays : 0;
+}
+
+// El reporte trae contadores por usuario (reportes_detalle_oficial)
+const tieneDetalleUsuario = (row) =>
+  (row.det_cur_imp_bn !== null && row.det_cur_imp_bn !== undefined) ||
+  (row.det_cur_cop_bn !== null && row.det_cur_cop_bn !== undefined);
+
+// Un contador que puede venir vacío (null cuenta como 0)
+const contador = (valor) => parseInt(valor || 0);
+
+// Consumo entre dos lecturas acumuladas; si da negativo (contador reiniciado), la lectura actual
+const consumoAcumulado = (actual, anterior) => {
+  const consumo = actual - anterior;
+  return consumo < 0 ? actual : consumo;
+};
+
+function calcularConsumoNormal(row) {
+  let consumo_bn, consumo_col;
+
+  if (tieneDetalleUsuario(row)) {
+    const cur_det_bn = contador(row.det_cur_imp_bn) + contador(row.det_cur_cop_bn);
+    const cur_det_col = contador(row.det_cur_imp_col) + contador(row.det_cur_cop_col);
+
+    if (row.contador_acumulativo) {
+      // 1. si tiene detalle por usuario y es acumulado -> Total actual - total anterior pero del total de detalles
+      const prev_det_bn = contador(row.det_prev_imp_bn) + contador(row.det_prev_cop_bn);
+      const prev_det_col = contador(row.det_prev_imp_col) + contador(row.det_prev_cop_col);
+
+      consumo_bn = consumoAcumulado(cur_det_bn, prev_det_bn);
+      consumo_col = consumoAcumulado(cur_det_col, prev_det_col);
+    } else {
+      // 2. si tiene detalle por usuario y no es acumulativo -> solo se suma el Id o sea el total de detalle
+      consumo_bn = cur_det_bn;
+      consumo_col = cur_det_col;
+    }
+  } else {
+    // 3. cuando no es por detalle de usuario o sea es por totales y ahi siempre es acumulativo
+    const act_bn = contador(row.cur_imp_bn) + contador(row.cur_cop_bn);
+    const act_col = contador(row.cur_imp_col) + contador(row.cur_cop_col);
+    const ant_bn = contador(row.prev_imp_bn) + contador(row.prev_cop_bn);
+    const ant_col = contador(row.prev_imp_col) + contador(row.prev_cop_col);
+
+    consumo_bn = consumoAcumulado(act_bn, ant_bn);
+    consumo_col = consumoAcumulado(act_col, ant_col);
+  }
+
+  return {
+    total_bn: consumo_bn,
+    total_color: consumo_col,
+    gran_total: consumo_bn + consumo_col
+  };
+}
+
+// Lectura anterior de la fila: la suma de los detalles por usuario si los tiene, si no los totales
+function lecturaAnteriorDeFila(row, tieneDetalle) {
+  if (!tieneDetalle) {
+    return {
+      imp_bn: parseInt(row.prev_imp_bn),
+      imp_color: parseInt(row.prev_imp_col),
+      cop_bn: parseInt(row.prev_cop_bn),
+      cop_color: parseInt(row.prev_cop_col),
+      total_contador_bn: parseInt(row.prev_imp_bn) + parseInt(row.prev_cop_bn),
+      total_contador_color: parseInt(row.prev_imp_col) + parseInt(row.prev_cop_col),
+      total_servicio: parseInt(row.prev_total_servicio)
+    };
+  }
+  const impBn = contador(row.det_prev_imp_bn);
+  const impColor = contador(row.det_prev_imp_col);
+  const copBn = contador(row.det_prev_cop_bn);
+  const copColor = contador(row.det_prev_cop_col);
+  return {
+    imp_bn: impBn,
+    imp_color: impColor,
+    cop_bn: copBn,
+    cop_color: copColor,
+    total_contador_bn: impBn + copBn,
+    total_contador_color: impColor + copColor,
+    total_servicio: row.contador_acumulativo ? impBn + impColor + copBn + copColor : 0
+  };
+}
+
+// Lectura actual de la fila, igual que la anterior
+function lecturaActualDeFila(row, tieneDetalle) {
+  if (!tieneDetalle) {
+    return {
+      imp_bn: parseInt(row.cur_imp_bn),
+      imp_color: parseInt(row.cur_imp_col),
+      cop_bn: parseInt(row.cur_cop_bn),
+      cop_color: parseInt(row.cur_cop_col),
+      total_contador_bn: parseInt(row.cur_imp_bn) + parseInt(row.cur_cop_bn),
+      total_contador_color: parseInt(row.cur_imp_col) + parseInt(row.cur_cop_col),
+      print_total: parseInt(row.cur_print_total),
+      copy_total: parseInt(row.cur_copy_total),
+      total_servicio: parseInt(row.cur_total_servicio)
+    };
+  }
+  const impBn = contador(row.det_cur_imp_bn);
+  const impColor = contador(row.det_cur_imp_col);
+  const copBn = contador(row.det_cur_cop_bn);
+  const copColor = contador(row.det_cur_cop_col);
+  return {
+    imp_bn: impBn,
+    imp_color: impColor,
+    cop_bn: copBn,
+    cop_color: copColor,
+    total_contador_bn: impBn + copBn,
+    total_contador_color: impColor + copColor,
+    print_total: impBn + impColor,
+    copy_total: copBn + copColor,
+    total_servicio: impBn + impColor + copBn + copColor
+  };
+}
+
+// Contadores de una de las dos máquinas del cambio. B/N y color = impresiones + copias; global = B/N + color
+const contadoresDelTramo = (tramo) => ({
+  anterior: {
+    global: tramo.anterior.bn + tramo.anterior.color,
+    impresion_bn: tramo.anterior.bn,
+    impresion_color: tramo.anterior.color
+  },
+  actual: {
+    global: tramo.actual.bn + tramo.actual.color,
+    impresion_bn: tramo.actual.bn,
+    impresion_color: tramo.actual.color
+  },
+  consumo: tramo.consumo
+});
+
+// Desde y hasta cuándo operó cada máquina del cambio en el período
+function fechasDelCambio(row, cambioCalculado) {
+  const inicioEntrante = row.fecha_instalacion_entrante;
+  // Sin reporte de la entrante en el período, su tramo termina donde empieza
+  const corteEntrante = cambioCalculado.filaEntrante ? cambioCalculado.filaEntrante.fecha_corte_actual : null;
+  const entranteSinCorte = !corteEntrante || new Date(corteEntrante) < new Date(inicioEntrante);
+  return {
+    inicioSaliente: row.saliente_ultimo_corte || row.saliente_fecha_instalacion,
+    finSaliente: row.fecha_danio,
+    inicioEntrante,
+    finEntrante: entranteSinCorte ? inicioEntrante : corteEntrante
+  };
+}
+
+// El bloque «cambio» de una fila con reemplazo
+function bloqueDelCambio(row, cambioCalculado, consumoFinal) {
+  const fechas = fechasDelCambio(row, cambioCalculado);
+  return {
+    id: row.id_maquina_cambio,
+    fecha: row.fecha_instalacion_entrante ? new Date(row.fecha_instalacion_entrante).toISOString() : new Date().toISOString(),
+    fecha_danio: row.fecha_danio,
+    fecha_instalacion_entrante: row.fecha_instalacion_entrante,
+    periodo: row.periodo_afectado,
+    tipo: row.tipo_cambio,
+    razon: row.razon_cambio,
+    area: row.cambio_area_nombre,
+
+    maquina_saliente: {
+      id: row.maquina_saliente_id,
+      serie: row.snap_maquina_saliente_serie,
+      modelo: row.snap_maquina_saliente_modelo,
+      fecha_inicio_operacion: fechas.inicioSaliente,
+      fecha_fin_operacion: fechas.finSaliente,
+      fecha_instalacion: row.saliente_fecha_instalacion,
+      fecha_retiro: row.saliente_fecha_retiro,
+      contadores: contadoresDelTramo(cambioCalculado.saliente)
+    },
+
+    maquina_entrante: {
+      id: row.maquina_entrante_id,
+      serie: row.snap_maquina_entrante_serie,
+      modelo: row.snap_maquina_entrante_modelo,
+      fecha_inicio_operacion: fechas.inicioEntrante,
+      fecha_fin_operacion: fechas.finEntrante,
+      fecha_instalacion: row.entrante_fecha_instalacion,
+      contadores: contadoresDelTramo(cambioCalculado.entrante)
+    },
+
+    totales: {
+      dias_saliente: calcularDiasOperacion(fechas.inicioSaliente, fechas.finSaliente),
+      dias_entrante: calcularDiasOperacion(fechas.inicioEntrante, fechas.finEntrante),
+      consumo_total: consumoFinal.gran_total
+    }
+  };
+}
+
+// Una fila (máquina o reemplazo) del consolidado. `cambios`: consumoDelCambio de cada reemplazo, por id
+function detalleDelConsolidado(row, cambios) {
+  const tieneCambio = row.maquina_cambio_id !== null;
+  const tieneDetalle = tieneDetalleUsuario(row);
+
+  const cambioCalculado = tieneCambio ? cambios.get(row.maquina_cambio_id) : null;
+  const consumoFinal = cambioCalculado ? cambioCalculado.total : calcularConsumoNormal(row);
+
+  // Cálculo referencial (solo informativo, por máquina), con las tarifas congeladas si las tiene
+  const { contrato: tarifasFila } = tarifasDelReporte(row);
+  const dineroReferencial = (consumoFinal.total_bn * parseFloat(tarifasFila.costo_impresion_bn || 0)) +
+                            (consumoFinal.total_color * parseFloat(tarifasFila.costo_impresion_color || 0));
+  const tipoNombre = row.tipo_impresion_nombre || 'BN';
+
+  return {
+    info: {
+      id_reporte: row.id_reporte,
+      maquina_id: row.maquina_id,
+      modelo: row.modelo,
+      serie: row.serie,
+      ip: row.ip,
+      area: row.area,
+      es_acumulativo: row.contador_acumulativo,
+      es_reemplazo: row.es_maquina_reemplazo,
+      tipo_impresion: tipoNombre,
+      es_color: tipoNombre !== 'BN',
+      fecha_corte_actual: row.fecha_corte_actual,
+      fecha_corte_anterior: row.fecha_corte_anterior,
+      tiene_cambio: tieneCambio,
+      es_parte_cambio: row.es_parte_cambio || false,
+      // Trazabilidad (S3-02)
+      origen: row.origen,
+      lote_origen_id: row.lote_origen_id,
+      usuario_validacion_id: row.usuario_validacion_id
+    },
+
+    ...(tieneCambio && { cambio: bloqueDelCambio(row, cambioCalculado, consumoFinal) }),
+
+    anterior: lecturaAnteriorDeFila(row, tieneDetalle),
+    actual: lecturaActualDeFila(row, tieneDetalle),
+    consumo: consumoFinal,
+    financiero: {
+      // Consumo × tarifa por página: solo informativo. El importe oficial es resumen.facturacion.
+      monto_total: dineroReferencial.toFixed(2),
+      monto_referencial: dineroReferencial.toFixed(2)
+    }
+  };
+}
+
 const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaId = null) => {
   try {
     const periodoAnterior = getPeriodoAnterior(periodo);
@@ -280,18 +525,6 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
 
     const { rows } = await pool.query(queryText, params);
 
-    function calcularDiasOperacion(fechaInicio, fechaFin) {
-      if (!fechaInicio || !fechaFin) return 0;
-      const inicio = new Date(fechaInicio);
-      const fin = new Date(fechaFin);
-      inicio.setHours(0, 0, 0, 0);
-      fin.setHours(0, 0, 0, 0);
-      if (fin < inicio) return 0;
-      const diffTime = fin.getTime() - inicio.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      return diffDays > 0 ? diffDays : 0;
-    }
-
     // Los reportes de un mismo reemplazo (caja 4) se agrupan: el consolidado muestra UNA fila por
     // cambio (la de la entrante, o la de la saliente si la entrante no reportó) con el consumo
     // de las dos máquinas. Los demás reportes se calculan como siempre.
@@ -304,205 +537,7 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
     const cambios = new Map([...filasPorCambio].map(([id, filas]) => [id, consumoDelCambio(filas)]));
     const filasVisibles = rows.filter((row) => row.maquina_cambio_id === null || cambios.get(row.maquina_cambio_id).filaRepresentante === row);
 
-    const detalles = filasVisibles.map(row => {
-      const tieneCambio = row.maquina_cambio_id !== null;
-      const tieneDetalle = (row.det_cur_imp_bn !== null && row.det_cur_imp_bn !== undefined) ||
-                           (row.det_cur_cop_bn !== null && row.det_cur_cop_bn !== undefined);
-
-      const cambioCalculado = tieneCambio ? cambios.get(row.maquina_cambio_id) : null;
-      const consumoFinal = cambioCalculado ? cambioCalculado.total : calcularConsumoNormal(row);
-
-      // Cálculo referencial (solo informativo, por máquina), con las tarifas congeladas si las tiene
-      const { contrato: tarifasFila } = tarifasDelReporte(row);
-      const dineroReferencial = (consumoFinal.total_bn * parseFloat(tarifasFila.costo_impresion_bn || 0)) +
-                                (consumoFinal.total_color * parseFloat(tarifasFila.costo_impresion_color || 0));
-      const tipoNombre = row.tipo_impresion_nombre || 'BN';
-      const esColor = tipoNombre !== 'BN';
-
-      let fechaInicioSaliente, fechaFinSaliente, fechaInicioEntrante, fechaFinEntrante;
-
-      if (tieneCambio) {
-        if (row.saliente_ultimo_corte) {
-          fechaInicioSaliente = row.saliente_ultimo_corte;
-        } else {
-          fechaInicioSaliente = row.saliente_fecha_instalacion;
-        }
-        fechaFinSaliente = row.fecha_danio;
-
-        fechaInicioEntrante = row.fecha_instalacion_entrante;
-        // Sin reporte de la entrante en el período, su tramo termina donde empieza
-        const corteEntrante = cambioCalculado.filaEntrante ? cambioCalculado.filaEntrante.fecha_corte_actual : null;
-        const dateCorte = new Date(corteEntrante);
-        const dateInstalacion = new Date(fechaInicioEntrante);
-
-        if (!corteEntrante || dateCorte < dateInstalacion) {
-          fechaFinEntrante = fechaInicioEntrante;
-        } else {
-          fechaFinEntrante = corteEntrante;
-        }
-      }
-
-      return {
-        info: {
-          id_reporte: row.id_reporte,
-          maquina_id: row.maquina_id,
-          modelo: row.modelo,
-          serie: row.serie,
-          ip: row.ip,
-          area: row.area,
-          es_acumulativo: row.contador_acumulativo,
-          es_reemplazo: row.es_maquina_reemplazo,
-          tipo_impresion: tipoNombre,
-          es_color: esColor,
-          fecha_corte_actual: row.fecha_corte_actual,
-          fecha_corte_anterior: row.fecha_corte_anterior,
-          tiene_cambio: tieneCambio,
-          es_parte_cambio: row.es_parte_cambio || false,
-          // Trazabilidad (S3-02)
-          origen: row.origen,
-          lote_origen_id: row.lote_origen_id,
-          usuario_validacion_id: row.usuario_validacion_id
-        },
-
-        ...(tieneCambio && {
-          cambio: {
-            id: row.id_maquina_cambio,
-            fecha: row.fecha_instalacion_entrante ? new Date(row.fecha_instalacion_entrante).toISOString() : new Date().toISOString(),
-            fecha_danio: row.fecha_danio,
-            fecha_instalacion_entrante: row.fecha_instalacion_entrante,
-            periodo: row.periodo_afectado,
-            tipo: row.tipo_cambio,
-            razon: row.razon_cambio,
-            area: row.cambio_area_nombre,
-
-            maquina_saliente: {
-              id: row.maquina_saliente_id,
-              serie: row.snap_maquina_saliente_serie,
-              modelo: row.snap_maquina_saliente_modelo,
-              fecha_inicio_operacion: fechaInicioSaliente,
-              fecha_fin_operacion: fechaFinSaliente,
-              fecha_instalacion: row.saliente_fecha_instalacion,
-              fecha_retiro: row.saliente_fecha_retiro,
-              // B/N y color = impresiones + copias; global = B/N + color
-              contadores: {
-                anterior: {
-                  global: cambioCalculado.saliente.anterior.bn + cambioCalculado.saliente.anterior.color,
-                  impresion_bn: cambioCalculado.saliente.anterior.bn,
-                  impresion_color: cambioCalculado.saliente.anterior.color
-                },
-                actual: {
-                  global: cambioCalculado.saliente.actual.bn + cambioCalculado.saliente.actual.color,
-                  impresion_bn: cambioCalculado.saliente.actual.bn,
-                  impresion_color: cambioCalculado.saliente.actual.color
-                },
-                consumo: cambioCalculado.saliente.consumo
-              }
-            },
-
-            maquina_entrante: {
-              id: row.maquina_entrante_id,
-              serie: row.snap_maquina_entrante_serie,
-              modelo: row.snap_maquina_entrante_modelo,
-              fecha_inicio_operacion: fechaInicioEntrante,
-              fecha_fin_operacion: fechaFinEntrante,
-              fecha_instalacion: row.entrante_fecha_instalacion,
-              contadores: {
-                anterior: {
-                  global: cambioCalculado.entrante.anterior.bn + cambioCalculado.entrante.anterior.color,
-                  impresion_bn: cambioCalculado.entrante.anterior.bn,
-                  impresion_color: cambioCalculado.entrante.anterior.color
-                },
-                actual: {
-                  global: cambioCalculado.entrante.actual.bn + cambioCalculado.entrante.actual.color,
-                  impresion_bn: cambioCalculado.entrante.actual.bn,
-                  impresion_color: cambioCalculado.entrante.actual.color
-                },
-                consumo: cambioCalculado.entrante.consumo
-              }
-            },
-
-            totales: {
-              dias_saliente: calcularDiasOperacion(fechaInicioSaliente, fechaFinSaliente),
-              dias_entrante: calcularDiasOperacion(fechaInicioEntrante, fechaFinEntrante),
-              consumo_total: consumoFinal.gran_total
-            }
-          }
-        }),
-
-        anterior: {
-          imp_bn: tieneDetalle ? parseInt(row.det_prev_imp_bn || 0) : parseInt(row.prev_imp_bn),
-          imp_color: tieneDetalle ? parseInt(row.det_prev_imp_col || 0) : parseInt(row.prev_imp_col),
-          cop_bn: tieneDetalle ? parseInt(row.det_prev_cop_bn || 0) : parseInt(row.prev_cop_bn),
-          cop_color: tieneDetalle ? parseInt(row.det_prev_cop_col || 0) : parseInt(row.prev_cop_col),
-          total_contador_bn: tieneDetalle ? (parseInt(row.det_prev_imp_bn || 0) + parseInt(row.det_prev_cop_bn || 0)) : (parseInt(row.prev_imp_bn) + parseInt(row.prev_cop_bn)),
-          total_contador_color: tieneDetalle ? (parseInt(row.det_prev_imp_col || 0) + parseInt(row.det_prev_cop_col || 0)) : (parseInt(row.prev_imp_col) + parseInt(row.prev_cop_col)),
-          total_servicio: tieneDetalle ? (!row.contador_acumulativo ? 0 : (parseInt(row.det_prev_imp_bn || 0) + parseInt(row.det_prev_imp_col || 0) + parseInt(row.det_prev_cop_bn || 0) + parseInt(row.det_prev_cop_col || 0))) : parseInt(row.prev_total_servicio)
-        },
-        actual: {
-          imp_bn: tieneDetalle ? parseInt(row.det_cur_imp_bn || 0) : parseInt(row.cur_imp_bn),
-          imp_color: tieneDetalle ? parseInt(row.det_cur_imp_col || 0) : parseInt(row.cur_imp_col),
-          cop_bn: tieneDetalle ? parseInt(row.det_cur_cop_bn || 0) : parseInt(row.cur_cop_bn),
-          cop_color: tieneDetalle ? parseInt(row.det_cur_cop_col || 0) : parseInt(row.cur_cop_col),
-          total_contador_bn: tieneDetalle ? (parseInt(row.det_cur_imp_bn || 0) + parseInt(row.det_cur_cop_bn || 0)) : (parseInt(row.cur_imp_bn) + parseInt(row.cur_cop_bn)),
-          total_contador_color: tieneDetalle ? (parseInt(row.det_cur_imp_col || 0) + parseInt(row.det_cur_cop_col || 0)) : (parseInt(row.cur_imp_col) + parseInt(row.cur_cop_col)),
-          print_total: tieneDetalle ? (parseInt(row.det_cur_imp_bn || 0) + parseInt(row.det_cur_imp_col || 0)) : parseInt(row.cur_print_total),
-          copy_total: tieneDetalle ? (parseInt(row.det_cur_cop_bn || 0) + parseInt(row.det_cur_cop_col || 0)) : parseInt(row.cur_copy_total),
-          total_servicio: tieneDetalle ? (parseInt(row.det_cur_imp_bn || 0) + parseInt(row.det_cur_imp_col || 0) + parseInt(row.det_cur_cop_bn || 0) + parseInt(row.det_cur_cop_col || 0)) : parseInt(row.cur_total_servicio)
-        },
-        consumo: consumoFinal,
-        financiero: {
-          // Consumo × tarifa por página: solo informativo. El importe oficial es resumen.facturacion.
-          monto_total: dineroReferencial.toFixed(2),
-          monto_referencial: dineroReferencial.toFixed(2)
-        }
-      };
-    });
-
-    function calcularConsumoNormal(row) {
-      const tieneDetalle = (row.det_cur_imp_bn !== null && row.det_cur_imp_bn !== undefined) || 
-                           (row.det_cur_cop_bn !== null && row.det_cur_cop_bn !== undefined);
-
-      let consumo_bn, consumo_col;
-
-      if (tieneDetalle) {
-        const cur_det_bn = parseInt(row.det_cur_imp_bn || 0) + parseInt(row.det_cur_cop_bn || 0);
-        const cur_det_col = parseInt(row.det_cur_imp_col || 0) + parseInt(row.det_cur_cop_col || 0);
-        
-        if (row.contador_acumulativo) {
-          // 1. si tiene detalle por usuario y es acumulado -> Total actual - total anterior pero del total de detalles
-          const prev_det_bn = parseInt(row.det_prev_imp_bn || 0) + parseInt(row.det_prev_cop_bn || 0);
-          const prev_det_col = parseInt(row.det_prev_imp_col || 0) + parseInt(row.det_prev_cop_col || 0);
-          
-          consumo_bn = cur_det_bn - prev_det_bn;
-          consumo_col = cur_det_col - prev_det_col;
-          
-          if (consumo_bn < 0) consumo_bn = cur_det_bn;
-          if (consumo_col < 0) consumo_col = cur_det_col;
-        } else {
-          // 2. si tiene detalle por usuario y no es acumulativo -> solo se suma el Id o sea el total de detalle
-          consumo_bn = cur_det_bn;
-          consumo_col = cur_det_col;
-        }
-      } else {
-        // 3. cuando no es por detalle de usuario o sea es por totales y ahi siempre es acumulativo
-        const act_bn = parseInt(row.cur_imp_bn || 0) + parseInt(row.cur_cop_bn || 0);
-        const act_col = parseInt(row.cur_imp_col || 0) + parseInt(row.cur_cop_col || 0);
-        const ant_bn = parseInt(row.prev_imp_bn || 0) + parseInt(row.prev_cop_bn || 0);
-        const ant_col = parseInt(row.prev_imp_col || 0) + parseInt(row.prev_cop_col || 0);
-
-        consumo_bn = act_bn - ant_bn;
-        consumo_col = act_col - ant_col;
-        
-        if (consumo_bn < 0) consumo_bn = act_bn;
-        if (consumo_col < 0) consumo_col = act_col;
-      }
-
-      return {
-        total_bn: consumo_bn,
-        total_color: consumo_col,
-        gran_total: consumo_bn + consumo_col
-      };
-    }
+    const detalles = filasVisibles.map((row) => detalleDelConsolidado(row, cambios));
 
     const { rows: rentaRows } = await pool.query(`
     SELECT 
