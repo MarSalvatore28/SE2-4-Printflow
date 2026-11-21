@@ -18,7 +18,8 @@ const { leerCorreo } = require('./lib/correo');
 const { correoAIngesta } = require('./lib/n8n');
 const entrega = require('./lib/entrega');
 
-const API_URL = process.env.API_URL || 'http://api:9000';
+// Por defecto, la API dentro de la red privada de Docker (el simulador corre en un contenedor)
+const API_URL = process.env.API_URL || 'http://api:9000'; // NOSONAR: red interna de Docker, sin salir del equipo
 const BUZON = path.join(__dirname, 'buzon');
 const DIR = {
   entrada: path.join(BUZON, 'entrada'),
@@ -134,24 +135,19 @@ async function procesarBuzon({ silencioso = false } = {}) {
 module.exports = { procesarBuzon };
 
 if (require.main === module) {
-  const vigilar = process.argv.includes('--vigilar');
-  const ciclo = async () => {
-    try {
-      await procesarBuzon();
-    } catch (error) {
-      console.error(`Error: ${error.message}`);
-      process.exit(1);
-    }
+  const fallar = (error) => {
+    console.error(`Error: ${error.message}`);
+    process.exit(1);
   };
-  if (!vigilar) {
-    ciclo();
-  } else {
+  if (process.argv.includes('--vigilar')) {
     console.log(`Vigilando simulador/buzon/entrada cada 10 s (API: ${API_URL}). Ctrl+C para salir.`);
     const repetir = async () => {
       const hayCorreos = fs.existsSync(DIR.entrada) && fs.readdirSync(DIR.entrada).some((a) => a.endsWith('.eml'));
-      if (hayCorreos) await ciclo();
-      setTimeout(repetir, 10000);
+      if (hayCorreos) await procesarBuzon();
+      setTimeout(() => repetir().catch(fallar), 10000);
     };
-    repetir();
+    repetir().catch(fallar);
+  } else {
+    procesarBuzon().catch(fallar);
   }
 }
