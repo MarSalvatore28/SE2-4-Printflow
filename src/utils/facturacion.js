@@ -70,4 +70,12 @@ function calcularFacturacion(contrato, consumos, renta = 0, filtrado = false) {
   };
 }
 
-module.exports = { calcularFacturacion };
+// Fechas del contrato que acompañan a su facturación (resumen.facturacion[]): con ellas la
+// pantalla, el PDF y el Excel nombran el contrato («Contrato del 2026/01/01 al 2026/12/31»)
+// en lugar de mostrar su id. `vigencia` es la fila de contratos con las fechas en AAAA-MM-DD.
+const vigenciaDelContrato = (vigencia) => ({
+  contrato_fecha_inicio: vigencia?.fecha_inicio ?? null,
+  contrato_fecha_fin: vigencia?.fecha_fin ?? null,
+});
+
+module.exports = { calcularFacturacion, vigenciaDelContrato };

@@ -291,6 +291,11 @@ async function compararConsolidado(token, cliente, clienteId, periodo, { reempla
     diferencia(facturacion.length === 1 ? obtenida : facturacion, esperada));
   comprobar(data.resumen?.monto_total_general === esperada.total, `${cliente.nombre} · ${periodo}: total a facturar $${esperada.total}`,
     diferencia(data.resumen?.monto_total_general, esperada.total));
+  // La pantalla nombra el contrato por sus fechas, no por su id
+  const vigencia = { inicio: c.contrato_fecha_inicio, fin: c.contrato_fecha_fin };
+  const vigenciaEsperada = { inicio: cliente.contrato.fecha_inicio, fin: cliente.contrato.fecha_fin };
+  comprobar(igual(vigencia, vigenciaEsperada), `${cliente.nombre} · ${periodo}: la facturación trae las fechas del contrato`,
+    diferencia(vigencia, vigenciaEsperada));
   return data;
 }
 
