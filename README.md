@@ -54,6 +54,7 @@ Todo esto es para **tu compu** (o la demo), con datos ficticios. **No hay que pe
 | `auditor@printflow.local` | `Printflow2026*` | auditor | Solo consultar |
 
 - **Otra contraseña:** ponla en `DEMO_PASSWORD` del `.env` antes de crear la base (o recréala con `docker compose down -v`). Si `DEMO_PASSWORD` está vacía, es `Printflow2026*`.
+- **Demasiados intentos:** tras 10 contraseñas incorrectas desde la misma IP, el login responde 429 durante 15 minutos (`LOGIN_MAX_INTENTOS` lo cambia; reiniciar la API lo desbloquea).
 - **El token para Postman, Swagger o la terminal:** `npm run token -- admin` (o `operador`, `auditor`). Ver [`docs/probar.md`](docs/probar.md), sección 7.
 
 **Lo demás:**
@@ -181,6 +182,7 @@ Se definen en `.env`. `npm run configurar` lo crea a partir de [`.env.example`](
 | `CORS_ORIGINS` | Orígenes permitidos, separados por coma | `http://localhost:5173` |
 | `INGESTA_TOKEN` | Token que n8n envía a la ingesta | *(lo genera `npm run configurar`)* |
 | `DB_HOST_PORT`, `WEB_PORT` | Puertos publicados en el equipo local | `5433`, `8080` |
+| `LOGIN_MAX_INTENTOS` | Intentos de inicio de sesión **fallidos** por IP cada 15 minutos; al pasarlos, `POST /api/auth/login` responde 429. Los correctos no cuentan | *(vacío = `10`)* |
 
 ## Scripts
 

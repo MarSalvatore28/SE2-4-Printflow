@@ -4,11 +4,24 @@
 {$DOMINIO} {
 	encode gzip
 
+	# Cabeceras de seguridad en TODAS las respuestas (la web, la API, Swagger y Socket.IO).
+	# Al quitar cabeceras (-Server) Caddy las aplica al final, sobre lo que responde el nginx: así
+	# también se van «Server: nginx» y la de Caddy.
 	header {
-		Strict-Transport-Security "max-age=31536000"
+		# Solo HTTPS durante un año, también en los subdominios
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
+		# Nadie puede mostrar PrintFlow dentro de un iframe (clickjacking)
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
+		# La web no usa cámara, micrófono ni ubicación
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		# Lo mismo que X-Frame-Options, para navegadores modernos. «?»: solo si la respuesta no trae
+		# su propia CSP (la API y Swagger traen la suya, más completa, y se respeta)
+		?Content-Security-Policy "frame-ancestors 'none'"
+		# No anunciar qué servidores hay detrás
+		-Server
+		-X-Powered-By
 	}
 
 	# El nginx del frontend sirve la SPA y reenvía /api, /api-docs y /socket.io a la API

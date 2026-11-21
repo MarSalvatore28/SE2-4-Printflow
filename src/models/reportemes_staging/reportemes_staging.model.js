@@ -9,6 +9,9 @@ const { ACCIONES, leerFila, auditarFila } = require('@services/auditoria');
 // Un campo que no vino en la edición queda en null: el COALESCE del UPDATE conserva el valor actual
 const valorONull = (valor) => (valor === undefined ? null : valor);
 
+// Registro que no existe: el controlador responde 404 con este mensaje
+const noEncontrado = (message) => Object.assign(new Error(message), { status: 404 });
+
 // print_total, copy_total y totalservicio a guardar al editar un consolidado.
 // El SELECT devuelve consolidado_print_total = print_total - copy_total (impresiones puras).
 // Para guardar correctamente en la BD, hay que reconstruir: print_total = imprimir + copias.
@@ -300,7 +303,7 @@ const updateConsolidadoStaging = async (id_staging_consolidado, data) => {
     ];
 
     const { rows, rowCount } = await client.query(query, values);
-    if (rowCount === 0) throw new Error('No se encontró el registro para actualizar');
+    if (rowCount === 0) throw noEncontrado('No se encontró el registro para actualizar');
 
     // Update IP in Details if ip_detectada is provided
     if (data.ip_detectada !== undefined && data.ip_detectada !== null) {
@@ -358,7 +361,7 @@ const updateDetalleStaging = async (id_staging_detalle, data) => {
     ];
 
     const { rows, rowCount } = await client.query(query, values);
-    if (rowCount === 0) throw new Error('No se encontró el detalle para actualizar');
+    if (rowCount === 0) throw noEncontrado('No se encontró el detalle para actualizar');
 
     const updatedDetalle = rows[0];
     const consolidadoId = updatedDetalle.consolidado_staging_id;
@@ -520,13 +523,14 @@ const deleteStaging = async (id_staging_consolidado) => {
   }
 };
 
+// Los días van como parámetro ($1), nunca dentro del texto de la consulta
 const deleteOldAprobados = async (dias = 90) => {
-  const { rowCount } = await pool.query(`DELETE FROM reportes_consolidado_staging WHERE lote_id IN (SELECT id_lote FROM lotes_carga WHERE fecha_aprobacion < NOW() - INTERVAL '${dias} days')`);
+  const { rowCount } = await pool.query('DELETE FROM reportes_consolidado_staging WHERE lote_id IN (SELECT id_lote FROM lotes_carga WHERE fecha_aprobacion < NOW() - make_interval(days => $1::int))', [dias]);
   return rowCount;
 };
 
 const deleteOldRechazados = async (dias = 30) => {
-  const { rowCount } = await pool.query(`DELETE FROM reportes_consolidado_staging WHERE lote_id IN (SELECT id_lote FROM lotes_carga WHERE fecha_aprobacion IS NULL AND fecha_carga < NOW() - INTERVAL '${dias} days')`);
+  const { rowCount } = await pool.query('DELETE FROM reportes_consolidado_staging WHERE lote_id IN (SELECT id_lote FROM lotes_carga WHERE fecha_aprobacion IS NULL AND fecha_carga < NOW() - make_interval(days => $1::int))', [dias]);
   return rowCount;
 };
 

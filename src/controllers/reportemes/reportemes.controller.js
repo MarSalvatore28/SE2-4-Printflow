@@ -38,12 +38,9 @@ const getReporteConsolidadoController = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error Controller Consolidado:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error interno al obtener reporte',
-      error: error.message
-    });
+    // El detalle (mensaje de PostgreSQL, consulta) queda en el log, no en la respuesta
+    console.error('Error al obtener el reporte consolidado:', error);
+    res.status(500).json({ success: false, message: 'Error interno al obtener el reporte' });
   }
 };
 
@@ -53,7 +50,8 @@ const getPeriodosDisponiblesController = async (req, res) => {
     const periodos = await getPeriodosDisponibles(Number.parseInt(clienteId, 10));
     res.status(200).json({ success: true, data: periodos });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    console.error('Error al obtener los periodos disponibles:', error);
+    res.status(500).json({ success: false, message: 'Error interno al obtener los periodos disponibles' });
   }
 };
 
@@ -85,12 +83,8 @@ const getReporteDetalladoController = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error en getReporteDetalladoController:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error interno al obtener el detalle', 
-      error: error.message 
-    });
+    console.error('Error al obtener el reporte detallado:', error);
+    res.status(500).json({ success: false, message: 'Error interno al obtener el detalle' });
   }
 };
 

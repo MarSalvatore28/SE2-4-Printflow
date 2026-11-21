@@ -9,6 +9,10 @@ const app = express();
 // No anunciar en cada respuesta que la API es Express (cabecera X-Powered-By)
 app.disable('x-powered-by');
 
+// Cabeceras de seguridad (helmet) en todas las respuestas; Swagger UI tiene su propia CSP
+const { cabecerasSeguridad } = require('./middlewares/cabeceras.middleware');
+app.use(cabecerasSeguridad);
+
 // S3-02: la auditoría guarda req.ip. La API solo se alcanza por el nginx del frontend (y Caddy en
 // producción) dentro de la red privada de Docker: se confía en esos proxies para que req.ip sea la
 // IP del cliente (X-Forwarded-For) y no la del contenedor de nginx.
