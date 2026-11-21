@@ -9,8 +9,8 @@
 // Un correo por cliente y mes, con un adjunto por impresora en el formato de su marca.
 // El Message-ID es fijo por cliente y mes: generar dos veces el mismo mes simula un reenvío.
 
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
 const {
   cargarEscenario, validarPeriodo, fechaCorte, contadoresAlCierre, repartirPorUsuario, maquinasDelPeriodo, totalesBnColor,
 } = require('./lib/escenario');

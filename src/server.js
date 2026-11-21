@@ -1,9 +1,9 @@
 require('module-alias/register');
-require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
+require('dotenv').config({ path: require('node:path').resolve(__dirname, '../.env') });
 require('./config/validarEnv').validarEnv();
 const app = require('./app');
 
-const http = require('http');
+const http = require('node:http');
 const { init } = require('./socket');
 
 const PORT = process.env.PORT;

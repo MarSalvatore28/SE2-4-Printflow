@@ -11,7 +11,7 @@
 // El primer cliente agregado («Cliente de carga 01») es el más grande: se lleva la quinta parte
 // de las máquinas agregadas. El resto se reparte en partes iguales.
 
-const path = require('path');
+const path = require('node:path');
 const { cargarEscenario, aleatorio } = require('./escenario');
 
 const MODELOS = {

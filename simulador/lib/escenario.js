@@ -1,8 +1,8 @@
 // Escenario de la demo y cálculo de contadores.
 // Los contadores son ACUMULADOS (como los de una impresora real) y deterministas:
 // generar dos veces el mismo período da exactamente los mismos números.
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const CAMPOS = ['impresion_bn', 'impresion_color', 'copia_bn', 'copia_color'];
 

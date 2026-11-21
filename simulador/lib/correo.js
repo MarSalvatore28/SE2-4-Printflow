@@ -1,7 +1,7 @@
 // Correos .eml (MIME multipart) como los que llegan al buzón: un cuerpo de texto y
 // un adjunto por impresora. Sin dependencias: Node trae todo lo necesario.
 
-const crypto = require('crypto');
+const crypto = require('node:crypto');
 
 const encabezadoUtf8 = (texto) =>
   /^[\x20-\x7e]*$/.test(texto) ? texto : `=?UTF-8?B?${Buffer.from(texto, 'utf8').toString('base64')}?=`;

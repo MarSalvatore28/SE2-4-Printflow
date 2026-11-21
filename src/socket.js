@@ -1,6 +1,6 @@
 const { Server } = require('socket.io');
 const { Client } = require('pg'); 
-const path = require('path');
+const path = require('node:path');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 const { verifyToken } = require('./utils/jwt.util');
 const pool = require('./config/db');
