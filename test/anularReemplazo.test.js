@@ -45,7 +45,7 @@ test('no existe: 404; ya anulado: 409', () => {
   assert.deepEqual(motivoNoAnulable({ cambio: null }), { status: 404, message: 'Reemplazo no encontrado' });
   assert.deepEqual(motivoNoAnulable({}), { status: 404, message: 'Reemplazo no encontrado' });
   const r = motivoNoAnulable({ cambio: { ...CAMBIO, activo: false }, asignacionEntrante: ENTRANTE_VIGENTE });
-  assert.deepEqual(r, { status: 409, message: 'El reemplazo #1 ya está anulado' });
+  assert.deepEqual(r, { status: 409, message: 'El reemplazo de SIMB0002 por SIMF0006 ya está anulado' });
 });
 
 test('con lecturas aprobadas: 409 con el período y la serie', () => {
@@ -56,7 +56,7 @@ test('con lecturas aprobadas: 409 con el período y la serie', () => {
   });
   assert.equal(r.status, 409);
   assert.equal(r.message,
-    'No se puede anular el reemplazo #1: el período 2026-11 ya tiene lecturas aprobadas de SIMF0006. Un período aprobado no se recalcula');
+    'No se puede anular el reemplazo de SIMB0002 por SIMF0006: el período 2026-11 ya tiene lecturas aprobadas de SIMF0006. Un período aprobado no se recalcula');
 });
 
 test('con un lote pendiente de esas máquinas: 409 y que se rechace primero', () => {
@@ -240,7 +240,7 @@ test('no existe: 404; ya anulado: 409 sin más consultas', async () => {
   const anulado = poolFalso({ cambio: { ...CAMBIO, activo: false } });
   const res = await llamar(1, anulado.pool);
   assert.equal(res.statusCode, 409);
-  assert.equal(res.body.message, 'El reemplazo #1 ya está anulado');
+  assert.equal(res.body.message, 'El reemplazo de SIMB0002 por SIMF0006 ya está anulado');
   assert.equal(anulado.consultas.filter((c) => /reportes_oficiales|instalaciones/.test(c.sql)).length, 0);
 });
 

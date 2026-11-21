@@ -18,6 +18,15 @@ const {
   getRentaByCliente
 } = require('@models/instalacion/instalacion.model');
 const { contextoAuditoria } = require('@services/auditoria');
+const { parseId } = require('@utils/maquinasCambio.reglas');
+const {
+  validarDatosInstalacion,
+  validarDatosEdicionInstalacion,
+  validarDatosRetiro,
+} = require('@utils/instalacion.reglas');
+
+// Un id de la ruta que no es un entero positivo responde 400 (las rutas ya lo filtran con router.param)
+const idInvalido = (res, nombre) => res.status(400).json({ success: false, message: `ID de ${nombre} inválido` });
 
 const getInstalacionCompletaByMaquinaController = async (req, res) => {
   try {
@@ -152,37 +161,10 @@ const getMaquinasSinInstalacionController = async (req, res) => {
 
 const createInstalacionController = async (req, res) => {
   try {
-    const {
-      maquina_id,
-      area_id,
-      contrato_id,
-      ip_address,
-      observaciones,
-      fecha_instalacion,
-      costo_renta_mensual,
-      contador_acumulativo,
-      contabilidad_por_usuario
-    } = req.body;
+    const { error, data } = validarDatosInstalacion(req.body);
+    if (error) return res.status(error.status).json({ success: false, message: error.message });
 
-    if (!maquina_id || !area_id || !contrato_id || !ip_address) {
-      return res.status(400).json({
-        success: false,
-        message: 'Faltan campos obligatorios: maquina_id, area_id, contrato_id, ip_address'
-      });
-    }
-
-    const resultado = await createInstalacion(
-      maquina_id,
-      area_id,
-      contrato_id,
-      ip_address,
-      observaciones,
-      fecha_instalacion,
-      costo_renta_mensual,
-      contador_acumulativo !== undefined ? contador_acumulativo : true,
-      contabilidad_por_usuario !== undefined ? contabilidad_por_usuario : false,
-      contextoAuditoria(req)
-    );
+    const resultado = await createInstalacion(data, contextoAuditoria(req));
 
     res.status(201).json({
       success: true,
@@ -208,10 +190,12 @@ const createInstalacionController = async (req, res) => {
 
 const deleteInstalacionController = async (req, res) => {
   try {
-    const { id_instalacion } = req.params;
-    const { observaciones_retiro, fecha_retiro } = req.body;
+    const id = parseId(req.params.id_instalacion);
+    if (!id) return idInvalido(res, 'instalación');
+    const { error, data } = validarDatosRetiro(req.body);
+    if (error) return res.status(error.status).json({ success: false, message: error.message });
 
-    const resultado = await deleteInstalacion(id_instalacion, observaciones_retiro, fecha_retiro, contextoAuditoria(req));
+    const resultado = await deleteInstalacion(id, data.observaciones_retiro, data.fecha_retiro, contextoAuditoria(req));
 
     res.status(200).json({
       success: true,
@@ -295,32 +279,12 @@ const getInstalacionByIdController = async (req, res) => {
 
 const updateInstalacionController = async (req, res) => {
   try {
-    const { id_instalacion } = req.params;
+    const id = parseId(req.params.id_instalacion);
+    if (!id) return idInvalido(res, 'instalación');
+    const { error, data } = validarDatosEdicionInstalacion(req.body);
+    if (error) return res.status(error.status).json({ success: false, message: error.message });
 
-    const {
-      ip_address,
-      costo_renta_mensual,
-      contador_acumulativo,
-      contabilidad_por_usuario,
-      fecha_instalacion
-    } = req.body;
-
-    if (!ip_address) {
-      return res.status(400).json({
-        success: false,
-        message: 'La IP es obligatoria'
-      });
-    }
-
-    const resultado = await updateInstalacionCompleta(
-      id_instalacion,
-      ip_address,
-      costo_renta_mensual,
-      contador_acumulativo,
-      contabilidad_por_usuario,
-      fecha_instalacion,
-      contextoAuditoria(req)
-    );
+    const resultado = await updateInstalacionCompleta(id, data, contextoAuditoria(req));
 
     res.status(200).json({
       success: true,
