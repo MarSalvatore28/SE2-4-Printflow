@@ -36,7 +36,8 @@ const PROYECTO = process.env.E2E_PROYECTO || 'printflow-e2e';
 const WEB_PORT = process.env.E2E_WEB_PORT || '8099';
 const DB_PORT = process.env.E2E_DB_PORT || '5499';
 const BASE = `http://localhost:${WEB_PORT}`;
-const CLAVE = 'Printflow2026*';
+// Contraseña de los usuarios de prueba: DEMO_PASSWORD (del entorno o del .env) o la de siempre
+let CLAVE = process.env.DEMO_PASSWORD || 'Printflow2026*';
 const MESES = ['2026-08', '2026-09', '2026-10'];
 const NOVIEMBRE = '2026-11';
 const ENV = { ...process.env, WEB_PORT, DB_HOST_PORT: DB_PORT };
@@ -310,6 +311,7 @@ async function prueba() {
     'Corre `npm run configurar` para completarlo');
   DB_USER = env.DB_USER || DB_USER;
   DB_NAME = env.DB_NAME || DB_NAME;
+  CLAVE = process.env.DEMO_PASSWORD || env.DEMO_PASSWORD || CLAVE;
 
   const info = spawnSync(DOCKER, ['info', '--format', '{{.ServerVersion}}'], { encoding: 'utf8' });
   exigir(info.status === 0, 'Docker está corriendo', 'Abre Docker Desktop y espera «Engine running»');
