@@ -150,6 +150,24 @@ test('no se aprueba ni se rechaza un lote ya procesado o descartado', async (t) 
   assert.equal((await llamar(controller.rechazarLoteController, { params: { loteId: '5' } })).statusCode, 409);
 });
 
+// Dos clics seguidos (o aprobar y rechazar a la vez): el segundo encuentra el lote ya resuelto
+// dentro de la transacción y staging lanza 409. No es un 500.
+test('aprobar o rechazar un lote que otro resolvió al mismo tiempo responde 409, no 500', async (t) => {
+  const yaAprobado = Object.assign(new Error('El lote ya fue aprobado'), { status: 409 });
+  reemplazar(t, Notificaciones, { obtenerLote: async () => lote('PENDIENTE') });
+  reemplazar(t, Staging, {
+    validarLoteStaging: async () => ({ esValido: true, errores: [] }),
+    approveStagingBatch: async () => { throw yaAprobado; },
+    rejectStagingBatch: async () => { throw Object.assign(new Error('El lote ya fue aprobado y no se puede rechazar'), { status: 409 }); },
+  });
+  const aprobar = await llamar(controller.aprobarLoteController, { params: { loteId: '5' } });
+  assert.equal(aprobar.statusCode, 409);
+  assert.deepEqual(aprobar.body.errores, ['El lote ya fue aprobado']);
+  const rechazar = await llamar(controller.rechazarLoteController, { params: { loteId: '5' } });
+  assert.equal(rechazar.statusCode, 409);
+  assert.equal(rechazar.body.message, 'El lote ya fue aprobado y no se puede rechazar');
+});
+
 test('rechazar guarda el motivo, el usuario y los clientes del lote', async (t) => {
   const llamadas = [];
   let consultas = 0;
