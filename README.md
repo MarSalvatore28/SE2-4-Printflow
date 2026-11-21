@@ -31,6 +31,7 @@ Proyecto de la materia **Ingeniería de Software II** (ESPOL, sección 4).
 
 | Documento | Para qué |
 |---|---|
+| [`docs/arquitectura.md`](docs/arquitectura.md) | Cómo está armado el sistema: piezas, flujo del correo a la factura, datos, capas, seguridad y calidad |
 | [`docs/probar.md`](docs/probar.md) | Levantar el sistema, sacar el token y probar la API y la seguridad, paso a paso |
 | [`docs/e2e.md`](docs/e2e.md) | La prueba de punta a punta (`npm run e2e`) |
 | [`docs/guion-demo.md`](docs/guion-demo.md) | El recorrido de 10 minutos para el sponsor |
