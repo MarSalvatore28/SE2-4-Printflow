@@ -519,6 +519,29 @@ const getEstadisticasStaging = async () => {
   return rows;
 };
 
+// Asignación de la máquina en el período que se aprueba (la misma regla que INSTALACION_DEL_PERIODO
+// del consolidado): prefiere la del cliente del reporte, luego la que cubre el período y luego la
+// vigente. De ahí sale el área que queda guardada en el reporte oficial.
+const ASIGNACION_DEL_PERIODO = `
+  SELECT a.nombre AS area_nombre
+  FROM instalaciones i
+  JOIN areas a ON a.id_area = i.area_id
+  WHERE i.maquina_id = $1
+  ORDER BY
+    (a.cliente_id = $2::int) DESC NULLS LAST,
+    (i.fecha_instalacion < TO_DATE($3::text || '-01', 'YYYY-MM-DD') + INTERVAL '1 month'
+      AND (i.fecha_retiro IS NULL OR i.fecha_retiro >= TO_DATE($3::text || '-01', 'YYYY-MM-DD'))) DESC NULLS LAST,
+    (i.activo AND i.fecha_retiro IS NULL) DESC NULLS LAST,
+    i.fecha_instalacion DESC,
+    i.id_instalacion DESC
+  LIMIT 1`;
+
+const asignacionDelReporte = async (db, row, periodo) => {
+  if (!row.maquina_id_tentativa) return null;
+  const { rows } = await db.query(ASIGNACION_DEL_PERIODO, [row.maquina_id_tentativa, row.cliente_id_tentativo ?? null, periodo]);
+  return rows[0] || null;
+};
+
 const approveStagingBatch = async (loteId, periodo = null, usuarioId = null) => {
   const client = await pool.connect();
   try {
@@ -533,7 +556,12 @@ const approveStagingBatch = async (loteId, periodo = null, usuarioId = null) => 
       throw new Error('No se encontraron registros para este lote');
     }
 
+    const periodoFinal = periodo || new Date().toISOString().slice(0, 7);
+
     for (const row of stagingRows) {
+      // El consolidado de meses pasados toma el área y las copias de aquí, no de la asignación de hoy
+      const asignacion = await asignacionDelReporte(client, row, periodoFinal);
+
       const insertOficialQuery = `
         INSERT INTO reportes_oficiales (
           lote_origen_id, 
@@ -542,27 +570,33 @@ const approveStagingBatch = async (loteId, periodo = null, usuarioId = null) => 
           cliente_id,
           contador_impresiones_bn, 
           contador_impresiones_color,
+          contador_copias_bn,
+          contador_copias_color,
           snap_maquina_serie, 
           snap_maquina_ip,
+          snap_area_nombre,
           print_total,
           copy_total,
           total_servicio,
           fecha_procesamiento,
           fecha_corte
         ) 
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), $12)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), $15)
         RETURNING id_reporte
       `;
 
       const oficialValues = [
         row.lote_id,
-        periodo || new Date().toISOString().slice(0, 7),
+        periodoFinal,
         row.maquina_id_tentativa,
         row.cliente_id_tentativo,
         row.impresion_bn || 0,
         row.impresion_color || 0,
+        row.copia_bn || 0,
+        row.copia_color || 0,
         row.serie_maquina,
         row.ip_detectada,
+        asignacion?.area_nombre ?? null,
         (row.print_total || 0) - (row.copy_total || 0),
         row.copy_total || 0,
         row.totalservicio || 0,
