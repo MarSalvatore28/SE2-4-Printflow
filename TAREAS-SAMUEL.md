@@ -17,7 +17,7 @@ Te toca **lo más delicado del backend**: que el sistema rechace las lecturas ma
 
 | # | Tarea | Puntos | Rama |
 |---|---|---|---|
-| 1 | **S3-01 · Validaciones de lecturas** | 5 | `feature/f3-validaciones` |
+| 1 | ~~S3-01 · Validaciones de lecturas~~ **Hecho** (#58, aprobado y en `main`) | 5 | `feature/f3-validaciones` |
 | 2 | **S3-02 · Auditoría** | 3 | `feature/f3-auditoria` |
 | 3 | Tests de login y seguridad (caja 3, mejora 3.5) | 2 | `test/f0-login` |
 | 4 | Cuatro fallos del backend (abajo) | 2 | `fix/staging-ingesta` |
