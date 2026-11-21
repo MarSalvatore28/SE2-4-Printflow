@@ -3,13 +3,15 @@
 //   node demo.js                               agosto a octubre de 2026, con casos de error el último mes
 //   node demo.js --desde 2026-06 --hasta 2026-10
 //   node demo.js --sin-errores
+//   node demo.js --maquinas 500 --desde 2026-01 --hasta 2026-10 --sin-errores   (escenario grande, S4-05)
 //
 // La aprobación la hace aquí el operador por la API para que la demo corra sola (en la aplicación
 // se puede hacer desde Notificaciones → Lotes). Requiere haber cargado antes los datos (preparar-datos.js).
 
 const { generarCorreos } = require('./generar-correos');
 const { procesarBuzon } = require('./procesar-buzon');
-const { cargarEscenario, validarPeriodo, sumarMeses } = require('./lib/escenario');
+const { validarPeriodo, sumarMeses } = require('./lib/escenario');
+const { escenarioDeArgs } = require('./lib/escenarioGrande');
 
 const API_URL = process.env.API_URL || 'http://api:9000';
 const USUARIO = process.env.DEMO_EMAIL || 'operador@printflow.local';
@@ -20,6 +22,9 @@ const valor = (nombre, porDefecto) => {
   const i = args.indexOf(nombre);
   return i === -1 ? porDefecto : args[i + 1];
 };
+
+// Con más máquinas que esto por cliente, el consolidado muestra solo los totales (escenario grande)
+const MAX_FILAS = 10;
 
 const titulo = (texto) => console.log(`\n${'='.repeat(70)}\n${texto}\n${'='.repeat(70)}`);
 const numero = (n) => Number(n || 0).toLocaleString('es-EC');
@@ -86,8 +91,9 @@ async function mostrarConsolidado(token, escenario, ids, periodo) {
       console.log('  (sin lecturas aprobadas en el período)');
       continue;
     }
-    console.log('  Serie       Tipo    Consumo B/N   Consumo color   Total     Monto ref.');
-    for (const f of filas) {
+    if (filas.length > MAX_FILAS) console.log(`  (${filas.length} máquinas: el detalle por máquina está en Informes)`);
+    else console.log('  Serie       Tipo    Consumo B/N   Consumo color   Total     Monto ref.');
+    for (const f of filas.length > MAX_FILAS ? [] : filas) {
       console.log(`  ${String(f.info.serie).padEnd(11)} ${String(f.info.tipo_impresion).padEnd(7)}` +
         ` ${numero(f.consumo.total_bn).padStart(11)} ${numero(f.consumo.total_color).padStart(15)}` +
         ` ${numero(f.consumo.gran_total).padStart(7)}   $${f.financiero.monto_referencial ?? f.financiero.monto_total}`);
@@ -105,10 +111,12 @@ async function main() {
   const desde = validarPeriodo(valor('--desde', '2026-08'));
   const hasta = validarPeriodo(valor('--hasta', '2026-10'));
   const conErrores = !args.includes('--sin-errores');
-  const escenario = cargarEscenario();
+  const escenario = escenarioDeArgs(args);
 
   titulo('PrintFlow · simulación del flujo de correo (n8n)');
-  console.log(`API: ${API_URL} · meses: ${desde} a ${hasta}${conErrores ? ' · con casos de error el último mes' : ''}`);
+  const totalMaquinas = escenario.clientes.reduce((s, c) => s + c.maquinas.length, 0);
+  console.log(`API: ${API_URL} · meses: ${desde} a ${hasta}${conErrores ? ' · con casos de error el último mes' : ''}` +
+    ` · ${escenario.clientes.length} clientes, ${totalMaquinas} máquinas`);
   const salud = await api('/health').catch(() => ({ status: 0 }));
   if (salud.status !== 200) throw new Error(`La API no responde en ${API_URL}/health. ¿Está arriba con docker compose up?`);
   const token = await iniciarSesion();
@@ -121,7 +129,7 @@ async function main() {
     const ultimo = periodo === hasta;
     titulo(`Mes ${periodo}`);
     console.log('1) Las impresoras envían sus reportes al buzón');
-    generarCorreos({ periodo, errores: conErrores && ultimo }).forEach((a) => console.log(`   ✉ ${a}`));
+    generarCorreos({ periodo, errores: conErrores && ultimo, escenario }).forEach((a) => console.log(`   ✉ ${a}`));
 
     console.log('\n2) n8n (simulado) lee el buzón y llama a la ingesta');
     await procesarBuzon();
