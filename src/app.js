@@ -22,7 +22,8 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
+// persistAuthorization: el token pegado en «Authorize» se mantiene al recargar la página
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs, { swaggerOptions: { persistAuthorization: true } }));
 
 app.use((req, _res, next) => {
   req.pool = pool;
