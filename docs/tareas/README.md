@@ -64,6 +64,7 @@ Las migraciones se aplican en orden alfabético la primera vez que se crea el vo
 
 - **Una rama por tarea** desde `develop` actualizado (`feature/<sprint>-<tema>`) y un **PR a `develop`** con la plantilla. El CI (`test`, `docker` y `smoke`) debe quedar en verde. Revisa Kiara (QA) o Marlo.
 - **Una mejora, un commit**, en español (`feat(...)`, `fix(...)`, `test(...)`).
+- **Cómo probar, sin pedirle claves a nadie:** [`docs/probar.md`](../probar.md). `npm run configurar` crea tu `.env` con claves propias; el token sale de Postman (colección en `docs/postman/`), de Swagger o de `npm run token`.
 - **Pruebas con datos del simulador** (`simulador/README.md`): `preparar-datos.js` y `demo.js`. Usuarios: `admin@`, `operador@` y `auditor@printflow.local` / `Printflow2026*`.
 - **Permisos:** toda ruta nueva que modifica datos lleva `requireRole(...)` (`src/middlewares/role.middleware.js`). En el frontend, los botones se muestran según `usePermisos()`.
 - **Frontend:** los servicios usan `apiFetch` (`src/services/api.ts`), nunca `fetch` directo.
