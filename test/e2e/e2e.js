@@ -183,7 +183,7 @@ async function esperarApi(segundos = 180) {
     } catch (error) {
       ultimo = error.cause?.code || error.message;
     }
-    await esperar(2000);
+    await esperar(2000); // NOSONAR: reintento con espera
   }
   return { ok: false, ultimo };
 }
@@ -340,8 +340,10 @@ async function seccionSistemaArriba(ctx) {
   ctx.auditor = await iniciarSesion('auditor');
 
   ctx.ids = {};
-  for (const cliente of escenario.clientes) {
-    const { status, datos } = await api(`/api/clientes/ruc/${cliente.ruc}`, { token: ctx.operador });
+  // Solo consultas: se piden a la vez y se comprueban en orden
+  const respuestas = await Promise.all(escenario.clientes.map((cliente) => api(`/api/clientes/ruc/${cliente.ruc}`, { token: ctx.operador })));
+  for (const [i, cliente] of escenario.clientes.entries()) {
+    const { status, datos } = respuestas[i];
     ctx.ids[cliente.codigo] = (datos.data || datos)?.id_cliente;
     exigir(status === 200 && Boolean(ctx.ids[cliente.codigo]), `Cliente ${cliente.nombre} registrado (#${ctx.ids[cliente.codigo]})`, `HTTP ${status}`);
   }
@@ -367,8 +369,8 @@ async function seccionCorreosYAprobacion(ctx) {
   ctx.lotesAprobados = {};
   for (const periodo of MESES) {
     enviarCorreos(periodo);
-    const lotes = await lotesPendientes(ctx.operador, periodo);
-    for (const cliente of escenario.clientes) await aprobarLoteDelMes(ctx, lotes, periodo, cliente);
+    const lotes = await lotesPendientes(ctx.operador, periodo); // NOSONAR: cada mes necesita aprobado el anterior
+    for (const cliente of escenario.clientes) await aprobarLoteDelMes(ctx, lotes, periodo, cliente); // NOSONAR: de a uno, como el operador
   }
 }
 
@@ -377,7 +379,7 @@ async function seccionConsolidado(ctx) {
   seccion('3. Consolidado contra el cálculo a mano del escenario (contadoresAlCierre)');
   for (const periodo of MESES) {
     for (const cliente of escenario.clientes) {
-      const data = await compararConsolidado(ctx.operador, cliente, ctx.ids[cliente.codigo], periodo, { primerMes: periodo === MESES[0] });
+      const data = await compararConsolidado(ctx.operador, cliente, ctx.ids[cliente.codigo], periodo, { primerMes: periodo === MESES[0] }); // NOSONAR: las comprobaciones salen en orden
       if (cliente.codigo === 'horizonte' && periodo === '2026-10') {
         comprobar(data?.resumen?.monto_total_general === '395.48', 'Colegio Horizonte · 2026-10 factura $395,48 (el número de la demo)',
           `obtenido $${data?.resumen?.monto_total_general}`);
