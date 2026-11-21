@@ -222,7 +222,7 @@ const cambiarEstadoMaquinaController = async (req, res) => {
     }
     if (resultado === 'asignada') {
       const maquina = await getMaquinaById(id);
-      const donde = maquina && maquina.cliente_nombre
+      const donde = maquina?.cliente_nombre
         ? ` (${maquina.cliente_nombre}${maquina.area_nombre ? ` · ${maquina.area_nombre}` : ''})`
         : '';
       return res.status(409).json({
@@ -255,7 +255,7 @@ const fetchModelosController = async (_req, res) => {
 
 const crearModeloController = async (req, res) => {
   try {
-    const nombre = normalizarNombreModelo((req.body || {}).nombre);
+    const nombre = normalizarNombreModelo(req.body?.nombre);
     if (!nombre) {
       return res.status(400).json({ success: false, message: 'El nombre del modelo es obligatorio' });
     }

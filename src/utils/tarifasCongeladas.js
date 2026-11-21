@@ -15,7 +15,7 @@
  * @returns {Object|null} null si la máquina no tiene contrato: el reporte queda sin congelar
  */
 const tarifasParaCongelar = (contrato) => {
-  if (!contrato || contrato.contrato_id === null || contrato.contrato_id === undefined) return null;
+  if (contrato?.contrato_id === null || contrato?.contrato_id === undefined) return null;
   return {
     snap_contrato_id: contrato.contrato_id,
     snap_costo_impresion_bn: contrato.costo_impresion_bn ?? 0,

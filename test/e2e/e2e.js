@@ -665,6 +665,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(`Error inesperado en la prueba: ${unaLinea(error && error.stack ? error.stack : error)}`);
+  console.error(`Error inesperado en la prueba: ${unaLinea(error?.stack || error)}`);
   process.exit(1);
 });
