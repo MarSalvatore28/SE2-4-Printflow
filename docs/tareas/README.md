@@ -1,5 +1,41 @@
 # Reparto de lo que falta · Sprints 3 y 4
 
+## Estado al 22/11/2026: listo para subirlo al servidor
+
+**El sistema está terminado, revisado de punta a punta y en `main`.**
+- **Revisión:** se recorrió con los 3 roles, pantalla por pantalla y botón por botón, comprobando los datos en la base (#89 a #92 del backend y #50 a #53 del frontend).
+- **Seguridad y calidad:**
+  - SonarCloud: A, A, A en los dos repos, con 0 bugs y 0 vulnerabilidades;
+  - `npm audit`: 0;
+  - ESLint: 0 y obligatorio en el CI.
+- **Pruebas:**
+  - 361 automáticas en el backend;
+  - `npm run e2e`: **154 comprobaciones**;
+  - PDF y Excel iguales a la pantalla.
+- **Ramas protegidas:** `main` y `develop` solo aceptan PRs con el CI en verde.
+
+### Lo que falta
+
+| # | Qué | Quién | Dónde |
+|---|---|---|---|
+| 1 | **Subirlo al servidor**: VM de Azure, DNS, `.env` de producción y primer despliegue | Equipo C (Samuel) | `docs/despliegue.md`, «Para subirlo al servidor» (11 pasos, ~90 min) |
+| 2 | Azure Blob para los respaldos, secretos `DEPLOY_*` y la variable `MONITOREO_URL` en GitHub | Equipo C (Christian) con un admin del repo | `docs/despliegue.md`, tabla «Lo que falta configurar» |
+| 3 | UAT con el PO: recorrido con [`docs/guion-demo.md`](../guion-demo.md) y defectos como issues | Equipo C con Kiara (QA) | `TAREAS-SAMUEL.md`, tarea 5, punto 2 |
+| 4 | Cambiar las contraseñas de los usuarios de prueba en producción | Quien despliega | `docs/despliegue.md`, sección 4 |
+
+### Mejoras posibles (no bloquean la entrega)
+
+| Mejora | Detalle |
+|---|---|
+| Borrar un área para siempre (`DELETE /api/areas/:id/permanente`) no queda auditado | Necesita una acción `ELIMINAR` en la auditoría |
+| Un usuario revocado no se desconecta al instante del socket que ya tenía abierto | Lo corta la siguiente llamada a la API o la reconexión |
+| En la demo, una máquina con noviembre aprobado no se puede retirar hasta el corte (30/11) | Es lo correcto en la realidad; el simulador pone cortes a fin de mes |
+| Reprocesar una falla reportada por el propio equipo la desbloquea aunque nada haya cambiado | Decisión de negocio para el PO |
+| Dos respaldos en el mismo minuto usan el mismo nombre | Agregar los segundos al nombre del archivo |
+| El simulador deja archivos de root en `simulador/buzon/` del servidor | No bloquea `git pull`; se borran con `sudo` |
+
+Lo que sigue en este documento es el reparto original de las tareas, con su estado.
+
 Estado al 21/11/2026: **todo el desarrollo está hecho, probado y en `main`.** Solo falta, del Equipo C, poner el servidor en Azure (la VM, el contenedor de respaldos y los secretos del despliegue; ver `docs/despliegue.md`) y la UAT con el PO. La prueba de punta a punta (`npm run e2e`) da 115 comprobaciones sin fallos y el guion de la demo está en [`docs/guion-demo.md`](../guion-demo.md).
 
 Estado al 20/11/2026: las Fases 0, 1 y 2 están en `main`, con máquinas y reemplazos, notificaciones en vivo, lotes, informes, usuarios, roles, el simulador del correo, la lectura manual (S3-04) y el reprocesar (S3-05). También están las **validaciones de lecturas (S3-01, Samuel, #58)**, el **importe del consolidado (S3-06, Christian, #57)** y la **pantalla de informes con facturación y el PDF (S4-01)**: Colegio Horizonte de octubre da **$395,48**. Este documento reparte **todo lo que falta** para cerrar el proyecto.
