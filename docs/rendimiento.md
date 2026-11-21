@@ -73,6 +73,9 @@ Con 10 meses, la proporción es la misma: antes, de 126 a 141 ms; después, de 7
   - las respuestas HTTP del consolidado de Horizonte y Andina, de septiembre y octubre (y Horizonte por área), son **idénticas byte por byte** a las de antes del cambio;
   - Colegio Horizonte de 2026-10 sigue en **$395,48** (B/N: $100 + $224; color: $50 + $21,48), con el mismo `resumen.facturacion`.
 - **Con un reemplazo** (SIMB0002 → SIMF0006, noviembre de 2026, registrado por la API y aprobado), los 40 consolidados del escenario normal dan **idénticos** antes y después. Horizonte de noviembre: $388,87, con 1 cambio.
+- **Después de actualizar con `develop`** (tarifas congeladas al aprobar y anulación de reemplazos):
+  - se repitió la comparación con el modelo de `develop`: los 40 consolidados del escenario normal (con el reemplazo) y los 300 del escenario grande con 3 meses dan **idénticos**, y Horizonte de octubre sigue en $395,48;
+  - en esa corrida, con la PC sin otros entornos, el cliente más grande respondió en **28 ms**, los 20 clientes uno tras otro en **381 ms** y los 20 a la vez en **201 ms**.
 
 ## Lo que queda
 
