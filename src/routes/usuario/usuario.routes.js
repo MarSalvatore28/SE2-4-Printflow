@@ -7,6 +7,7 @@ const {
   logoutUsuario
 } = require('@controllers/usuario/usuario.controller');
 const { protect } = require('@middlewares/auth.middleware');
+const { limiteLogin } = require('@middlewares/limiteLogin.middleware');
 
 /**
  * @swagger
@@ -48,8 +49,10 @@ const { protect } = require('@middlewares/auth.middleware');
  *                   type: object
  *       401:
  *         description: Invalid credentials
+ *       429:
+ *         description: Demasiados intentos fallidos desde la misma IP (10 cada 15 minutos; se cambia con LOGIN_MAX_INTENTOS)
  */
-router.post('/login', loginUsuario);
+router.post('/login', limiteLogin, loginUsuario);
 
 /**
  * @swagger
