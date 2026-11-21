@@ -23,7 +23,8 @@ jobs:
           node-version: 22
           cache: npm
 
-      - run: npm ci
+      # Sin scripts de instalación (bcrypt usa sus binarios precompilados)
+      - run: npm ci --ignore-scripts
 
       - name: La app carga sin errores
         run: npm run verificar
