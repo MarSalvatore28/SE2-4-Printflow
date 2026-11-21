@@ -621,6 +621,83 @@ async function seccionLoteAndina(ctx) {
   comprobar(Boolean(pendiente), `${codigoA} sigue pendiente (no se aprobó nada)`);
 }
 
+// Clientes, contratos y áreas: validaciones y cascada (revisión del módulo de catálogos).
+// Va al final: crea un cliente aparte y no cambia los datos de las secciones anteriores.
+async function seccionCatalogos(ctx) {
+  seccion('8. Clientes, contratos y áreas: validaciones y cascada');
+  const admin = { token: ctx.admin };
+  const RUC = '0992000000001';
+
+  let res = await api('/api/clientes', { ...admin, metodo: 'POST', cuerpo: { nombre: 'Otro', ruc: '9992000000001' } });
+  comprobar(res.status === 400, 'RUC con provincia inválida → 400', `HTTP ${res.status}: ${res.datos.message}`);
+  res = await api('/api/clientes', { ...admin, metodo: 'POST', cuerpo: { nombre: '   ', ruc: RUC } });
+  comprobar(res.status === 400, 'Cliente con nombre de solo espacios → 400', `HTTP ${res.status}: ${res.datos.message}`);
+  res = await api('/api/clientes', { ...admin, metodo: 'POST', cuerpo: { nombre: 'Copia', ruc: clienteDe('horizonte').ruc } });
+  comprobar(res.status === 409, 'RUC repetido → 409', `HTTP ${res.status}: ${res.datos.message}`);
+  res = await api('/api/clientes', { token: ctx.operador, metodo: 'POST', cuerpo: { nombre: 'Del operador', ruc: RUC } });
+  comprobar(res.status === 403, 'El operador no crea clientes → 403', `HTTP ${res.status}`);
+  res = await api('/api/clientes/abc', admin);
+  comprobar(res.status === 400, 'GET /api/clientes/abc → 400 (antes 500)', `HTTP ${res.status}`);
+
+  const nombre = 'Imprenta «Ñandú» & Cía. (E2E)';
+  res = await api('/api/clientes', { ...admin, metodo: 'POST', cuerpo: { nombre, ruc: RUC } });
+  const clienteId = res.datos.data?.id_cliente;
+  if (!comprobar(res.status === 201 && Boolean(clienteId), `Cliente «${nombre}» creado`, `HTTP ${res.status}: ${res.datos.message}`)) return;
+
+  // «Todo como Color», como lo mandaba la web, se guarda con el valor que entiende la facturación
+  const contrato = {
+    cliente_id: clienteId, fecha_inicio: '2026-11-01', impresiones_bn_incluidas: 1500, impresiones_color_incluidas: 250,
+    costo_impresion_bn: 0.0125, costo_impresion_color: 0.0875, costo_excedente_impresion_bn: 0.0175, costo_excedente_impresion_color: 0.1125,
+    tiene_renta: true, printer_bill: 'Todo como Color',
+  };
+  res = await api('/api/contratos', { ...admin, metodo: 'POST', cuerpo: { ...contrato, costo_impresion_bn: -1 } });
+  comprobar(res.status === 400, 'Contrato con un costo negativo → 400', `HTTP ${res.status}: ${res.datos.message}`);
+  res = await api('/api/contratos', { ...admin, metodo: 'POST', cuerpo: contrato });
+  const contratoId = res.datos.data?.id_contrato;
+  if (!comprobar(res.status === 201 && Boolean(contratoId), 'Contrato «Todo como Color» creado', `HTTP ${res.status}: ${res.datos.message}`)) return;
+  res = await api(`/api/contratos/${contratoId}`, { ...admin, metodo: 'PUT', cuerpo: { costo_impresion_bn: 0.013 } });
+  const guardado = (await api(`/api/contratos/${contratoId}`, admin)).datos.data || {};
+  comprobar(res.status === 200 && guardado.cliente_id === clienteId && guardado.facturacion_de_impresora === 'Todo como color'
+    && guardado.costo_impresion_bn === '0.0130' && guardado.impresiones_color_incluidas === 250 && guardado.costo_x_excedente_impresion_color === 0.1125
+    && guardado.renta_equipo === true,
+    'Editar solo un costo conserva lo demás; el contrato queda «Todo como color» y ligado a su cliente',
+    JSON.stringify(guardado));
+
+  // Superposición: se guarda con aviso, sin mostrar ids
+  res = await api('/api/contratos', { ...admin, metodo: 'POST', cuerpo: { ...contrato, fecha_inicio: '2027-01-01' } });
+  const otroId = res.datos.data?.id_contrato;
+  comprobar(res.status === 201 && /01\/11\/2026/.test(res.datos.advertencia || '') && !/#/.test(res.datos.advertencia || ''),
+    `Contrato superpuesto: «${res.datos.advertencia}»`, `HTTP ${res.status}`);
+  await api(`/api/contratos/${otroId}`, { ...admin, metodo: 'DELETE' });
+
+  // Cascada: al reactivar el cliente vuelve el contrato que cayó con él, no el desactivado aparte
+  await api(`/api/clientes/${clienteId}`, { ...admin, metodo: 'DELETE' });
+  let contratos = lista((await api(`/api/contratos/cliente/${clienteId}`, admin)).datos.data);
+  comprobar(contratos.length === 2 && contratos.every((c) => !c.activo), 'Desactivar el cliente desactiva sus contratos', JSON.stringify(contratos.map((c) => c.activo)));
+  await api(`/api/clientes/${clienteId}/activar`, { ...admin, metodo: 'PATCH' });
+  contratos = lista((await api(`/api/contratos/cliente/${clienteId}`, admin)).datos.data);
+  const activos = contratos.filter((c) => c.activo).map((c) => c.id_contrato);
+  comprobar(igual(activos, [contratoId]), 'Al reactivar el cliente vuelve solo el contrato que se desactivó con él', diferencia(activos, [contratoId]));
+
+  // Áreas
+  const areasH = lista((await api(`/api/areas/cliente/${ctx.ids.horizonte}`, admin)).datos.data);
+  const conMaquina = areasH.find((a) => Number(a.total_instalaciones_activas) > 0);
+  res = await api('/api/areas', { ...admin, metodo: 'POST', cuerpo: { cliente_id: ctx.ids.horizonte, nombre: ` ${conMaquina.nombre.toUpperCase()} ` } });
+  comprobar(res.status === 409, `Área repetida en el mismo cliente («${conMaquina.nombre.toUpperCase()}») → 409`, `HTTP ${res.status}: ${res.datos.message}`);
+  res = await api(`/api/areas/${conMaquina.id_area}`, { ...admin, metodo: 'DELETE' });
+  const sigue = (await api(`/api/areas/${conMaquina.id_area}`, admin)).datos.data || {};
+  comprobar(res.status === 409 && sigue.activo === true, `Desactivar el área «${conMaquina.nombre}» con máquinas asignadas → 409 y sigue activa`,
+    `HTTP ${res.status}: ${res.datos.message}`);
+  res = await api(`/api/areas/${conMaquina.id_area}`, { ...admin, metodo: 'PUT', cuerpo: { cliente_id: clienteId } });
+  comprobar(res.status === 409, 'Mover a otro cliente un área con asignaciones → 409', `HTTP ${res.status}: ${res.datos.message}`);
+  res = await api('/api/areas', { ...admin, metodo: 'POST', cuerpo: { cliente_id: clienteId, nombre: 'Diseño «A»' } });
+  const areaId = res.datos.data?.id_area;
+  res = await api(`/api/areas/${areaId}`, { ...admin, metodo: 'PUT', cuerpo: { nombre: 'Diseño «B»' } });
+  const area = (await api(`/api/areas/${areaId}`, admin)).datos.data || {};
+  comprobar(res.status === 200 && area.nombre === 'Diseño «B»' && area.activo === true && area.id_cliente === clienteId,
+    'Editar un área sin mandar «activo» la deja activa y en su cliente', JSON.stringify(area));
+}
+
 async function prueba() {
   console.log('PrintFlow · prueba de punta a punta (E2E)');
   console.log(`Proyecto de Docker: ${PROYECTO} · web ${BASE} · base 127.0.0.1:${DB_PORT}`);
@@ -634,6 +711,7 @@ async function prueba() {
   await seccionValidaciones(ctx);
   await seccionReemplazo(ctx);
   await seccionLoteAndina(ctx);
+  await seccionCatalogos(ctx);
 }
 
 async function main() {
