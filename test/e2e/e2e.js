@@ -409,6 +409,9 @@ async function seccionSeguridad(ctx) {
   comprobar(res.status === 403, 'El auditor no puede aprobar lotes: POST /api/staging/approve-batch → 403', `HTTP ${res.status}`);
   res = await api('/api/ingesta/cargar', { metodo: 'POST', cuerpo: [], token: ctx.env.INGESTA_TOKEN });
   comprobar(res.status === 403, `Ingesta desde fuera (puerto ${WEB_PORT}), aun con el token de ingesta → 403`, `HTTP ${res.status}`);
+  // Los contadores de un lote no se editan a mano antes de aprobarlo: ni siquiera el admin
+  res = await api('/api/staging/consolidado/1', { token: ctx.admin, metodo: 'PUT', cuerpo: { consolidado_print_total: 1 } });
+  comprobar(res.status === 404, 'Editar a mano un reporte del lote (PUT /api/staging/consolidado/:id, admin) → 404: la ruta ya no existe', `HTTP ${res.status}`);
   res = await api('/api/auditoria?tabla=lotes_carga', { token: ctx.auditor });
   comprobar(res.status === 403, 'La auditoría es solo para admin: el auditor recibe 403', `HTTP ${res.status}`);
   const loteAuditado = ctx.lotesAprobados['SIM-2026-10-horizonte'];
