@@ -2,7 +2,7 @@ const { Server } = require('socket.io');
 const { Client } = require('pg'); 
 const path = require('node:path');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
-const { verifyToken } = require('./utils/jwt.util');
+const { verifyToken, sesionVigente, SESION_TERMINADA } = require('./utils/jwt.util');
 const pool = require('./config/db');
 const { avisarSiEsLoteNuevo } = require('./services/avisos.service');
 
@@ -25,12 +25,20 @@ module.exports = {
             }
         });
 
-        // Solo se conecta quien tiene sesión: el frontend manda su JWT en auth.token
-        io.use((socket, next) => {
+        // Solo se conecta quien tiene sesión: el frontend manda su JWT en auth.token.
+        // Como protect: el usuario debe estar activo y el token ser de su sesión vigente.
+        io.use(async (socket, next) => {
             const token = socket.handshake.auth?.token;
             if (!token) return next(new Error('No hay token, autorización denegada'));
             try {
-                socket.data.usuario = verifyToken(token);
+                const datos = verifyToken(token);
+                const { rows: [usuario] } = await pool.query(
+                    'SELECT activo, version_sesion FROM usuarios WHERE id_usuario = $1',
+                    [datos.id]
+                );
+                if (!usuario?.activo) return next(new Error('Usuario no autorizado o inactivo'));
+                if (!sesionVigente(datos, usuario.version_sesion)) return next(new Error(SESION_TERMINADA));
+                socket.data.usuario = datos;
                 next();
             } catch {
                 next(new Error('Token inválido'));

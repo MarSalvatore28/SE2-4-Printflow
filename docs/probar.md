@@ -286,6 +286,7 @@ A mano, esto es lo que **tiene** que pasar:
 | 5 | Rol sin permiso | Inicia sesión como **auditor** y haz `POST /api/staging/approve-batch` | **403** |
 | 6 | Ingesta desde fuera | `POST http://localhost:8080/api/ingesta/cargar` | **403**: nginx la bloquea, porque solo n8n o el simulador la usan por dentro de Docker |
 | 7 | Sesión deslizante | Cualquier petición válida | La respuesta trae la cabecera `X-Nuevo-Token` (en Postman, pestaña **Headers** de la respuesta) |
+| 8 | Sesión revocada | Como admin, cámbiale la contraseña (o el rol) a un usuario y usa el token que ese usuario tenía | **401** «Tu sesión terminó: inicia sesión de nuevo». En la web, al usuario lo manda al login con el aviso de sesión terminada |
 
 En la web:
 - Como **auditor**, intenta aprobar un lote en **Notificaciones → Lotes → Ver detalle → Aprobar**: tiene que decir «No tiene permiso para esta acción».
@@ -297,7 +298,7 @@ En la web:
 |---|---|---|
 | Login | `src/controllers/usuario/usuario.controller.js` (`loginUsuario`) | Compara la contraseña con `bcrypt` y firma el token con `SECRET_KEY` |
 | Firmar y verificar | `src/utils/jwt.util.js` | `generateToken(payload)` (vence a los 30 min) y `verifyToken(token)` (lanza un error si es falso o venció) |
-| Exigir token | `src/middlewares/auth.middleware.js` (`protect`) | 401 si falta o es inválido; deja al usuario en `req.user` y agrega `X-Nuevo-Token` |
+| Exigir token | `src/middlewares/auth.middleware.js` (`protect`) | 401 si falta, es inválido o es de una versión de sesión anterior (`sesionVigente`); deja al usuario en `req.user` y agrega `X-Nuevo-Token` |
 | Rutas públicas | `src/app.js` (`RUTAS_PUBLICAS`) | Solo `/api/auth/login` y `/api/auth/validate-token`. La ingesta usa su propio token |
 | Permisos por rol | `src/middlewares/role.middleware.js` (`requireRole`) | 403 si el rol del usuario no está en la lista. Ejemplo: `requireRole('admin', 'operador')` |
 | Token de la ingesta | `src/middlewares/ingesta.middleware.js` | Exige `Authorization: Bearer <INGESTA_TOKEN>`; responde 503 si no está configurado |

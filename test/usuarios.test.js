@@ -157,3 +157,38 @@ test('todas las rutas de usuarios son solo para admin (operador y auditor: 403)'
     }
   }
 });
+
+// Migración 033: el UPDATE sube version_sesion al cambiar la contraseña o el rol y al desactivar
+const pool = require('../src/config/db');
+const usuariosModel = require('../src/models/usuario/usuarios.model');
+
+const capturarUpdate = (t) => {
+  const consultas = [];
+  const cliente = {
+    query: async (sql, params) => {
+      consultas.push({ sql: String(sql), params });
+      if (/COUNT\(\*\)/.test(sql)) return { rows: [{ total: 1 }] };
+      if (/^\s*UPDATE usuarios/.test(sql)) return { rows: [{ id_usuario: 7 }] };
+      return { rows: [{ id_usuario: 7, id_registro_auditoria: 1 }] };
+    },
+    release: () => {},
+  };
+  t.mock.method(pool, 'connect', async () => cliente);
+  return () => consultas.find((c) => /^\s*UPDATE usuarios/.test(c.sql));
+};
+
+test('editar un usuario sube version_sesion si cambia la contraseña o el rol (no por otros datos)', async (t) => {
+  const update = capturarUpdate(t);
+  await usuariosModel.actualizarUsuario(7, { nombre: 'A', apellido: null, email: 'a@x.com', rol_id: 2, passwordHash: 'hash' });
+  const { sql, params } = update();
+  assert.match(sql, /version_sesion = version_sesion\s*\+ CASE WHEN \$6::text IS NOT NULL OR rol_id IS DISTINCT FROM \$5 THEN 1 ELSE 0 END/);
+  assert.equal(params[5], 'hash');
+});
+
+test('desactivar sube version_sesion; activar no', async (t) => {
+  const update = capturarUpdate(t);
+  await usuariosModel.cambiarActivo(7, false);
+  const { sql, params } = update();
+  assert.match(sql, /version_sesion = version_sesion \+ CASE WHEN activo AND NOT \$2::boolean THEN 1 ELSE 0 END/);
+  assert.deepEqual(params, [7, false]);
+});
