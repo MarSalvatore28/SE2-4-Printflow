@@ -129,14 +129,15 @@ const validarPeriodoDelCambio = async (client, datos, { saliente, entrante, asig
 
   // Una máquina participa en un solo cambio por período (el consolidado muestra una fila por cambio)
   const { rows: otroCambio } = await client.query(
-    `SELECT id_maquina_cambio FROM maquinas_cambio
+    `SELECT id_maquina_cambio, snap_maquina_saliente_serie AS saliente, snap_maquina_entrante_serie AS entrante
+     FROM maquinas_cambio
      WHERE activo = TRUE AND periodo_afectado = $1
        AND (maquina_saliente_id = ANY($2::int[]) OR maquina_entrante_id = ANY($2::int[]))
      LIMIT 1`,
     [datos.periodo_afectado, [saliente.id_maquina, entrante.id_maquina]]
   );
   if (otroCambio.length > 0) {
-    throw errorNegocio(409, `Una de las máquinas ya participa en el reemplazo #${otroCambio[0].id_maquina_cambio} del período ${datos.periodo_afectado}`);
+    throw errorNegocio(409, `Una de las máquinas ya participa en el reemplazo de ${otroCambio[0].saliente} por ${otroCambio[0].entrante} del período ${datos.periodo_afectado}`);
   }
 
   // El contrato de la asignación tiene que seguir vigente cuando se instala la entrante
@@ -227,7 +228,7 @@ const registrarReemplazo = async (datos, auditoria = {}) => {
        RETURNING id_instalacion`,
       [
         entrante.id_maquina, asignacion.area_id, asignacion.contrato_id, ip, datos.fecha_instalacion_entrante,
-        `Reemplazo #${cambioId} de ${saliente.serie}`,
+        `Reemplazo de ${saliente.serie} (${datos.tipo_cambio}, daño del ${datos.fecha_danio})`,
         asignacion.costo_renta_mensual || 0, asignacion.contador_acumulativo, asignacion.contabilidad_por_usuario,
       ]
     );
