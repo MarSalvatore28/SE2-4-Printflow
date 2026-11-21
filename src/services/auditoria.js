@@ -16,6 +16,7 @@ const ACCIONES = Object.freeze({
   APROBAR: 'APROBAR',
   RECHAZAR: 'RECHAZAR',
   REPROCESAR: 'REPROCESAR',
+  ANULAR: 'ANULAR',
 });
 
 // Tablas auditadas y su clave primaria. Solo estas se pueden leer con leerFila (los nombres

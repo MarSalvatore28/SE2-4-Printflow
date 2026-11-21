@@ -1,6 +1,6 @@
 const pool = require('@config/db');
-const { contadorMenorQueLectura } = require('@utils/maquinasCambio.reglas');
-const { ACCIONES, leerFila, auditarFila } = require('@services/auditoria');
+const { contadorMenorQueLectura, motivoNoAnulable, quitarNotaRetiro } = require('@utils/maquinasCambio.reglas');
+const { ACCIONES, leerFila, auditarFila, registrarAuditoria } = require('@services/auditoria');
 
 // Error de negocio: el controlador lo responde con su status (400/404/409) y su mensaje.
 const errorNegocio = (status, message) => Object.assign(new Error(message), { status, esNegocio: true });
@@ -245,6 +245,154 @@ const registrarReemplazo = async (datos, auditoria = {}) => {
   }
 };
 
+/**
+ * Anula un reemplazo registrado por error, en una sola transacción:
+ *  1. la asignación de la saliente vuelve a estar vigente (activo, sin fecha de retiro y sin la
+ *     nota de retiro que agregó el registro);
+ *  2. se borra la asignación que el registro creó para la entrante, que queda libre;
+ *  3. se borran las cabeceras de contadores del cambio;
+ *  4. el cambio queda con activo = false, la fecha, el usuario y el motivo de la anulación.
+ * Solo si ningún período aprobado (ni un lote pendiente) usa el cambio: ver motivoNoAnulable.
+ * Lanza errorNegocio (404/409) si no se puede; no deja nada a medias.
+ *   pool   pool de pg (req.pool)
+ */
+const anularReemplazo = async (pool, id, { motivo = null, usuarioId = null, ip = null } = {}) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { rows: [cambio] } = await client.query(
+      `SELECT id_maquina_cambio, activo, periodo_afectado, maquina_saliente_id, maquina_entrante_id,
+              instalacion_saliente_id, instalacion_entrante_id,
+              snap_maquina_saliente_serie, snap_maquina_entrante_serie
+       FROM maquinas_cambio WHERE id_maquina_cambio = $1
+       FOR UPDATE`,
+      [id]
+    );
+
+    const estado = { cambio: cambio || null };
+    if (cambio && cambio.activo !== false) {
+      const maquinas = [cambio.maquina_saliente_id, cambio.maquina_entrante_id];
+
+      // Lecturas aprobadas que usan el cambio, o de cualquiera de las dos máquinas desde el período afectado
+      const { rows: [lectura] } = await client.query(
+        `SELECT ro.periodo, COALESCE(m.serie, ro.snap_maquina_serie) AS serie
+         FROM reportes_oficiales ro
+         LEFT JOIN maquinas m ON m.id_maquina = ro.maquina_id
+         WHERE ro.maquina_cambio_id = $1
+            OR (ro.maquina_id = ANY($2::int[]) AND ro.periodo >= $3)
+         ORDER BY ro.periodo, ro.id_reporte
+         LIMIT 1`,
+        [cambio.id_maquina_cambio, maquinas, cambio.periodo_afectado]
+      );
+      estado.lecturaAprobada = lectura || null;
+
+      // Un lote sin aprobar con esas máquinas se aprobaría con una asignación que ya no existe
+      const { rows: [lote] } = await client.query(
+        `SELECT l.codigo_referencia AS codigo, s.serie_maquina AS serie
+         FROM reportes_consolidado_staging s
+         JOIN lotes_carga l ON l.id_lote = s.lote_id
+         WHERE l.fecha_aprobacion IS NULL
+           AND s.maquina_id_tentativa = ANY($1::int[])
+           AND COALESCE(l.periodo, $2) >= $2
+         ORDER BY l.id_lote
+         LIMIT 1`,
+        [maquinas, cambio.periodo_afectado]
+      );
+      estado.lotePendiente = lote || null;
+
+      if (cambio.instalacion_entrante_id) {
+        const { rows: [entrante] } = await client.query(
+          `SELECT id_instalacion, maquina_id, (activo = TRUE AND fecha_retiro IS NULL) AS vigente
+           FROM instalaciones WHERE id_instalacion = $1
+           FOR UPDATE`,
+          [cambio.instalacion_entrante_id]
+        );
+        estado.asignacionEntrante = entrante && entrante.maquina_id === cambio.maquina_entrante_id ? entrante : null;
+      } else {
+        estado.asignacionEntrante = null;
+      }
+
+      estado.asignacionSaliente = await getAsignacionVigente(client, cambio.maquina_saliente_id);
+
+      if (cambio.instalacion_saliente_id) {
+        const { rows: [ip] } = await client.query(
+          `SELECT m.serie
+           FROM instalaciones sal
+           JOIN instalaciones i ON i.ip_address = sal.ip_address
+           JOIN maquinas m ON m.id_maquina = i.maquina_id
+           WHERE sal.id_instalacion = $1
+             AND i.activo = TRUE AND i.fecha_retiro IS NULL
+             AND i.id_instalacion NOT IN ($1, COALESCE($2, 0))
+           LIMIT 1`,
+          [cambio.instalacion_saliente_id, cambio.instalacion_entrante_id]
+        );
+        estado.ipEnUso = ip ? ip.serie : null;
+      }
+    }
+
+    const bloqueo = motivoNoAnulable(estado);
+    if (bloqueo) throw errorNegocio(bloqueo.status, bloqueo.message);
+
+    // Auditoría (S3-02): cómo estaban el cambio y las dos asignaciones antes de anular
+    const cambioAntes = await leerFila(client, 'maquinas_cambio', cambio.id_maquina_cambio);
+    const entranteAntes = cambio.instalacion_entrante_id
+      ? await leerFila(client, 'instalaciones', cambio.instalacion_entrante_id)
+      : null;
+    const salienteAntes = cambio.instalacion_saliente_id
+      ? await leerFila(client, 'instalaciones', cambio.instalacion_saliente_id)
+      : null;
+
+    // Primero se suelta la referencia a la asignación de la entrante y después se borra
+    await client.query(
+      `UPDATE maquinas_cambio
+       SET activo = FALSE, instalacion_entrante_id = NULL,
+           fecha_anulacion = NOW(), usuario_anulacion_id = $2, motivo_anulacion = $3
+       WHERE id_maquina_cambio = $1`,
+      [cambio.id_maquina_cambio, usuarioId, motivo]
+    );
+    await client.query('DELETE FROM cabecera_contadores_cambio WHERE maquina_cambio_id = $1', [cambio.id_maquina_cambio]);
+    await client.query('DELETE FROM instalaciones WHERE id_instalacion = $1', [cambio.instalacion_entrante_id]);
+
+    const { rows: [saliente] } = await client.query(
+      'SELECT observaciones FROM instalaciones WHERE id_instalacion = $1 FOR UPDATE',
+      [cambio.instalacion_saliente_id]
+    );
+    await client.query(
+      `UPDATE instalaciones SET activo = TRUE, fecha_retiro = NULL, observaciones = $2
+       WHERE id_instalacion = $1`,
+      [cambio.instalacion_saliente_id, quitarNotaRetiro(saliente ? saliente.observaciones : null, cambio.id_maquina_cambio)]
+    );
+
+    const auditoria = { usuarioId, ip };
+    await auditarFila(client, {
+      tabla: 'maquinas_cambio', idRegistro: cambio.id_maquina_cambio, accion: ACCIONES.ANULAR, antes: cambioAntes, ...auditoria,
+    });
+    if (entranteAntes) {
+      await registrarAuditoria(client, {
+        tabla: 'instalaciones', idRegistro: cambio.instalacion_entrante_id, accion: ACCIONES.ANULAR, antes: entranteAntes, despues: null, ...auditoria,
+      });
+    }
+    if (salienteAntes) {
+      await auditarFila(client, {
+        tabla: 'instalaciones', idRegistro: cambio.instalacion_saliente_id, accion: ACCIONES.ACTIVAR, antes: salienteAntes, ...auditoria,
+      });
+    }
+
+    await client.query('COMMIT');
+    return cambio.id_maquina_cambio;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    // Otra operación asignó la saliente mientras tanto: el índice único de asignaciones lo frena
+    if (error.code === '23505' && error.constraint === 'instalaciones_una_activa_por_maquina') {
+      throw errorNegocio(409, 'La máquina saliente acaba de ser asignada en otra operación: no se puede anular el reemplazo');
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+
 const SELECT_CAMBIO = `
   SELECT
     mc.id_maquina_cambio,
@@ -255,6 +403,9 @@ const SELECT_CAMBIO = `
     mc.razon_cambio,
     mc.activo,
     mc.fecha_registro,
+    mc.fecha_anulacion,
+    mc.motivo_anulacion,
+    ua.nombre AS usuario_anulacion_nombre,
     mc.area_id,
     a.nombre AS area_nombre,
     c.id_cliente AS cliente_id,
@@ -280,12 +431,14 @@ const SELECT_CAMBIO = `
   LEFT JOIN areas a ON a.id_area = mc.area_id
   LEFT JOIN clientes c ON c.id_cliente = a.cliente_id
   LEFT JOIN instalaciones ie ON ie.id_instalacion = mc.instalacion_entrante_id
+  LEFT JOIN usuarios ua ON ua.id_usuario = mc.usuario_anulacion_id
   LEFT JOIN cabecera_contadores_cambio cs ON cs.maquina_cambio_id = mc.id_maquina_cambio AND cs.tipo_maquina = 'SALIENTE'
   LEFT JOIN cabecera_contadores_cambio ce ON ce.maquina_cambio_id = mc.id_maquina_cambio AND ce.tipo_maquina = 'ENTRANTE'
 `;
 
-const listarReemplazos = async ({ cliente_id, periodo, maquina_id } = {}) => {
-  const condiciones = [];
+const listarReemplazos = async ({ cliente_id, periodo, maquina_id, incluir_anulados = false } = {}) => {
+  // Los anulados no se listan salvo que se pidan
+  const condiciones = incluir_anulados ? [] : ['mc.activo = TRUE'];
   const valores = [];
   if (cliente_id) {
     valores.push(cliente_id);
@@ -307,8 +460,9 @@ const listarReemplazos = async ({ cliente_id, periodo, maquina_id } = {}) => {
   return rows;
 };
 
-const getReemplazoById = async (id) => {
-  const { rows } = await pool.query(`${SELECT_CAMBIO} WHERE mc.id_maquina_cambio = $1`, [id]);
+// db: pool o client de pg (por defecto el pool de la app)
+const getReemplazoById = async (id, db = pool) => {
+  const { rows } = await db.query(`${SELECT_CAMBIO} WHERE mc.id_maquina_cambio = $1`, [id]);
   return rows[0] || null;
 };
 
@@ -321,6 +475,7 @@ const existeMaquina = async (maquinaId) => {
 
 module.exports = {
   registrarReemplazo,
+  anularReemplazo,
   listarReemplazos,
   getReemplazoById,
   ultimaLecturaAntesDe,

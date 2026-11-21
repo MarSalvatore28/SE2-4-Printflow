@@ -22,7 +22,7 @@ CREATE INDEX IF NOT EXISTS registro_auditoria_fecha_idx
 COMMENT ON TABLE public.registro_auditoria IS 'Bitácora de cambios (S3-02): contratos, asignaciones, reemplazos, lotes, usuarios y lecturas';
 COMMENT ON COLUMN public.registro_auditoria.tabla IS 'Tabla del registro afectado (contratos, instalaciones, lotes_carga, ...)';
 COMMENT ON COLUMN public.registro_auditoria.id_registro IS 'Clave primaria del registro afectado en esa tabla';
-COMMENT ON COLUMN public.registro_auditoria.accion IS 'CREAR, ACTUALIZAR, ACTIVAR, DESACTIVAR, RETIRAR, APROBAR, RECHAZAR o REPROCESAR';
+COMMENT ON COLUMN public.registro_auditoria.accion IS 'CREAR, ACTUALIZAR, ACTIVAR, DESACTIVAR, RETIRAR, APROBAR, RECHAZAR, REPROCESAR o ANULAR';
 COMMENT ON COLUMN public.registro_auditoria.usuario_id IS 'Usuario de la sesión que hizo el cambio';
 COMMENT ON COLUMN public.registro_auditoria.valor_anterior IS 'La fila antes del cambio (null en un alta). Nunca guarda contraseñas';
 COMMENT ON COLUMN public.registro_auditoria.valor_nuevo IS 'La fila después del cambio. Nunca guarda contraseñas';
