@@ -72,6 +72,8 @@ if [ "${1:-}" != "--despues-del-pull" ]; then
 fi
 
 paso "3/6 Construye las imágenes"
+# El servicio de respaldos corre sin root: la carpeta la crea el usuario del despliegue
+mkdir -p backups
 dc build
 
 paso "4/6 Migraciones pendientes"
