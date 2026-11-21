@@ -12,7 +12,8 @@
 const { validarPeriodo } = require('./lib/escenario');
 const { escenarioDeArgs } = require('./lib/escenarioGrande');
 
-const API_URL = process.env.API_URL || 'http://api:9000';
+// La define docker-compose.yml para el servicio «simulador» (la API dentro de la red de Docker)
+const API_URL = process.env.API_URL;
 const USUARIO = process.env.DEMO_EMAIL || 'operador@printflow.local';
 const CLAVE = process.env.DEMO_PASSWORD || 'Printflow2026*';
 const LIMITE_MS = 5000;
@@ -45,6 +46,7 @@ const mediana = (valores) => {
 const ms = (n) => `${Math.round(n).toLocaleString('es-EC')} ms`;
 
 async function main() {
+  if (!API_URL) throw new Error('Falta API_URL. Corre el script con «docker compose run --rm simulador medir-consolidado.js ...».');
   const periodo = validarPeriodo(valor('--periodo', '2026-10'));
   const repeticiones = Math.max(1, Number(valor('--repeticiones', 3)));
   const escenario = escenarioDeArgs(args);
@@ -74,7 +76,7 @@ async function main() {
     console.log(`${r.nombre.padEnd(32)} ${String(r.maquinas).padStart(8)}   $${r.total.padStart(10)}   ${ms(r.ms).padStart(10)}`);
   }
 
-  const grande = resultados.reduce((a, b) => (b.maquinas > a.maquinas ? b : a));
+  const grande = resultados.reduce((a, b) => (b.maquinas > a.maquinas ? b : a), resultados[0]);
   const secuencial = resultados.reduce((s, r) => s + r.ms, 0);
   const inicio = process.hrtime.bigint();
   const paralelo = await Promise.all(clientes.map((c) => api(c.ruta, token)));
