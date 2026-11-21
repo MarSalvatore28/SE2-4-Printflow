@@ -57,66 +57,6 @@ const getPeriodosDisponiblesController = async (req, res) => {
   }
 };
 
-const fetchAllReportemes = async (req, res) => {
-  try {
-    res.status(200).json({ success: true, data: [] });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-const searchReportemesController = async (req, res) => {
-  try {
-    res.status(200).json({ success: true, data: [] });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-const getReportesConteoInicialController = async (req, res) => {
-  res.status(501).json({ message: 'Not Implemented' });
-};
-
-const getReportemesByClienteController = async (req, res) => {
-  res.status(501).json({ message: 'Not Implemented' });
-};
-
-const getReportemesByPeriodoController = async (req, res) => {
-  res.status(501).json({ message: 'Not Implemented' });
-};
-
-const getReportemesByMaquinaController = async (req, res) => {
-  res.status(501).json({ message: 'Not Implemented' });
-};
-
-const getReportemesByIPController = async (req, res) => {
-  res.status(501).json({ message: 'Not Implemented' });
-};
-
-const getReportemesByCuentaController = async (req, res) => {
-  res.status(501).json({ message: 'Not Implemented' });
-};
-
-const getReportemeByIdController = async (req, res) => {
-  res.status(501).json({ message: 'Not Implemented' });
-};
-
-const crearReportemeController = async (req, res) => {
-  res.status(501).json({ message: 'Not Implemented' });
-};
-
-const actualizarReportemeController = async (req, res) => {
-  res.status(501).json({ message: 'Not Implemented' });
-};
-
-const actualizarComentarioController = async (req, res) => {
-  res.status(501).json({ message: 'Not Implemented' });
-};
-
-const eliminarReportemeController = async (req, res) => {
-  res.status(501).json({ message: 'Not Implemented' });
-};
-
 const getReporteDetalladoController = async (req, res) => {
   try {
     const { clienteId, periodo } = req.params;
@@ -158,17 +98,4 @@ module.exports = {
   getReporteConsolidadoController,
   getReporteDetalladoController,
   getPeriodosDisponiblesController,
-  fetchAllReportemes,
-  searchReportemesController,
-  getReportesConteoInicialController,
-  getReportemesByClienteController,
-  getReportemesByPeriodoController,
-  getReportemesByMaquinaController,
-  getReportemesByIPController,
-  getReportemesByCuentaController,
-  getReportemeByIdController,
-  crearReportemeController,
-  actualizarReportemeController,
-  actualizarComentarioController,
-  eliminarReportemeController,
 };

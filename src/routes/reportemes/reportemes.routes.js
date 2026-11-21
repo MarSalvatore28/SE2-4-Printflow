@@ -1,198 +1,21 @@
 const express = require('express');
 const router = express.Router();
-const { requireRole } = require('@middlewares/role.middleware');
 
 const {
   getReporteConsolidadoController,
   getReporteDetalladoController,
-  getPeriodosDisponiblesController,
-  fetchAllReportemes,
-  searchReportemesController,
-  getReportesConteoInicialController,
-  getReportemesByClienteController,
-  getReportemesByPeriodoController,
-  getReportemesByMaquinaController,
-  getReportemesByIPController,
-  getReportemesByCuentaController,
-  getReportemeByIdController,
-  crearReportemeController,
-  actualizarReportemeController,
-  actualizarComentarioController,
-  eliminarReportemeController,
 } = require('@controllers/reportemes/reportemes.controller');
 
-/**
- * @swagger
- * components:
- *   schemas:
- *     ReporteMes:
- *       type: object
- *       properties:
- *         id_reporte:
- *           type: integer
- *         maquina_id:
- *           type: integer
- *         periodo:
- *           type: string
- *         contador_anterior:
- *           type: integer
- *         contador_actual:
- *           type: integer
- *         diferencia:
- *           type: integer
- *         fecha_reporte:
- *           type: string
- *           format: date-time
- *         observaciones:
- *           type: string
- *         validado:
- *           type: boolean
- */
+// Informes de lecturas ya aprobadas (reportes oficiales). Los reportes de un cliente se ven con el
+// consolidado por cliente y período; las lecturas sin aprobar están en /api/staging. Las rutas que
+// respondían 501 se quitaron (PLAN.md, sección 9).
 
 /**
  * @swagger
- * /api/reportemes:
+ * /api/reportes/consolidado/{clienteId}/{periodo}:
  *   get:
- *     summary: Obtener todos los reportes de mes
- *     tags: [ReportesMes]
- *     responses:
- *       200:
- *         description: Lista de reportes
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/ReporteMes'
- */
-router.get('/', fetchAllReportemes);
-
-/**
- * @swagger
- * /api/reportemes/search:
- *   get:
- *     summary: Buscar reportes con filtros
- *     tags: [ReportesMes]
- *     parameters:
- *       - in: query
- *         name: q
- *         schema:
- *           type: string
- *         description: Término de búsqueda
- *     responses:
- *       200:
- *         description: Resultados de la búsqueda
- */
-router.get('/search', searchReportemesController);
-
-/**
- * @swagger
- * /api/reportemes/conteo-inicial:
- *   get:
- *     summary: Obtener reportes de conteo inicial
- *     tags: [ReportesMes]
- *     responses:
- *       200:
- *         description: Lista de conteos iniciales
- */
-router.get('/conteo-inicial', getReportesConteoInicialController);
-
-/**
- * @swagger
- * /api/reportemes/cliente/{id}:
- *   get:
- *     summary: Obtener reportes de un cliente
- *     tags: [ReportesMes]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     responses:
- *       200:
- *         description: Lista de reportes del cliente
- */
-router.get('/cliente/:id', getReportemesByClienteController);
-
-/**
- * @swagger
- * /api/reportemes/periodo/{periodo}:
- *   get:
- *     summary: Obtener reportes por periodo
- *     tags: [ReportesMes]
- *     parameters:
- *       - in: path
- *         name: periodo
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Lista de reportes del periodo
- */
-router.get('/periodo/:periodo', getReportemesByPeriodoController);
-
-/**
- * @swagger
- * /api/reportemes/maquina/{id}:
- *   get:
- *     summary: Obtener reportes de una máquina
- *     tags: [ReportesMes]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     responses:
- *       200:
- *         description: Lista de reportes de la máquina
- */
-router.get('/maquina/:id', getReportemesByMaquinaController);
-
-/**
- * @swagger
- * /api/reportemes/ip/{ip}:
- *   get:
- *     summary: Obtener reportes por IP de máquina
- *     tags: [ReportesMes]
- *     parameters:
- *       - in: path
- *         name: ip
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Lista de reportes
- */
-router.get('/ip/:ip', getReportemesByIPController);
-
-/**
- * @swagger
- * /api/reportemes/cuenta/{cuentaId}:
- *   get:
- *     summary: Obtener reportes por ID de cuenta
- *     tags: [ReportesMes]
- *     parameters:
- *       - in: path
- *         name: cuentaId
- *         required: true
- *         schema:
- *           type: integer
- *     responses:
- *       200:
- *         description: Lista de reportes
- */
-router.get('/cuenta/:cuentaId', getReportemesByCuentaController);
-
-/**
- * @swagger
- * /api/reportemes/consolidado/{clienteId}/{periodo}:
- *   get:
- *     summary: Obtener reporte consolidado por cliente y periodo
- *     tags: [ReportesMes]
+ *     summary: Consolidado mensual de un cliente (consumo por máquina y facturación por contrato)
+ *     tags: [Reportes]
  *     parameters:
  *       - in: path
  *         name: clienteId
@@ -204,118 +27,55 @@ router.get('/cuenta/:cuentaId', getReportemesByCuentaController);
  *         required: true
  *         schema:
  *           type: string
+ *           example: '2026-10'
+ *       - in: query
+ *         name: area_id
+ *         schema:
+ *           type: integer
+ *         description: Solo las máquinas de esa área (la facturación sigue siendo la del contrato completo)
+ *       - in: query
+ *         name: maquina_id
+ *         schema:
+ *           type: integer
+ *         description: Solo esa máquina (la facturación sigue siendo la del contrato completo)
  *     responses:
  *       200:
- *         description: Reporte consolidado
+ *         description: data.detalles (una fila por máquina o por reemplazo) y data.resumen (con facturacion y monto_total_general)
+ *       400:
+ *         description: Período con formato inválido (se espera YYYY-MM)
  */
 router.get('/consolidado/:clienteId/:periodo', getReporteConsolidadoController);
 
+/**
+ * @swagger
+ * /api/reportes/detallado/{clienteId}/{periodo}:
+ *   get:
+ *     summary: Informe por usuario (consumo de cada cuenta en el período)
+ *     tags: [Reportes]
+ *     parameters:
+ *       - in: path
+ *         name: clienteId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *       - in: path
+ *         name: periodo
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: '2026-10'
+ *       - in: query
+ *         name: area_id
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: maquina_id
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: data.detalles (una fila por cuenta y máquina) y data.resumen
+ */
 router.get('/detallado/:clienteId/:periodo', getReporteDetalladoController);
 
-/**
- * @swagger
- * /api/reportemes/{id}:
- *   get:
- *     summary: Obtener detalles de un reporte
- *     tags: [ReportesMes]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     responses:
- *       200:
- *         description: Detalle del reporte
- */
-router.get('/:id', getReportemeByIdController);
-
-/**
- * @swagger
- * /api/reportemes:
- *   post:
- *     summary: Crear nuevo reporte
- *     tags: [ReportesMes]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/ReporteMes'
- *     responses:
- *       201:
- *         description: Reporte creado
- */
-router.post('/', requireRole('admin'), crearReportemeController);
-
-/**
- * @swagger
- * /api/reportemes/{id}:
- *   put:
- *     summary: Actualizar reporte
- *     tags: [ReportesMes]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/ReporteMes'
- *     responses:
- *       200:
- *         description: Reporte actualizado
- */
-router.put('/:id', requireRole('admin'), actualizarReportemeController);
-
-/**
- * @swagger
- * /api/reportemes/{id}/comentario:
- *   patch:
- *     summary: Actualizar comentario de reporte
- *     tags: [ReportesMes]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               comentario:
- *                 type: string
- *     responses:
- *       200:
- *         description: Comentario actualizado
- */
-router.patch('/:id/comentario', requireRole('admin'), actualizarComentarioController);
-
-/**
- * @swagger
- * /api/reportemes/{id}:
- *   delete:
- *     summary: Eliminar reporte
- *     tags: [ReportesMes]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     responses:
- *       200:
- *         description: Reporte eliminado
- */
-router.delete('/:id', requireRole('admin'), eliminarReportemeController);
-
 module.exports = router;
-
