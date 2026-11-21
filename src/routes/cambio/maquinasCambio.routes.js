@@ -4,6 +4,7 @@ const { requireRole } = require('@middlewares/role.middleware');
 
 const {
   registrarReemplazoController,
+  anularReemplazoController,
   listarReemplazosController,
   getReemplazoController,
   ultimaLecturaController,
@@ -85,8 +86,13 @@ const {
  *         fecha_instalacion_entrante: { type: string, format: date }
  *         tipo_cambio: { type: string }
  *         razon_cambio: { type: string }
- *         activo: { type: boolean }
+ *         activo:
+ *           type: boolean
+ *           description: false si el reemplazo se anuló
  *         fecha_registro: { type: string, format: date-time }
+ *         fecha_anulacion: { type: string, format: date-time, nullable: true }
+ *         motivo_anulacion: { type: string, nullable: true }
+ *         usuario_anulacion_nombre: { type: string, nullable: true }
  *         area_id: { type: integer }
  *         area_nombre: { type: string }
  *         cliente_id: { type: integer }
@@ -98,7 +104,10 @@ const {
  *         maquina_entrante_id: { type: integer }
  *         entrante_serie: { type: string }
  *         entrante_modelo: { type: string, nullable: true }
- *         instalacion_entrante_id: { type: integer }
+ *         instalacion_entrante_id:
+ *           type: integer
+ *           nullable: true
+ *           description: null en un reemplazo anulado (su asignación se borró)
  *         entrante_ip: { type: string }
  *         saliente_contador_final_bn: { type: integer }
  *         saliente_contador_final_color: { type: integer }
@@ -128,6 +137,10 @@ const {
  *         name: maquina_id
  *         description: Reemplazos donde la máquina salió o entró
  *         schema: { type: integer }
+ *       - in: query
+ *         name: incluir_anulados
+ *         description: Los anulados no se listan salvo que se pida
+ *         schema: { type: boolean, default: false }
  *     responses:
  *       200:
  *         description: Lista de reemplazos, del período más reciente al más antiguo
@@ -244,5 +257,62 @@ router.get('/ultima-lectura/:maquinaId', ultimaLecturaController);
  *         description: Reemplazo no encontrado
  */
 router.get('/:id', getReemplazoController);
+
+/**
+ * @swagger
+ * /api/maquinas-cambio/{id}/anular:
+ *   post:
+ *     summary: Anular un reemplazo registrado por error (solo admin)
+ *     description: >
+ *       En una sola transacción la asignación de la saliente vuelve a estar vigente (activa y sin
+ *       fecha de retiro), se borra la asignación que el registro creó para la entrante (queda
+ *       libre), se borran los contadores del cambio y el cambio queda anulado (activo = false, con
+ *       la fecha, el usuario y el motivo). Un reemplazo anulado no aparece en el listado ni cuenta
+ *       en el consolidado, la validación de lecturas ni la aprobación de lotes. No se puede anular
+ *       si el período afectado (o uno posterior) ya tiene lecturas aprobadas de las dos máquinas,
+ *       si hay un lote pendiente con sus lecturas o si las asignaciones cambiaron después.
+ *     tags: [Reemplazos]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               motivo:
+ *                 type: string
+ *                 maxLength: 500
+ *                 description: Opcional
+ *                 example: Se registró la máquina equivocada
+ *     responses:
+ *       200:
+ *         description: Reemplazo anulado; devuelve el reemplazo con activo = false
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 message: { type: string }
+ *                 data:
+ *                   $ref: '#/components/schemas/Reemplazo'
+ *       400:
+ *         description: ID o motivo inválido
+ *       403:
+ *         description: Solo un administrador puede anular reemplazos
+ *       404:
+ *         description: Reemplazo no encontrado
+ *       409:
+ *         description: >
+ *           Ya está anulado, el período ya tiene lecturas aprobadas, hay un lote pendiente con
+ *           lecturas de esas máquinas, o las asignaciones cambiaron después del reemplazo
+ *           (la entrante se retiró, la saliente se volvió a asignar o su IP está en uso)
+ */
+router.post('/:id/anular', requireRole('admin'), anularReemplazoController);
 
 module.exports = router;

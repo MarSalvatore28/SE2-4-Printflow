@@ -139,6 +139,8 @@ consumo = (contador final de SIMB0002 − su lectura de octubre) + (lectura de n
 
 Los meses anteriores no cambian. Si el reemplazo no se registra antes de aprobar, el lote de noviembre no pasa la validación (SIMF0006 no está asignada y falta SIMB0002). Un período ya aprobado no admite reemplazos.
 
+**Si se registró por error**, el administrador lo anula en **Máquinas → Reemplazos → Anular** (o `POST /api/maquinas-cambio/:id/anular`): SIMB0002 vuelve a su asignación, SIMF0006 queda libre y el cambio deja de contar. Solo se puede **antes de aprobar** el lote del período; si el lote ya llegó pero sigue pendiente, primero se rechaza. Con noviembre aprobado, la API responde 409.
+
 Para otro caso, agregar un objeto a `reemplazos` con `periodo`, `saliente` (serie del escenario), `entrante` (como una máquina del escenario; `ip` es opcional) y `registro` (los datos que se anotan en PrintFlow).
 
 ## Archivos

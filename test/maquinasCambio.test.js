@@ -128,6 +128,11 @@ test('filtros del listado', () => {
   assert.equal(validarFiltrosListado({ cliente_id: 'x' }).error.status, 400);
   assert.equal(validarFiltrosListado({ periodo: '2026-1' }).error.status, 400);
   assert.equal(validarFiltrosListado({ maquina_id: '-3' }).error.status, 400);
+  // Los anulados solo se listan si se piden
+  assert.equal(validarFiltrosListado({}).data.incluir_anulados, undefined);
+  assert.equal(validarFiltrosListado({ incluir_anulados: 'true' }).data.incluir_anulados, true);
+  assert.equal(validarFiltrosListado({ incluir_anulados: '0' }).data.incluir_anulados, false);
+  assert.equal(validarFiltrosListado({ incluir_anulados: 'si' }).error.status, 400);
 });
 
 test('el contador acumulado no puede bajar respecto de la última lectura aprobada', () => {
@@ -161,6 +166,7 @@ test('/api/maquinas-cambio exige token', async () => {
       ['GET', '/api/maquinas-cambio/tipos'],
       ['GET', '/api/maquinas-cambio/ultima-lectura/1?periodo=2026-11'],
       ['POST', '/api/maquinas-cambio'],
+      ['POST', '/api/maquinas-cambio/1/anular'],
     ];
     for (const [method, ruta] of pedidos) {
       const res = await fetch(`${base}${ruta}`, { method, headers: { 'Content-Type': 'application/json' }, body: method === 'POST' ? '{}' : undefined });
