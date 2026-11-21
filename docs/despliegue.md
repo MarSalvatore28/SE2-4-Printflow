@@ -248,7 +248,7 @@ $P exec backup pg_restore --clean --if-exists --no-owner -d printflow /backups/p
 $P restart api
 ```
 
-`--clean --if-exists` borra y vuelve a crear las tablas con el contenido del respaldo. **Antes de restaurar, haz un respaldo del estado actual.**
+`--clean --if-exists` borra y vuelve a crear las tablas con el contenido del respaldo. **Antes de restaurar, haz un respaldo del estado actual.** Mientras la API arranca de nuevo, la web responde 502 unos segundos; luego `curl https://DOMINIO/api/health` vuelve a dar 200.
 
 El respaldo incluye la tabla `schema_migrations`. Si es anterior a alguna migración, después de restaurar corre `$P exec -T db sh /printflow-db/migrar.sh` para aplicarlas.
 
@@ -418,7 +418,7 @@ df -h /                        # ¿disco lleno? (docker image prune -f libera im
 Si algún día DOX autoriza conectar su buzón (fuera del alcance de la demo):
 
 1. Arrancarlo en la VM: `$P --profile n8n up -d n8n`. Escucha solo en `127.0.0.1:5678` de la VM: se abre desde tu PC con un túnel, `ssh -i clave.pem -L 5678:localhost:5678 azureuser@DOMINIO`, y luego http://localhost:5678.
-2. En n8n, una credencial **IMAP** con la cuenta del buzón que dé DOX (nunca en el repo), y el flujo: leer correo → extraer los contadores de cada adjunto → **HTTP Request** `POST http://api:9000/api/ingesta/cargar` con la cabecera `Authorization: Bearer <INGESTA_TOKEN del .env>`. El cuerpo que espera la API está en Swagger (`https://DOMINIO/api-docs`, «Ingesta») y armado paso a paso en `simulador/lib/n8n.js`, que hace lo mismo que el flujo de DOX.
+2. En n8n, una credencial **IMAP** con la cuenta del buzón que dé DOX (nunca en el repo), y el flujo: leer correo → extraer los contadores de cada adjunto → **HTTP Request** `POST http://api:9000/api/ingesta/cargar` con la cabecera `Authorization: Bearer <INGESTA_TOKEN del .env>`. El cuerpo que espera la API (una lista de reportes, uno por impresora) lo arma paso a paso `simulador/lib/n8n.js`, que hace lo mismo que el flujo de DOX; lo valida `src/controllers/ingesta/ingesta.controller.js`. No hay un flujo exportado en el repo: se arma con esas dos referencias.
 3. Para que arranque en cada despliegue, agregar `COMPOSE_PROFILES=n8n` al `.env`.
 
 ## 10. Probarlo en tu PC antes de la VM (opcional)
