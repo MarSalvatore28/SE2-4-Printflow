@@ -18,11 +18,11 @@ Te toca **lo que se factura**: que el consolidado deje de salir en $0 (S3-06), q
 | # | Tarea | Puntos | Rama |
 |---|---|---|---|
 | 1 | ~~S3-06 · Cálculo del importe del consolidado~~ **Hecho** (#57, aprobado y en `main`; ver la revisión del PR) | 8 | `feature/f3-importe` |
-| 2 | Congelar las tarifas al aprobar | 1 | `feature/f3-tarifas-congeladas` |
-| 3 | **Anular un reemplazo de máquina** | 3 | `feature/f3-anular-reemplazo` |
-| 4 | **S4-05 · Rendimiento: menos de 5 s con 500 máquinas** | 2 | `feature/f4-rendimiento` |
-| 5 | Endpoints 501 de reportes y limpieza | 1 | `fix/reportes-pendientes` |
-| 6 | **S4-04 · Despliegue automático, respaldos fuera de la VM y monitoreo** (con Samuel) | 3 | `feature/f4-despliegue-automatico` |
+| 2 | ~~Congelar las tarifas al aprobar~~ **Hecho** (#65) | 1 | `feature/f3-tarifas-congeladas` |
+| 3 | ~~Anular un reemplazo de máquina~~ **Hecho** (backend #66 y frontend #37) | 3 | `feature/f3-anular-reemplazo` |
+| 4 | ~~S4-05 · Rendimiento: menos de 5 s con 500 máquinas~~ **Hecho** (#71, `docs/rendimiento.md`) | 2 | `feature/f4-rendimiento` |
+| 5 | ~~Endpoints 501 de reportes y limpieza~~ **Hecho** (backend #72 y frontend #40) | 1 | `fix/reportes-pendientes` |
+| 6 | ~~Despliegue automático, respaldos en Azure y monitoreo: el código~~ **Hecho** (#70). **Falta configurar Azure y los secretos** (con Samuel; ver `docs/despliegue.md`, al inicio) | 3 | `feature/f4-despliegue-automatico` |
 
 Tus migraciones van de `020` a `029`.
 

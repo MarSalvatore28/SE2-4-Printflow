@@ -1,5 +1,7 @@
 # Reparto de lo que falta · Sprints 3 y 4
 
+Estado al 21/11/2026: **todo el desarrollo está hecho, probado y en `main`.** Solo falta, del Equipo C, poner el servidor en Azure (la VM, el contenedor de respaldos y los secretos del despliegue; ver `docs/despliegue.md`) y la UAT con el PO. La prueba de punta a punta (`npm run e2e`) da 115 comprobaciones sin fallos y el guion de la demo está en [`docs/guion-demo.md`](../guion-demo.md).
+
 Estado al 20/11/2026: las Fases 0, 1 y 2 están en `main`, con máquinas y reemplazos, notificaciones en vivo, lotes, informes, usuarios, roles, el simulador del correo, la lectura manual (S3-04) y el reprocesar (S3-05). También están las **validaciones de lecturas (S3-01, Samuel, #58)**, el **importe del consolidado (S3-06, Christian, #57)** y la **pantalla de informes con facturación y el PDF (S4-01)**: Colegio Horizonte de octubre da **$395,48**. Este documento reparte **todo lo que falta** para cerrar el proyecto.
 
 Los repos son **`MarSalvatore28/SE2-4-Printflow`** (backend) y **`MarSalvatore28/SE2-4-Printflow-Frontend`**. Cada integrante tiene que aceptar la invitación que le llegó por correo para poder hacer push.
@@ -10,12 +12,12 @@ Los repos son **`MarSalvatore28/SE2-4-Printflow`** (backend) y **`MarSalvatore28
 
 | Persona | Documento | Qué le toca | Puntos | Estado |
 |---|---|---|---|---|
-| **Samuel** (líder técnico backend) | [TAREAS-SAMUEL.md](../../TAREAS-SAMUEL.md) | ~~S3-01 validaciones~~ (**hecho**, #58), **S3-02 auditoría**, tests de login y seguridad, 4 fallos del backend, **S4-06 prueba E2E y UAT**, **S4-04 despliegue: puesta en marcha y migraciones en producción** | ~18 | **URGENTE · le toca a él** |
-| **Christian** | [TAREAS-CHRISTIAN.md](../../TAREAS-CHRISTIAN.md) | ~~S3-06 cálculo del importe~~ (**hecho**, #57), congelar tarifas al aprobar, **anular un reemplazo**, **S4-05 rendimiento con 500 máquinas**, endpoints 501 y limpieza, **S4-04 despliegue automático, respaldos fuera de la VM y monitoreo** | ~18 | **URGENTE · le toca a él** |
+| **Samuel** (líder técnico backend) | [TAREAS-SAMUEL.md](../../TAREAS-SAMUEL.md) | ~~S3-01 validaciones~~ (#58), ~~S3-02 auditoría~~ (#67), ~~tests de login~~ (#68), ~~4 fallos~~ (#64), ~~prueba E2E~~ (#73), ~~migraciones en producción~~ (#69). **Falta:** la UAT con el PO y poner la VM en marcha | ~18 | **Desarrollo hecho** |
+| **Christian** | [TAREAS-CHRISTIAN.md](../../TAREAS-CHRISTIAN.md) | ~~S3-06 importe~~ (#57), ~~tarifas congeladas~~ (#65), ~~anular un reemplazo~~ (#66 y frontend #37), ~~S4-05 rendimiento~~ (#71), ~~endpoints 501~~ (#72 y frontend #40), ~~despliegue automático, respaldos y monitoreo~~ (#70). **Falta:** configurar Azure y los secretos | ~18 | **Desarrollo hecho** |
 | **Roberto** | [TAREAS-ROBERTO.md](../../TAREAS-ROBERTO.md) | Pruebas automáticas del frontend (Vitest en el CI), limpieza de Asignaciones y Máquinas | ~4 | **Hecho** (frontend #22 y #25) |
-| **Gabriela** | [TAREAS-GABRIELA.md](../../TAREAS-GABRIELA.md) | SonarCloud en verde (accesibilidad de los componentes compartidos), web usable en el celular | ~4 | Le toca a ella |
-| **Kiara** | [TAREAS-KIARA.md](../../TAREAS-KIARA.md) | S4-02 Excel, QA de los PR y guion de la demo | ~3 | Le toca a ella |
-| **Marlo** | [MARLO.md](MARLO.md) · [lectura manual y reprocesar](marlo-lectura-manual-y-reprocesar.md) · [informes y PDF](marlo-informes-y-pdf.md) | S3-03 aviso por correo, S3-04 lectura manual y S3-05 reprocesar (**hechos**), informes con facturación y S4-01 PDF (**hechos**, frontend #31 y #32), integración de los PR y decisiones para la demo (**hechas**, `PLAN.md` §9) | ~17 | En curso |
+| **Gabriela** | [TAREAS-GABRIELA.md](../../TAREAS-GABRIELA.md) | ~~Accesibilidad de los componentes compartidos~~ (frontend #38), ~~web usable en el celular~~ (frontend #39) | ~4 | **Hecho** |
+| **Kiara** | [TAREAS-KIARA.md](../../TAREAS-KIARA.md) | ~~S4-02 Excel~~ (frontend #36), ~~guion de la demo~~ (`docs/guion-demo.md`). Sigue la QA de los PR | ~3 | **Hecho** |
+| **Marlo** | [MARLO.md](MARLO.md) · [lectura manual y reprocesar](marlo-lectura-manual-y-reprocesar.md) · [informes y PDF](marlo-informes-y-pdf.md) | S3-03 aviso por correo, S3-04 lectura manual y S3-05 reprocesar (**hechos**), informes con facturación y S4-01 PDF (**hechos**, frontend #31 y #32), integración de los PR y decisiones para la demo (**hechas**, `PLAN.md` §9) | ~17 | **Hecho** |
 
 ## Contratos compartidos (lo que hace que cada uno sea independiente)
 
