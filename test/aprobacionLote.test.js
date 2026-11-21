@@ -87,6 +87,53 @@ test('una máquina sin asignación (o sin máquina) queda sin área, sin romper 
   assert.ok(!consultas.some((c) => /FROM instalaciones i\s+JOIN areas a/.test(c.sql)));
 });
 
+test('la aprobación congela las tarifas del contrato de la asignación', async (t) => {
+  const consultas = usarClienteFalso(t, {
+    staging: [fila()],
+    asignacion: {
+      area_nombre: 'Secretaría',
+      contrato_id: 1,
+      impresiones_bn_incluidas: 5000,
+      impresiones_color_incluidas: 500,
+      costo_impresion_bn: '0.0200',
+      costo_impresion_color: '0.1000',
+      costo_x_excedente_impresion_bn: 0.025,
+      costo_x_excedente_impresion_color: 0.12,
+      facturacion_de_impresora: 'Diferenciar B/N de Color',
+    },
+  });
+  await approveStagingBatch(7, '2026-10');
+  const ro = insertado(consultas);
+  assert.equal(ro.snap_contrato_id, 1);
+  assert.equal(ro.snap_costo_impresion_bn, '0.0200');
+  assert.equal(ro.snap_costo_impresion_color, '0.1000');
+  assert.equal(ro.snap_costo_copia_bn, '0.0200');
+  assert.equal(ro.snap_costo_copia_color, '0.1000');
+  assert.equal(ro.snap_impresiones_bn_incluidas, 5000);
+  assert.equal(ro.snap_impresiones_color_incluidas, 500);
+  assert.equal(ro.snap_costo_excedente_bn, 0.025);
+  assert.equal(ro.snap_costo_excedente_color, 0.12);
+  assert.equal(ro.snap_facturacion_de_impresora, 'Diferenciar B/N de Color');
+
+  // fecha_congelacion: la hora de la aprobación, solo si hay contrato
+  const { sql } = consultas.find((c) => /INSERT INTO reportes_oficiales/.test(c.sql));
+  assert.match(sql, /fecha_congelacion\s*\)/);
+  assert.match(sql, /CASE WHEN \$16::int IS NULL THEN NULL ELSE NOW\(\) END\)/);
+
+  // Las tarifas salen del contrato de la asignación
+  const asignacion = consultas.find((c) => /FROM instalaciones i\s+JOIN areas a/.test(c.sql));
+  assert.match(asignacion.sql, /LEFT JOIN contratos c ON c\.id_contrato = i\.contrato_id/);
+});
+
+test('sin contrato, el reporte queda sin tarifas congeladas', async (t) => {
+  const consultas = usarClienteFalso(t, { staging: [fila()], asignacion: { area_nombre: 'Bodega', contrato_id: null } });
+  await approveStagingBatch(7, '2026-10');
+  const ro = insertado(consultas);
+  assert.equal(ro.snap_contrato_id, null);
+  assert.equal(ro.snap_costo_impresion_bn, null);
+  assert.equal(ro.snap_impresiones_bn_incluidas, null);
+});
+
 test('un lote vacío no se aprueba y se deshace la transacción', async (t) => {
   const consultas = usarClienteFalso(t, { staging: [] });
   await assert.rejects(approveStagingBatch(7, '2026-10'), /No se encontraron registros/);
