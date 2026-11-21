@@ -1,5 +1,5 @@
 const Usuario = require('@models/usuario/usuario.model');
-const { generateToken, verifyToken } = require('@utils/jwt.util');
+const { tokenDeSesion, verifyToken, sesionVigente, SESION_TERMINADA } = require('@utils/jwt.util');
 
 const loginUsuario = async (req, res) => {
   try {
@@ -23,11 +23,12 @@ const loginUsuario = async (req, res) => {
 
     const loginAt = new Date().toISOString();
 
-    const token = generateToken({
+    const token = tokenDeSesion({
       id: user.id,
       email: user.email,
       rol: user.rol?.nombre || null,
-      loginAt: loginAt
+      loginAt: loginAt,
+      versionSesion: user.versionSesion
     });
 
     res.json({
@@ -80,6 +81,14 @@ const tokenUsuario = async (req, res) => {
       return res.status(401).json({
         success: false,
         message: 'Usuario inactivo'
+      });
+    }
+
+    // Igual que protect: un token de una sesión anterior (contraseña o rol cambiados) ya no vale
+    if (!sesionVigente(data, usuario.version_sesion)) {
+      return res.status(401).json({
+        success: false,
+        message: SESION_TERMINADA
       });
     }
 

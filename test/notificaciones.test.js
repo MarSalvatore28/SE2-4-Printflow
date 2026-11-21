@@ -83,30 +83,44 @@ test('solo se eliminan notificaciones leídas', async (t) => {
   assert.equal(eliminada, false);
 });
 
-test('la notificación de un lote pendiente o rechazado no se elimina (guarda el motivo del rechazo)', async (t) => {
-  let notificacion = { id_notificacion: 3, leida: true, lote_id: 9, fecha_aprobacion: null };
+test('la notificación de un lote pendiente no se elimina; la de uno aprobado o rechazado sí', async (t) => {
+  let notificacion = { id_notificacion: 3, leida: true, lote_id: 9, fecha_aprobacion: null, fecha_rechazo: null };
   const eliminadas = [];
   reemplazar(t, Notificaciones, {
     obtenerNotificacion: async () => notificacion,
     eliminarNotificacion: async (id) => { eliminadas.push(id); return 1; },
   });
-  const rechazada = await llamar(controller.eliminarController, { params: { id: '3' } });
-  assert.equal(rechazada.statusCode, 409);
-  assert.match(rechazada.body.message, /motivo del rechazo/);
-  // Lote aprobado (la aprobación queda en lotes_carga) o notificación sin lote: sí
+  const pendiente = await llamar(controller.eliminarController, { params: { id: '3' } });
+  assert.equal(pendiente.statusCode, 409);
+  assert.match(pendiente.body.message, /ya aprobado o rechazado/);
+  // Lote aprobado o rechazado (los dos quedan en lotes_carga, migración 034) o notificación sin lote: sí
   notificacion = { ...notificacion, fecha_aprobacion: '2026-11-21T16:00:00Z' };
   assert.equal((await llamar(controller.eliminarController, { params: { id: '3' } })).statusCode, 200);
+  notificacion = { id_notificacion: 5, leida: true, lote_id: 10, fecha_aprobacion: null, fecha_rechazo: '2026-11-21T17:00:00Z' };
+  assert.equal((await llamar(controller.eliminarController, { params: { id: '5' } })).statusCode, 200);
   notificacion = { id_notificacion: 4, leida: true, lote_id: null };
   assert.equal((await llamar(controller.eliminarController, { params: { id: '4' } })).statusCode, 200);
-  assert.deepEqual(eliminadas, [3, 4]);
+  assert.deepEqual(eliminadas, [3, 5, 4]);
 });
 
-test('limpiar antiguas conserva las notificaciones de lotes no aprobados', async (t) => {
+test('limpiar antiguas conserva solo las notificaciones de lotes pendientes', async (t) => {
   const pool = require('../src/config/db');
   let sql = '';
   t.mock.method(pool, 'query', async (texto) => { sql = texto; return { rowCount: 0, rows: [] }; });
   await Notificaciones.eliminarLeidasAntiguas(30);
-  assert.match(sql, /n\.lote_id IS NULL OR EXISTS \(\s*SELECT 1 FROM lotes_carga l WHERE l\.id_lote = n\.lote_id AND l\.fecha_aprobacion IS NOT NULL\)/);
+  assert.match(sql, /n\.lote_id IS NULL OR EXISTS \(\s*SELECT 1 FROM lotes_carga l\s+WHERE l\.id_lote = n\.lote_id AND \(l\.fecha_aprobacion IS NOT NULL OR l\.fecha_rechazo IS NOT NULL\)\)/);
+});
+
+test('el lote lee su rechazo de lotes_carga y, si no lo tiene (antes de la 034), de sus notificaciones', async (t) => {
+  const pool = require('../src/config/db');
+  let sql = '';
+  t.mock.method(pool, 'query', async (texto) => { sql = texto; return { rows: [] }; });
+  await Notificaciones.obtenerLote(5);
+  assert.match(sql, /COALESCE\(l\.fecha_rechazo, rz\.fecha_rechazo\) AS fecha_rechazo/);
+  assert.match(sql, /CASE WHEN l\.fecha_rechazo IS NOT NULL THEN l\.motivo_rechazo ELSE rz\.motivo_rechazo END/);
+  assert.match(sql, /WHERE l\.fecha_rechazo IS NULL\s+AND nr\.lote_id = l\.id_lote/);
+  assert.match(sql, /SELECT unnest\(l\.cliente_ids_rechazo\)/);
+  assert.match(sql, /WHEN base\.rechazo_en_lote OR base\.reportes_staging = 0 THEN 'DESCARTADO'/);
 });
 
 test('listar lotes valida estado, cliente y fechas, y pasa los filtros al modelo', async (t) => {
@@ -194,21 +208,24 @@ test('aprobar o rechazar un lote que otro resolvió al mismo tiempo responde 409
   assert.equal(rechazar.body.message, 'El lote ya fue aprobado y no se puede rechazar');
 });
 
-test('rechazar guarda el motivo, el usuario y los clientes del lote', async (t) => {
+test('rechazar pasa el motivo y el usuario a staging, que lo guarda en el lote en su transacción', async (t) => {
   const llamadas = [];
   let consultas = 0;
   reemplazar(t, Notificaciones, {
     obtenerLote: async () => (consultas++ === 0
       ? lote('PENDIENTE', { clientes: [{ id_cliente: 4, nombre: 'Demo' }] })
       : lote('DESCARTADO')),
-    registrarRechazo: async (...args) => llamadas.push(['registrar', ...args]),
   });
-  reemplazar(t, Staging, { rejectStagingBatch: async (id) => llamadas.push(['rechazar', id]) });
+  reemplazar(t, Staging, { rejectStagingBatch: async (...args) => llamadas.push(['rechazar', ...args]) });
   const res = await llamar(controller.rechazarLoteController, {
     params: { loteId: '5' }, body: { motivo: '  Correo de prueba  ' }, user: { id: 2 },
   });
   assert.equal(res.statusCode, 200);
-  assert.deepEqual(llamadas, [['rechazar', 5], ['registrar', 5, 2, 'Correo de prueba', [4]]]);
+  assert.deepEqual(llamadas, [['rechazar', 5, { usuarioId: 2, ip: null, motivo: 'Correo de prueba' }]]);
+  // Un motivo de solo espacios se guarda como null
+  consultas = 0;
+  await llamar(controller.rechazarLoteController, { params: { loteId: '5' }, body: { motivo: '   ' }, user: { id: 2 } });
+  assert.equal(llamadas[1][2].motivo, null);
 });
 
 test('aprobar por notificación exige que la notificación tenga lote', async (t) => {

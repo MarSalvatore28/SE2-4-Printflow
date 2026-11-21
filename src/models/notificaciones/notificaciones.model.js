@@ -39,6 +39,7 @@ const selectNotificacion = (p) => `
     l.periodo,
     l.total_registros_cargados AS total_registros,
     l.fecha_aprobacion,
+    l.fecha_rechazo,
     NULLIF(TRIM(CONCAT(u.nombre, ' ', u.apellido)), '') AS usuario_nombre
   FROM notificaciones n
   JOIN tipos_notificacion t ON t.id_tipo_notificacion = n.tipo_notificacion_id
@@ -166,9 +167,13 @@ const marcarTodasLeidas = async (usuarioId) => {
   return rowCount;
 };
 
-// Se puede eliminar una notificación sin lote o la de un lote ya aprobado (la aprobación queda en
-// lotes_carga). La de un lote pendiente o rechazado no: el rechazo solo se guarda en ella.
-const sePuedeEliminar = (notificacion) => !notificacion.lote_id || Boolean(notificacion.fecha_aprobacion);
+// Se puede eliminar una notificación sin lote o la de un lote ya aprobado o rechazado: la aprobación
+// y el rechazo quedan en lotes_carga (migración 034). La de un lote pendiente no: es su aviso.
+// Un lote rechazado antes de la 034 cuyo rechazo no se pudo copiar al lote no tiene fecha_rechazo:
+// su notificación se conserva, porque el motivo sigue solo en ella.
+const sePuedeEliminar = (notificacion) => !notificacion.lote_id
+  || Boolean(notificacion.fecha_aprobacion)
+  || Boolean(notificacion.fecha_rechazo);
 
 const eliminarNotificacion = async (id) => {
   const { rowCount } = await pool.query('DELETE FROM notificaciones WHERE id_notificacion = $1', [id]);
@@ -181,9 +186,10 @@ const eliminarLeidasAntiguas = async (dias) => {
   const { rowCount } = await pool.query(
     `DELETE FROM notificaciones n
      WHERE n.fecha_creacion < NOW() - make_interval(days => $1)
-       -- Igual que sePuedeEliminar: la de un lote pendiente o rechazado se conserva
+       -- Igual que sePuedeEliminar: la de un lote pendiente se conserva
        AND (n.lote_id IS NULL OR EXISTS (
-         SELECT 1 FROM lotes_carga l WHERE l.id_lote = n.lote_id AND l.fecha_aprobacion IS NOT NULL))
+         SELECT 1 FROM lotes_carga l
+         WHERE l.id_lote = n.lote_id AND (l.fecha_aprobacion IS NOT NULL OR l.fecha_rechazo IS NOT NULL)))
        AND (n.leida OR NOT EXISTS (
          SELECT 1 FROM usuarios u
          WHERE u.activo = true AND NOT EXISTS (
@@ -199,9 +205,10 @@ const eliminarLeidasAntiguas = async (dias) => {
 //
 // Estado de un lote, con las palabras del plan (PLAN.md, sección 7):
 //   PROCESADO  -> tiene fecha_aprobacion.
-//   DESCARTADO -> no está aprobado y ya no tiene reportes en staging: se rechazó
-//                 (el rechazo borra el staging; si se rechazó por esta API, además
-//                 queda el motivo en notificaciones.datos_adicionales).
+//   DESCARTADO -> se rechazó: tiene fecha_rechazo (migración 034), o no está aprobado y ya no
+//                 tiene reportes en staging (el rechazo lo borra). La fecha, el usuario, el
+//                 motivo y los clientes se leen del lote; de un lote rechazado antes de la 034
+//                 sin esos datos, de sus notificaciones (datos_adicionales), como antes.
 //   ERROR      -> sigue en staging y al menos un reporte tiene procesar_lectura = false
 //                 (máquina no autorizada o con falla); no se puede aprobar.
 //   PENDIENTE  -> sigue en staging, sin reportes con error, esperando aprobación.
@@ -223,8 +230,11 @@ const SELECT_LOTES = `
       st.reportes_con_error,
       st.motivo_error,
       ofi.reportes_oficiales,
-      rz.fecha_rechazo,
-      rz.motivo_rechazo,
+      COALESCE(l.fecha_rechazo, rz.fecha_rechazo) AS fecha_rechazo,
+      CASE WHEN l.fecha_rechazo IS NOT NULL THEN l.motivo_rechazo ELSE rz.motivo_rechazo END AS motivo_rechazo,
+      ur.id_usuario AS usuario_rechazo_id,
+      NULLIF(TRIM(CONCAT(ur.nombre, ' ', ur.apellido)), '') AS usuario_rechazo_nombre,
+      (l.fecha_rechazo IS NOT NULL) AS rechazo_en_lote,
       nt.notificaciones_no_leidas,
       cli.clientes
     FROM lotes_carga l
@@ -242,14 +252,18 @@ const SELECT_LOTES = `
       FROM reportes_oficiales o
       WHERE o.lote_origen_id = l.id_lote
     ) ofi ON true
+    -- Rechazo de antes de la migración 034 que no se pudo copiar al lote: solo está en sus notificaciones
     LEFT JOIN LATERAL (
       SELECT
         COALESCE(MAX((nr.datos_adicionales->>'fecha_rechazo')::timestamptz), MAX(nr.fecha_lectura)) AS fecha_rechazo,
-        MAX(nr.datos_adicionales->>'motivo_rechazo') AS motivo_rechazo
+        MAX(nr.datos_adicionales->>'motivo_rechazo') AS motivo_rechazo,
+        MAX((nr.datos_adicionales->>'usuario_rechazo_id')::int) AS usuario_rechazo_id
       FROM notificaciones nr
-      WHERE nr.lote_id = l.id_lote
+      WHERE l.fecha_rechazo IS NULL
+        AND nr.lote_id = l.id_lote
         AND (nr.datos_adicionales->>'estado_lote' = 'DESCARTADO' OR nr.mensaje LIKE '%(RECHAZADO)')
     ) rz ON true
+    LEFT JOIN usuarios ur ON ur.id_usuario = COALESCE(l.usuario_rechazo_id, rz.usuario_rechazo_id)
     LEFT JOIN LATERAL (
       SELECT COUNT(*)::int AS notificaciones_no_leidas
       FROM notificaciones nn
@@ -266,7 +280,10 @@ const SELECT_LOTES = `
         UNION
         SELECT o.cliente_id FROM reportes_oficiales o WHERE o.lote_origen_id = l.id_lote
         UNION
-        -- Un lote rechazado ya no tiene staging: su cliente quedó guardado en el rechazo
+        -- Un lote rechazado ya no tiene staging: sus clientes quedaron guardados en el rechazo
+        SELECT unnest(l.cliente_ids_rechazo)
+        UNION
+        -- (antes de la migración 034, en sus notificaciones)
         SELECT jsonb_array_elements_text(nc.datos_adicionales->'cliente_ids')::int
         FROM notificaciones nc
         WHERE nc.lote_id = l.id_lote AND jsonb_typeof(nc.datos_adicionales->'cliente_ids') = 'array'
@@ -277,17 +294,17 @@ const SELECT_LOTES = `
     base.*,
     CASE
       WHEN base.fecha_aprobacion IS NOT NULL THEN 'PROCESADO'
-      WHEN base.reportes_staging = 0 THEN 'DESCARTADO'
+      WHEN base.rechazo_en_lote OR base.reportes_staging = 0 THEN 'DESCARTADO'
       WHEN base.reportes_con_error > 0 THEN 'ERROR'
       ELSE 'PENDIENTE'
     END AS estado,
     CASE
       WHEN base.fecha_aprobacion IS NOT NULL THEN base.fecha_aprobacion
-      WHEN base.reportes_staging = 0 THEN base.fecha_rechazo
+      WHEN base.rechazo_en_lote OR base.reportes_staging = 0 THEN base.fecha_rechazo
     END AS fecha_procesamiento,
     CASE
       WHEN base.fecha_aprobacion IS NOT NULL THEN NULL
-      WHEN base.reportes_staging = 0 THEN COALESCE(base.motivo_rechazo, 'Lote rechazado')
+      WHEN base.rechazo_en_lote OR base.reportes_staging = 0 THEN COALESCE(base.motivo_rechazo, 'Lote rechazado')
       WHEN base.reportes_con_error > 0 THEN base.motivo_error
     END AS motivo
   FROM base
@@ -347,25 +364,6 @@ const registrarAprobador = async (loteId, usuarioId) => {
   );
 };
 
-// rejectStagingBatch (staging) no deja rastro en lotes_carga: el rechazo queda en sus notificaciones,
-// con los clientes que tenía el lote (el staging se borra y si no se perderían)
-const registrarRechazo = async (loteId, usuarioId, motivo, clienteIds = []) => {
-  await pool.query(
-    `UPDATE notificaciones
-     SET leida = true,
-         fecha_lectura = COALESCE(fecha_lectura, NOW()),
-         datos_adicionales = COALESCE(datos_adicionales, '{}'::jsonb) || jsonb_build_object(
-           'estado_lote', 'DESCARTADO',
-           'motivo_rechazo', $3::text,
-           'usuario_rechazo_id', $2::int,
-           'fecha_rechazo', NOW(),
-           'cliente_ids', to_jsonb($4::int[])
-         )
-     WHERE lote_id = $1`,
-    [loteId, usuarioId, motivo || null, clienteIds]
-  );
-};
-
 module.exports = {
   listarNotificaciones,
   obtenerNotificacion,
@@ -384,5 +382,4 @@ module.exports = {
   listarLotes,
   obtenerLote,
   registrarAprobador,
-  registrarRechazo,
 };

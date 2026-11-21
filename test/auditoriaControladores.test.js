@@ -593,7 +593,6 @@ test('notificaciones: aprobar y rechazar pasan el usuario, la IP y el motivo a s
       ? { id_lote: 5, periodo: '2026-10', estado: 'PENDIENTE', clientes: [] }
       : { id_lote: 5, estado: 'PROCESADO' }),
     registrarAprobador: async () => undefined,
-    registrarRechazo: async () => undefined,
   });
   reemplazar(t, Staging, {
     validarLoteStaging: async () => ({ esValido: true, errores: [] }),

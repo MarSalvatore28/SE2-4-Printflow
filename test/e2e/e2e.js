@@ -22,6 +22,7 @@ if (process.env.NODE_TEST_CONTEXT) {
 
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const os = require('node:os');
 const path = require('node:path');
 
@@ -421,6 +422,65 @@ async function seccionSeguridad(ctx) {
   comprobar(res.status === 200 && aprobacion?.usuario_email === 'operador@printflow.local',
     `GET /api/auditoria (admin) muestra la aprobación del lote #${loteAuditado} por operador@printflow.local`,
     `HTTP ${res.status}: ${JSON.stringify(registros.map((a) => [a.accion, a.usuario_email]))}`);
+  await seccionSesionRevocada(ctx);
+}
+
+const SESION_TERMINADA = 'Tu sesión terminó: inicia sesión de nuevo';
+const terminoLaSesion = (res) => res.status === 401 && res.datos.message === SESION_TERMINADA;
+// Contraseñas de un solo uso para estas comprobaciones: al azar en cada corrida, nunca escritas en el código
+const claveAlAzar = () => `Pf${crypto.randomBytes(6).toString('hex')}9`;
+
+// 4b. Cambiar la contraseña o el rol, o desactivar, termina las sesiones abiertas del usuario (migración 033)
+async function seccionSesionRevocada(ctx) {
+  const admin = { token: ctx.admin };
+  const roles = lista((await api('/api/usuarios/roles', admin)).datos.data);
+  const rolId = (nombre) => roles.find((r) => r.nombre === nombre)?.id_rol;
+  const datos = { nombre: 'Sesión', apellido: 'Prueba E2E', email: 'sesion.e2e@printflow.local', rol_id: rolId('operador') };
+  const primera = claveAlAzar();
+  const segunda = claveAlAzar();
+  let res = await api('/api/usuarios', { ...admin, metodo: 'POST', cuerpo: { ...datos, password: primera } });
+  const id = res.datos.data?.id_usuario;
+  if (!comprobar(res.status === 201 && Boolean(id), `Usuario de prueba ${datos.email} creado (201)`, `HTTP ${res.status}: ${res.datos.message}`)) return;
+  const entrar = async (password) => api('/api/auth/login', { metodo: 'POST', cuerpo: { email: datos.email, password } });
+
+  const viejo = (await entrar(primera)).datos.token;
+  res = await api(`/api/usuarios/${id}`, { ...admin, metodo: 'PUT', cuerpo: { ...datos, password: segunda } });
+  const perfil = await api('/api/auth/perfil', { token: viejo });
+  const valida = await api('/api/auth/validate-token', { token: viejo });
+  comprobar(res.status === 200 && terminoLaSesion(perfil) && terminoLaSesion(valida),
+    `El admin le cambia la contraseña: su token de antes → 401 «${perfil.datos.message}» (también en validate-token)`,
+    `PUT ${res.status} · perfil ${perfil.status}: ${perfil.datos.message} · validate-token ${valida.status}: ${valida.datos.message}`);
+  const nuevo = await entrar(segunda);
+  res = await api('/api/auth/perfil', { token: nuevo.datos.token });
+  comprobar(nuevo.status === 200 && res.status === 200, 'Con la contraseña nueva inicia sesión y su token vale (200)', `login ${nuevo.status} · perfil ${res.status}`);
+
+  await api(`/api/usuarios/${id}`, { ...admin, metodo: 'PUT', cuerpo: { ...datos, apellido: 'Solo el apellido' } });
+  res = await api('/api/auth/perfil', { token: nuevo.datos.token });
+  comprobar(res.status === 200, 'Editar solo el apellido no termina la sesión (200)', `HTTP ${res.status}: ${res.datos.message}`);
+
+  await api(`/api/usuarios/${id}`, { ...admin, metodo: 'PUT', cuerpo: { ...datos, rol_id: rolId('auditor') } });
+  res = await api('/api/auth/perfil', { token: nuevo.datos.token });
+  comprobar(terminoLaSesion(res), 'Cambiarle el rol termina su sesión (401)', `HTTP ${res.status}: ${res.datos.message}`);
+
+  const otra = (await entrar(segunda)).datos.token;
+  await api(`/api/usuarios/${id}/activo`, { ...admin, metodo: 'PATCH', cuerpo: { activo: false } });
+  await api(`/api/usuarios/${id}/activo`, { ...admin, metodo: 'PATCH', cuerpo: { activo: true } });
+  res = await api('/api/auth/perfil', { token: otra });
+  comprobar(terminoLaSesion(res), 'Desactivarlo y reactivarlo: su token de antes ya no vale (401)', `HTTP ${res.status}: ${res.datos.message}`);
+
+  // El admin cambia su propia contraseña: la respuesta trae un token que sigue valiendo, el de antes no
+  const yo = lista((await api('/api/usuarios', admin)).datos.data).find((u) => u.email === 'admin@printflow.local') || {};
+  const mio = { nombre: yo.nombre, apellido: yo.apellido, email: yo.email, rol_id: yo.rol_id };
+  res = await api(`/api/usuarios/${yo.id_usuario}`, { ...admin, metodo: 'PUT', cuerpo: { ...mio, password: claveAlAzar() } });
+  const renovado = res.cabeceras.get('x-nuevo-token');
+  const conRenovado = await api('/api/auth/perfil', { token: renovado });
+  const conViejo = await api('/api/auth/perfil', admin);
+  comprobar(res.status === 200 && conRenovado.status === 200 && terminoLaSesion(conViejo),
+    'El admin cambia su propia contraseña: sigue con el token de la respuesta y su token anterior → 401',
+    `PUT ${res.status} · renovado ${conRenovado.status} · anterior ${conViejo.status}: ${conViejo.datos.message}`);
+  res = await api(`/api/usuarios/${yo.id_usuario}`, { token: renovado, metodo: 'PUT', cuerpo: { ...mio, password: CLAVE } });
+  exigir(res.status === 200, 'El admin vuelve a su contraseña de siempre', `HTTP ${res.status}: ${res.datos.message}`);
+  ctx.admin = await iniciarSesion('admin');
 }
 
 const instalacion = async (ctx, serie) => (await api(`/api/instalacion/serie/${serie}`, { token: ctx.operador })).datos.data || {};
@@ -629,6 +689,36 @@ async function seccionLoteAndina(ctx) {
     `HTTP ${res.status}: ${errores.join('; ') || res.datos.message}`);
   const pendiente = (await lotesPendientes(ctx.operador, NOVIEMBRE))[codigoA];
   comprobar(Boolean(pendiente), `${codigoA} sigue pendiente (no se aprobó nada)`);
+  await rechazarLoteAndina(ctx, loteA.loteId, codigoA);
+}
+
+// 7b. El rechazo queda en el lote (migración 034): su notificación ya se puede borrar sin perderlo
+async function rechazarLoteAndina(ctx, loteId, codigo) {
+  const operador = { token: ctx.operador };
+  const [notificacion] = lista((await api(`/api/notificaciones/lote/${loteId}`, operador)).datos.data);
+  if (!comprobar(Boolean(notificacion), `${codigo} tiene su notificación`)) return;
+  await api(`/api/notificaciones/${notificacion.id_notificacion}/marcar-leida`, { ...operador, metodo: 'PATCH' });
+  let res = await api(`/api/notificaciones/${notificacion.id_notificacion}`, { ...operador, metodo: 'DELETE' });
+  comprobar(res.status === 409, `Borrar la notificación de ${codigo} con el lote pendiente → 409: «${res.datos.message}»`, `HTTP ${res.status}`);
+
+  const motivo = 'Prueba E2E: contadores «dudosos» de noviembre';
+  res = await api(`/api/notificaciones/lotes/${loteId}/rechazar`, { ...operador, metodo: 'POST', cuerpo: { motivo } });
+  comprobar(res.status === 200 && res.datos.data?.estado === 'DESCARTADO', `Rechazar ${codigo} con motivo → 200 y queda DESCARTADO`,
+    `HTTP ${res.status}: ${res.datos.message}`);
+  const enBase = psql(`SELECT l.motivo_rechazo, u.email, l.fecha_rechazo IS NOT NULL, array_to_string(l.cliente_ids_rechazo, ',')
+    FROM lotes_carga l LEFT JOIN usuarios u ON u.id_usuario = l.usuario_rechazo_id WHERE l.id_lote = ${Number(loteId)}`);
+  const esperado = [motivo, 'operador@printflow.local', 't', String(ctx.ids.andina)].join('|');
+  comprobar(enBase.codigo === 0 && enBase.salida.trim() === esperado,
+    'lotes_carga guarda el motivo, quién rechazó, cuándo y el cliente del lote', `esperado «${esperado}», obtenido «${enBase.salida.trim()}»`);
+
+  res = await api(`/api/notificaciones/${notificacion.id_notificacion}`, { ...operador, metodo: 'DELETE' });
+  comprobar(res.status === 200, `Con el lote rechazado, su notificación se borra (200)`, `HTTP ${res.status}: ${res.datos.message}`);
+  const lote = (await api(`/api/notificaciones/lotes/${loteId}`, operador)).datos.data || {};
+  const filtrados = lista((await api(`/api/notificaciones/lotes?estado=DESCARTADO&cliente_id=${ctx.ids.andina}`, operador)).datos.data);
+  comprobar(lote.estado === 'DESCARTADO' && lote.motivo === motivo && lote.usuario_rechazo_nombre && Boolean(lote.fecha_procesamiento)
+      && lista(lote.clientes).some((c) => c.id_cliente === ctx.ids.andina) && filtrados.some((l) => l.id_lote === loteId),
+    'Sin la notificación, el lote sigue mostrando el motivo, quién y cuándo, y su cliente (también en el filtro de la lista)',
+    JSON.stringify({ estado: lote.estado, motivo: lote.motivo, usuario: lote.usuario_rechazo_nombre, clientes: lote.clientes, filtrados: filtrados.length }));
 }
 
 // Clientes, contratos y áreas: validaciones y cascada (revisión del módulo de catálogos).

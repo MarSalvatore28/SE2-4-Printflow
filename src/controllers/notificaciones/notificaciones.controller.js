@@ -211,12 +211,12 @@ const eliminarController = async (req, res) => {
     if (!notificacion.leida) {
       return res.status(409).json({ success: false, message: 'Solo se pueden eliminar notificaciones leídas' });
     }
-    // La notificación de un lote pendiente o rechazado es su historial: el rechazo (motivo, fecha y
-    // clientes) solo queda ahí, y borrarla también se la quitaría a los demás usuarios
+    // La de un lote pendiente no: es el aviso de que hay algo que aprobar o rechazar. La de un lote
+    // aprobado o rechazado sí: la aprobación y el rechazo quedan en el lote (migración 034)
     if (!Notificaciones.sePuedeEliminar(notificacion)) {
       return res.status(409).json({
         success: false,
-        message: 'La notificación de un lote pendiente o rechazado no se elimina: guarda su estado y el motivo del rechazo',
+        message: 'Solo se elimina la notificación de un lote ya aprobado o rechazado',
       });
     }
     await Notificaciones.eliminarNotificacion(id);
@@ -353,13 +353,8 @@ const rechazarLote = async (loteId, req, res) => {
   }
 
   const motivoLimpio = typeof motivo === 'string' ? motivo.trim() : null;
-  await Staging.rejectStagingBatch(loteId, { ...contextoAuditoria(req), motivo: motivoLimpio });
-  await Notificaciones.registrarRechazo(
-    loteId,
-    req.user.id,
-    motivoLimpio,
-    (lote.clientes || []).map((c) => c.id_cliente)
-  );
+  // Guarda el rechazo en el lote (fecha, usuario, motivo y clientes) en la misma transacción
+  await Staging.rejectStagingBatch(loteId, { ...contextoAuditoria(req), motivo: motivoLimpio || null });
   avisarCambio({ lote_id: loteId, estado: 'DESCARTADO' });
 
   const data = await Notificaciones.obtenerLote(loteId);

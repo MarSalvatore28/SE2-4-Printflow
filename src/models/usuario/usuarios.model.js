@@ -112,6 +112,8 @@ const conAdminGarantizado = async (cambio, { id: idUsuario, accion, usuarioId = 
 };
 
 // passwordHash null = la contraseña no cambia. auditoria: { usuarioId, ip } de la petición
+// Si cambia la contraseña o el rol, sube version_sesion: los tokens que el usuario ya tenía
+// dejan de valer (migración 033). En el SET, rol_id es el valor de antes del cambio.
 const actualizarUsuario = (id, { nombre, apellido, email, rol_id, passwordHash }, auditoria = {}) => (
   conAdminGarantizado(async (cliente) => {
     const { rows } = await cliente.query(`
@@ -120,7 +122,9 @@ const actualizarUsuario = (id, { nombre, apellido, email, rol_id, passwordHash }
           apellido = $3,
           email = $4,
           rol_id = $5,
-          password_hash = COALESCE($6, password_hash)
+          password_hash = COALESCE($6, password_hash),
+          version_sesion = version_sesion
+            + CASE WHEN $6::text IS NOT NULL OR rol_id IS DISTINCT FROM $5 THEN 1 ELSE 0 END
       WHERE id_usuario = $1
       RETURNING id_usuario
     `, [id, nombre, apellido, email, rol_id, passwordHash]);
@@ -128,10 +132,15 @@ const actualizarUsuario = (id, { nombre, apellido, email, rol_id, passwordHash }
   }, { ...auditoria, id, accion: ACCIONES.ACTUALIZAR, extra: { password_cambiada: Boolean(passwordHash) } })
 );
 
+// Desactivar sube version_sesion: si después lo reactivan, sus tokens viejos tampoco valen
 const cambiarActivo = (id, activo, auditoria = {}) => (
   conAdminGarantizado(async (cliente) => {
     const { rows } = await cliente.query(
-      'UPDATE usuarios SET activo = $2 WHERE id_usuario = $1 RETURNING id_usuario',
+      `UPDATE usuarios
+       SET activo = $2,
+           version_sesion = version_sesion + CASE WHEN activo AND NOT $2::boolean THEN 1 ELSE 0 END
+       WHERE id_usuario = $1
+       RETURNING id_usuario`,
       [id, activo]
     );
     return rows[0]?.id_usuario;

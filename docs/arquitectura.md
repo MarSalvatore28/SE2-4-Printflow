@@ -67,8 +67,8 @@ Las migraciones van numeradas por rangos (`docs/tareas/README.md`). Una vez en `
 
 | Capa | Qué hay |
 |---|---|
-| Autenticación | JWT firmado con `SECRET_KEY` (propia de cada instalación), 30 min sin uso con renovación en cada respuesta (`X-Nuevo-Token`). Contraseñas con bcrypt |
-| Autorización | Tres roles (admin, operador, auditor) leídos de la base en cada petición: un cambio de rol vale al instante |
+| Autenticación | JWT firmado con `SECRET_KEY` (propia de cada instalación), 30 min sin uso con renovación en cada respuesta (`X-Nuevo-Token`). Contraseñas con bcrypt. El token lleva la **versión de la sesión** (`usuarios.version_sesion`, migración 033): cambiar la contraseña o el rol, o desactivar al usuario, la sube y sus tokens anteriores responden 401 al instante (también `validate-token` y Socket.IO) |
+| Autorización | Tres roles (admin, operador, auditor) leídos de la base en cada petición: un cambio de rol vale al instante (y cierra las sesiones abiertas de ese usuario) |
 | Ingesta | Token propio y solo desde la red interna de Docker: nginx responde 403 desde fuera |
 | Datos | Consultas parametrizadas; auditoría de los cambios dentro de la misma transacción (si no se puede auditar, no se guarda) |
 | Secretos | Nada en el repo: `npm run configurar` genera las claves de cada uno; las contraseñas de prueba se calculan al crear la base (`DEMO_PASSWORD`) |

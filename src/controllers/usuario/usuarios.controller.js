@@ -17,6 +17,8 @@ const {
   validarCambioPropio,
 } = require('@utils/usuarios.validacion');
 const { ACCIONES, auditarFila, contextoAuditoria, enTransaccion } = require('@services/auditoria');
+const { getVersionSesion } = require('@models/usuario/usuario.model');
+const { tokenDeSesion } = require('@utils/jwt.util');
 
 const BCRYPT_RONDAS = 10;
 const PG_UNIQUE_VIOLATION = '23505';
@@ -104,6 +106,18 @@ const actualizarUsuarioController = async (req, res) => {
 
     if (resultado.sinAdmin) return res.status(409).json({ success: false, message: MENSAJES.ULTIMO_ADMIN });
     if (!resultado.usuario) return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
+
+    // Si el admin cambió su propia contraseña, sus otras sesiones terminan, pero la de esta
+    // petición sigue: el token renovado lleva la versión nueva (el de protect ya no valdría)
+    if (Number(req.user.id) === id) {
+      res.setHeader('X-Nuevo-Token', tokenDeSesion({
+        id,
+        email: resultado.usuario.email,
+        rol: resultado.usuario.rol || null,
+        loginAt: req.user.loginAt,
+        versionSesion: (await getVersionSesion(id)) ?? 0,
+      }));
+    }
 
     res.status(200).json({
       success: true,
