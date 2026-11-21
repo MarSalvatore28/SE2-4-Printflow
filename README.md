@@ -41,6 +41,32 @@ Proyecto de la materia **Ingeniería de Software II** (ESPOL, sección 4).
 | [`docs/postman/`](docs/postman/) | Colección de Postman con el token automático y los casos de seguridad |
 | [`docs/tareas/`](docs/tareas/) | Reparto y estado de las tareas del equipo |
 
+## Credenciales de acceso
+
+Todo esto es para **tu compu** (o la demo), con datos ficticios. **No hay que pedirle claves a nadie.**
+
+**Usuarios de la web y la API** (http://localhost:8080). Vienen en la base desde que se crea:
+
+| Usuario | Contraseña | Rol | Qué puede hacer |
+|---|---|---|---|
+| `admin@printflow.local` | `Printflow2026*` | admin | Todo, incluidos usuarios, clientes, contratos y máquinas |
+| `operador@printflow.local` | `Printflow2026*` | operador | Aprobar y rechazar lotes, lectura manual, reprocesar |
+| `auditor@printflow.local` | `Printflow2026*` | auditor | Solo consultar |
+
+- **Otra contraseña:** ponla en `DEMO_PASSWORD` del `.env` antes de crear la base (o recréala con `docker compose down -v`). Si `DEMO_PASSWORD` está vacía, es `Printflow2026*`.
+- **El token para Postman, Swagger o la terminal:** `npm run token -- admin` (o `operador`, `auditor`). Ver [`docs/probar.md`](docs/probar.md), sección 7.
+
+**Lo demás:**
+
+| Qué | Cómo se entra |
+|---|---|
+| Base de datos (pgAdmin o psql) | `127.0.0.1:5433`, usuario `postgres`, contraseña: la `DB_PASSWORD` de **tu** `.env` (la genera `npm run configurar`) |
+| Swagger | http://localhost:8080/api-docs → `POST /api/auth/login` → **Authorize** |
+| SonarCloud | Público, sin cuenta: [backend](https://sonarcloud.io/project/overview?id=MarSalvatore28_SE2-4-Printflow) · [frontend](https://sonarcloud.io/project/overview?id=MarSalvatore28_SE2-4-Printflow-Frontend) |
+| Los repos de GitHub | Con tu cuenta, después de aceptar la invitación que te llegó por correo |
+
+**Producción** (cuando el Equipo C suba el servidor): las contraseñas se cambian antes de mostrarlo y se comparten solo con el equipo y el PO, nunca en el repo ni en el grupo. Ver [`docs/despliegue.md`](docs/despliegue.md).
+
 ---
 
 ## Contenido
@@ -48,7 +74,7 @@ Proyecto de la materia **Ingeniería de Software II** (ESPOL, sección 4).
 1. [Cómo funciona](#cómo-funciona)
 2. [Tecnologías](#tecnologías)
 3. [Requisitos](#requisitos)
-4. [Inicio rápido con Docker](#inicio-rápido-con-docker) · **[Cómo probar: token, Postman, Swagger y seguridad](docs/probar.md)**
+4. [Inicio rápido con Docker](#inicio-rápido-con-docker) · **[Credenciales de acceso](#credenciales-de-acceso)** · **[Cómo probar: token, Postman, Swagger y seguridad](docs/probar.md)**
 5. [Desarrollo sin Docker](#desarrollo-sin-docker)
 6. [Variables de entorno](#variables-de-entorno)
 7. [Scripts](#scripts)
