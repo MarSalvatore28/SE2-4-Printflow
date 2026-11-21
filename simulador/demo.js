@@ -106,8 +106,13 @@ async function mostrarConsolidado(token, escenario, ids, periodo) {
     }
     const r = datos.data.resumen || {};
     const tramo = (nombre, t) => `${nombre} ${numero(t.consumo)} págs. (incluidas ${numero(t.incluidas)}): cuota $${t.cuota_fija} + excedente $${t.monto_excedente}`;
+    const vigencia = (c) => {
+      if (!c.contrato_fecha_inicio) return 'Contrato';
+      const inicio = String(c.contrato_fecha_inicio).slice(0, 10);
+      return c.contrato_fecha_fin ? `Contrato del ${inicio} al ${String(c.contrato_fecha_fin).slice(0, 10)}` : `Contrato desde el ${inicio}`;
+    };
     for (const c of r.facturacion || []) {
-      console.log(`  Contrato #${c.contrato_id}: ${tramo('B/N', c.bn)} · ${tramo('color', c.color)} · renta $${c.renta} = $${c.total}`);
+      console.log(`  ${vigencia(c)}: ${tramo('B/N', c.bn)} · ${tramo('color', c.color)} · renta $${c.renta} = $${c.total}`);
     }
     console.log(`  Total del cliente: ${numero(r.total_impresiones)} páginas · a facturar $${Number(r.monto_total_general || 0).toFixed(2)}`);
   }
