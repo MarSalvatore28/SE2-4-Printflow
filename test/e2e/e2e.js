@@ -44,7 +44,7 @@ const ENV = { ...process.env, WEB_PORT, DB_HOST_PORT: DB_PORT };
 
 // Ruta completa de docker: la de DOCKER_BIN si se define, o la de una instalación conocida
 const DOCKER = process.env.DOCKER_BIN || [
-  'C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe',
+  String.raw`C:\Program Files\Docker\Docker\resources\bin\docker.exe`,
   '/usr/local/bin/docker',
   '/usr/bin/docker',
 ].find((ruta) => fs.existsSync(ruta)) || 'docker';

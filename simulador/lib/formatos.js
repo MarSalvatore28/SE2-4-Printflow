@@ -184,7 +184,7 @@ const xmlEstado = {
 
   leer(texto) {
     const atributo = (etiqueta, nombre) => {
-      const m = texto.match(new RegExp(`<${etiqueta}[^>]*\\s${nombre}="([^"]*)"`));
+      const m = texto.match(new RegExp(String.raw`<${etiqueta}[^>]*\s${nombre}="([^"]*)"`));
       return m ? desescaparXml(m[1]) : undefined;
     };
     const contador = (tipo, color) => {
