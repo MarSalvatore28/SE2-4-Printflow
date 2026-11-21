@@ -27,7 +27,7 @@ al_salir() {
   codigo=$?
   [ "$codigo" -eq 0 ] && return 0
   echo
-  echo "==> ERROR: la actualización se detuvo (código $codigo). Estado y últimos logs:"
+  echo "==> ERROR: la actualización se detuvo (código $codigo). Estado y últimos logs:" >&2
   dc ps || true
   dc logs --no-color --tail 60 api db || true
   exit "$codigo"

@@ -146,11 +146,14 @@ adoptar() {
       codigo=$(printf '%s\n' "$salida" | sed -n 's/.*ERROR: *\([0-9A-Z]\{5\}\):.*/\1/p' | head -n 1)
       case " $SQLSTATE_YA_EXISTE " in
         *" $codigo "*)
-          echo "  $nombre: ya estaba ($(printf '%s\n' "$salida" | grep -m 1 'ERROR' | sed 's/.*ERROR: *//'))"
+          motivo=$(printf '%s\n' "$salida" | grep -m 1 'ERROR' | sed 's/.*ERROR: *//')
+          echo "  $nombre: ya estaba ($motivo)"
           ya="$ya $nombre" ;;
         *)
-          echo "  $nombre: DUDOSA, error inesperado al probarla:"
-          printf '%s\n' "$salida" | grep -E 'ERROR|LINE|DETAIL' | head -n 5 | sed 's/^/      /'
+          {
+            echo "  $nombre: DUDOSA, error inesperado al probarla:"
+            printf '%s\n' "$salida" | grep -E 'ERROR|LINE|DETAIL' | head -n 5 | sed 's/^/      /'
+          } >&2
           dudosas="$dudosas $nombre" ;;
       esac
     fi
@@ -159,12 +162,14 @@ adoptar() {
   trap - EXIT
 
   if [ -n "$dudosas" ]; then
-    echo
-    echo "PrintFlow: no se adoptó la base: hay migraciones que no se pueden decidir solas:$dudosas"
-    echo "  Revisa en la base si cada una ya está aplicada. Luego registra TODAS las que ya están"
-    echo "  (las «ya estaba» de arriba más las dudosas que sí estén) y vuelve a correr el script:"
-    echo "    sh /printflow-db/migrar.sh --marcar$ya <dudosas-que-ya-estén>"
-    echo "  No se cambió nada en la base."
+    {
+      echo
+      echo "PrintFlow: no se adoptó la base: hay migraciones que no se pueden decidir solas:$dudosas"
+      echo "  Revisa en la base si cada una ya está aplicada. Luego registra TODAS las que ya están"
+      echo "  (las «ya estaba» de arriba más las dudosas que sí estén) y vuelve a correr el script:"
+      echo "    sh /printflow-db/migrar.sh --marcar$ya <dudosas-que-ya-estén>"
+      echo "  No se cambió nada en la base."
+    } >&2
     exit 1
   fi
 
