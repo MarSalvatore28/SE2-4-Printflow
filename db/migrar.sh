@@ -48,7 +48,7 @@ aviso() { echo "PrintFlow: $*"; }
 falla() { echo "PrintFlow: ERROR: $*" >&2; exit 1; }
 
 # Una consulta que devuelve un valor (sin encabezados)
-valor() { psql -X -q -At -v ON_ERROR_STOP=1 -d "$BD" -c "$1"; }
+valor() { consulta=$1; psql -X -q -At -v ON_ERROR_STOP=1 -d "$BD" -c "$consulta"; }
 
 migraciones() {
   for f in "$DIR"/*.sql; do
@@ -63,24 +63,26 @@ migraciones() {
 }
 
 # Líneas de SQL que no son comentario
-sin_comentarios() { grep -v -E '^[[:space:]]*--' "$1" || true; }
+sin_comentarios() { archivo=$1; grep -v -E '^[[:space:]]*--' "$archivo" || true; }
 
 revisar_archivo() {
-  if sin_comentarios "$1" | grep -q -i -E '^[[:space:]]*(begin|commit|rollback|start[[:space:]]+transaction)[[:space:]]*;'; then
-    falla "$(basename "$1") tiene BEGIN/COMMIT propios: quítalos, migrar.sh ya la aplica en una transacción"
+  archivo=$1
+  if sin_comentarios "$archivo" | grep -q -i -E '^[[:space:]]*(begin|commit|rollback|start[[:space:]]+transaction)[[:space:]]*;'; then
+    falla "$(basename "$archivo") tiene BEGIN/COMMIT propios: quítalos, migrar.sh ya la aplica en una transacción"
   fi
-  if sin_comentarios "$1" | grep -q -i -w 'concurrently'; then
-    falla "$(basename "$1") usa CONCURRENTLY, que no puede ir dentro de una transacción"
+  if sin_comentarios "$archivo" | grep -q -i -w 'concurrently'; then
+    falla "$(basename "$archivo") usa CONCURRENTLY, que no puede ir dentro de una transacción"
   fi
 }
 
 cambia_datos() {
-  sin_comentarios "$1" | grep -q -i -E '(^|[[:space:];(])(insert|update|delete|copy|truncate|merge)[[:space:]]'
+  archivo=$1
+  sin_comentarios "$archivo" | grep -q -i -E '(^|[[:space:];(])(insert|update|delete|copy|truncate|merge)[[:space:]]'
 }
 
 existe_control() { [ "$(valor "SELECT to_regclass('public.schema_migrations') IS NOT NULL")" = "t" ]; }
 
-aplicada() { [ -n "$(valor "SELECT 1 FROM public.schema_migrations WHERE nombre = '$1'")" ]; }
+aplicada() { migracion=$1; [ -n "$(valor "SELECT 1 FROM public.schema_migrations WHERE nombre = '$migracion'")" ]; }
 
 CREAR_CONTROL="CREATE TABLE IF NOT EXISTS public.schema_migrations (
   nombre      varchar(255) PRIMARY KEY,

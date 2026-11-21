@@ -43,7 +43,10 @@ azure_listar() {
 }
 
 # Verdadero si el texto $1 va antes que $2 en orden alfabético (los nombres llevan la fecha)
-antes_que() { [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort | head -n 1)" = "$1" ]; }
+antes_que() {
+  primero=$1 segundo=$2
+  [ "$primero" != "$segundo" ] && [ "$(printf '%s\n%s\n' "$primero" "$segundo" | sort | head -n 1)" = "$primero" ]
+}
 
 sincronizar_azure() {
   azure_listo || return 0
