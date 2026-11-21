@@ -41,6 +41,13 @@ const MESES = ['2026-08', '2026-09', '2026-10'];
 const NOVIEMBRE = '2026-11';
 const ENV = { ...process.env, WEB_PORT, DB_HOST_PORT: DB_PORT };
 
+// Ruta completa de docker: la de DOCKER_BIN si se define, o la de una instalación conocida
+const DOCKER = process.env.DOCKER_BIN || [
+  'C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe',
+  '/usr/local/bin/docker',
+  '/usr/bin/docker',
+].find((ruta) => fs.existsSync(ruta)) || 'docker';
+
 const escenario = cargarEscenario();
 const inicio = Date.now();
 
@@ -57,14 +64,18 @@ function seccion(titulo) {
   console.log(`\n${titulo}`);
 }
 
+// Lo que viene de la API o de Docker se muestra sin saltos de línea propios
+const unaLinea = (valor) => String(valor).replaceAll(/[\r\n]+/g, ' | ');
+
 function comprobar(ok, texto, detalle) {
   total += 1;
   if (ok) {
-    console.log(`  ✓ ${texto}`);
+    console.log(`  ✓ ${unaLinea(texto)}`);
   } else {
-    fallos.push(`[${seccionActual}] ${texto}${detalle ? ` — ${detalle}` : ''}`);
-    console.log(`  ✗ ${texto}`);
-    if (detalle) console.log(`      ${String(detalle).split('\n').join('\n      ')}`);
+    const motivo = detalle ? ` — ${unaLinea(detalle)}` : '';
+    fallos.push(`[${seccionActual}] ${unaLinea(texto)}${motivo}`);
+    console.log(`  ✗ ${unaLinea(texto)}`);
+    if (detalle) String(detalle).split(/\r?\n/).forEach((linea) => console.log(`      ${unaLinea(linea)}`));
   }
   return ok;
 }
@@ -89,7 +100,7 @@ const duracion = (ms) => {
 // ---------------------------------------------------------------------------
 
 function compose(argumentos, { input } = {}) {
-  const r = spawnSync('docker', ['compose', '-p', PROYECTO, ...argumentos], {
+  const r = spawnSync(DOCKER, ['compose', '-p', PROYECTO, ...argumentos], {
     cwd: RAIZ, env: ENV, input, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
   });
   return { codigo: r.error ? -1 : r.status, salida: `${r.stdout || ''}${r.stderr || ''}${r.error ? r.error.message : ''}` };
@@ -300,7 +311,7 @@ async function prueba() {
   DB_USER = env.DB_USER || DB_USER;
   DB_NAME = env.DB_NAME || DB_NAME;
 
-  const info = spawnSync('docker', ['info', '--format', '{{.ServerVersion}}'], { encoding: 'utf8' });
+  const info = spawnSync(DOCKER, ['info', '--format', '{{.ServerVersion}}'], { encoding: 'utf8' });
   exigir(info.status === 0, 'Docker está corriendo', 'Abre Docker Desktop y espera «Engine running»');
 
   let r = compose(['down', '-v', '--remove-orphans']);
@@ -586,10 +597,13 @@ async function main() {
   console.log(`${total} comprobaciones, ${fallos.length} fallos · ${duracion(Date.now() - inicio)}`);
   if (fallos.length > 0) {
     console.log('\nFallos:');
-    fallos.forEach((f) => console.log(`  ✗ ${f}`));
+    fallos.forEach((f) => console.log(`  ✗ ${unaLinea(f)}`));
   }
   console.log('='.repeat(70));
   process.exit(fallos.length > 0 || error ? 1 : 0);
 }
 
-main();
+main().catch((error) => {
+  console.error(`Error inesperado en la prueba: ${unaLinea(error && error.stack ? error.stack : error)}`);
+  process.exit(1);
+});
