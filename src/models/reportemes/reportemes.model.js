@@ -44,7 +44,7 @@ function calcularDiasOperacion(fechaInicio, fechaFin) {
   if (fin < inicio) return 0;
   const diffTime = fin.getTime() - inicio.getTime();
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays > 0 ? diffDays : 0;
+  return Math.max(diffDays, 0) || 0; // || 0: con una fecha inválida diffDays es NaN
 }
 
 // El reporte trae contadores por usuario (reportes_detalle_oficial)

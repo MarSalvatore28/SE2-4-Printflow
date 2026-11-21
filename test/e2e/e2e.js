@@ -363,7 +363,7 @@ async function aprobarLoteDelMes(ctx, lotes, periodo, cliente) {
 
 // 2. Correos de cada mes, ingesta y aprobación por la API
 async function seccionCorreosYAprobacion(ctx) {
-  seccion(`2. Correos de ${MESES[0]} a ${MESES[MESES.length - 1]}, ingesta y aprobación por la API (operador)`);
+  seccion(`2. Correos de ${MESES[0]} a ${MESES.at(-1)}, ingesta y aprobación por la API (operador)`);
   ctx.lotesAprobados = {};
   for (const periodo of MESES) {
     enviarCorreos(periodo);

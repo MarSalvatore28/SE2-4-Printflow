@@ -102,7 +102,7 @@ const leerFila = async (db, tabla, id, { bloquear = false } = {}) => {
  */
 const auditarFila = async (db, { tabla, idRegistro, accion, antes = null, usuarioId = null, ip = null, extra = null }) => {
   const fila = await leerFila(db, tabla, idRegistro);
-  const despues = extra ? { ...(fila || {}), ...extra } : fila;
+  const despues = extra ? { ...fila, ...extra } : fila;
   return registrarAuditoria(db, { tabla, idRegistro, accion, usuarioId, antes, despues, ip });
 };
 
