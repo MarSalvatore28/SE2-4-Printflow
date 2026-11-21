@@ -286,11 +286,10 @@ const updateConsolidadoStagingController = async (req, res) => {
       data: updated
     });
   } catch (err) {
+    // Solo los errores con status (registro no encontrado) llevan su mensaje; los demás, genérico
+    if (err.status) return res.status(err.status).json({ success: false, message: err.message });
     console.error('Error updating consolidado staging:', err);
-    res.status(500).json({
-      success: false,
-      message: err.message || 'Error al actualizar el consolidado'
-    });
+    res.status(500).json({ success: false, message: 'Error al actualizar el consolidado' });
   }
 };
 
@@ -314,11 +313,10 @@ const updateDetalleStagingController = async (req, res) => {
       data: updated
     });
   } catch (err) {
+    // Solo los errores con status (registro no encontrado) llevan su mensaje; los demás, genérico
+    if (err.status) return res.status(err.status).json({ success: false, message: err.message });
     console.error('Error updating detalle staging:', err);
-    res.status(500).json({
-      success: false,
-      message: err.message || 'Error al actualizar el detalle'
-    });
+    res.status(500).json({ success: false, message: 'Error al actualizar el detalle' });
   }
 };
 
@@ -341,11 +339,10 @@ const updateMultiplesDetallesStagingController = async (req, res) => {
       data: updated
     });
   } catch (err) {
+    // Solo los errores con status (registro no encontrado) llevan su mensaje; los demás, genérico
+    if (err.status) return res.status(err.status).json({ success: false, message: err.message });
     console.error('Error updating múltiples detalles staging:', err);
-    res.status(500).json({
-      success: false,
-      message: err.message || 'Error al actualizar los detalles'
-    });
+    res.status(500).json({ success: false, message: 'Error al actualizar los detalles' });
   }
 };
 

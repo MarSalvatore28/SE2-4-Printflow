@@ -763,7 +763,7 @@ const updateInstalacionCompleta = async (
     const { rows } = await client.query(query, values);
 
     if (rows.length === 0) {
-      throw new Error("Instalación no encontrada o ya está retirada.");
+      throw errorNegocio(404, 'Instalación no encontrada o ya está retirada.');
     }
 
     await auditarFila(client, {

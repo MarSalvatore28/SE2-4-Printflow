@@ -200,7 +200,7 @@ const createInstalacionController = async (req, res) => {
     console.error('Error al crear instalación:', error);
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: 'Error al crear la instalación',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
@@ -225,7 +225,7 @@ const deleteInstalacionController = async (req, res) => {
     console.error('Error al retirar instalación:', error);
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: 'Error al retirar la instalación',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
@@ -334,7 +334,7 @@ const updateInstalacionController = async (req, res) => {
     console.error('Error al actualizar instalación:', error);
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: 'Error al actualizar la instalación',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
@@ -415,7 +415,7 @@ const updateRentaInstalacionController = async (req, res) => {
     res.status(200).json({ success: true, message: 'Renta actualizada exitosamente', data: resultado });
   } catch (error) {
     console.error('Error al actualizar renta:', error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Error al actualizar la renta' });
   }
 };
 
@@ -428,7 +428,7 @@ const getRentaByClienteController = async (req, res) => {
     res.status(200).json({ success: true, total_renta: total, data: rentas });
   } catch (error) {
     console.error('Error al obtener renta:', error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Error al obtener la renta' });
   }
 };
 
