@@ -1,4 +1,5 @@
 const pool = require('@config/db');
+const { ACCIONES, leerFila, auditarFila, enTransaccion } = require('@services/auditoria');
 
 // Datos de la máquina con su catálogo y, si la tiene, su asignación vigente
 // (instalación activa y sin fecha de retiro). El índice único
@@ -75,47 +76,61 @@ const getMaquinaBySerie = async (serie) => {
   return rows[0] || null;
 };
 
-const createMaquina = async ({ serie, modelo_id, tipo_impresion_id, formato_impresion_id = null }) => {
-  const { rows } = await pool.query(
-    `INSERT INTO maquinas (serie, modelo_id, tipo_impresion_id, formato_impresion_id, activo)
-     VALUES ($1, $2, $3, $4, TRUE)
-     RETURNING id_maquina`,
-    [serie, modelo_id, tipo_impresion_id, formato_impresion_id]
-  );
-  return rows[0].id_maquina;
-};
+// Alta, edición y cambio de estado quedan en la auditoría (S3-02) dentro de la misma transacción:
+// si no se puede auditar, no se guarda. `auditoria` = { usuarioId, ip } de la petición.
+const createMaquina = async ({ serie, modelo_id, tipo_impresion_id, formato_impresion_id = null }, auditoria = {}) =>
+  enTransaccion(pool, async (client) => {
+    const { rows } = await client.query(
+      `INSERT INTO maquinas (serie, modelo_id, tipo_impresion_id, formato_impresion_id, activo)
+       VALUES ($1, $2, $3, $4, TRUE)
+       RETURNING id_maquina`,
+      [serie, modelo_id, tipo_impresion_id, formato_impresion_id]
+    );
+    const idMaquina = rows[0].id_maquina;
+    await auditarFila(client, { tabla: 'maquinas', idRegistro: idMaquina, accion: ACCIONES.CREAR, ...auditoria });
+    return idMaquina;
+  });
 
-const updateMaquina = async (idMaquina, { serie, modelo_id, tipo_impresion_id, formato_impresion_id = null }) => {
-  const { rowCount } = await pool.query(
-    `UPDATE maquinas
-     SET serie = $1, modelo_id = $2, tipo_impresion_id = $3, formato_impresion_id = $4
-     WHERE id_maquina = $5`,
-    [serie, modelo_id, tipo_impresion_id, formato_impresion_id, idMaquina]
-  );
-  return rowCount;
-};
+// Devuelve cuántas filas cambió (0 si la máquina no existe)
+const updateMaquina = async (idMaquina, { serie, modelo_id, tipo_impresion_id, formato_impresion_id = null }, auditoria = {}) =>
+  enTransaccion(pool, async (client) => {
+    const antes = await leerFila(client, 'maquinas', idMaquina, { bloquear: true });
+    if (!antes) return 0;
+    const { rowCount } = await client.query(
+      `UPDATE maquinas
+       SET serie = $1, modelo_id = $2, tipo_impresion_id = $3, formato_impresion_id = $4
+       WHERE id_maquina = $5`,
+      [serie, modelo_id, tipo_impresion_id, formato_impresion_id, idMaquina]
+    );
+    await auditarFila(client, { tabla: 'maquinas', idRegistro: idMaquina, accion: ACCIONES.ACTUALIZAR, antes, ...auditoria });
+    return rowCount;
+  });
 
 /**
  * Cambia el estado de la máquina. Al desactivar, el UPDATE solo se aplica si
  * la máquina no tiene una asignación vigente (se comprueba en la misma sentencia).
  * Devuelve 'no_existe', 'asignada' o 'ok'.
  */
-const setActivoMaquina = async (idMaquina, activo) => {
-  const { rowCount } = await pool.query(
-    `UPDATE maquinas m
-     SET activo = $2
-     WHERE m.id_maquina = $1
-       AND ($2 = TRUE OR NOT EXISTS (
-         SELECT 1 FROM instalaciones i
-         WHERE i.maquina_id = m.id_maquina AND i.activo = TRUE AND i.fecha_retiro IS NULL
-       ))`,
-    [idMaquina, activo]
-  );
-  if (rowCount > 0) return 'ok';
-
-  const { rows } = await pool.query('SELECT 1 FROM maquinas WHERE id_maquina = $1', [idMaquina]);
-  return rows.length === 0 ? 'no_existe' : 'asignada';
-};
+const setActivoMaquina = async (idMaquina, activo, auditoria = {}) =>
+  enTransaccion(pool, async (client) => {
+    const antes = await leerFila(client, 'maquinas', idMaquina, { bloquear: true });
+    if (!antes) return 'no_existe';
+    const { rowCount } = await client.query(
+      `UPDATE maquinas m
+       SET activo = $2
+       WHERE m.id_maquina = $1
+         AND ($2 = TRUE OR NOT EXISTS (
+           SELECT 1 FROM instalaciones i
+           WHERE i.maquina_id = m.id_maquina AND i.activo = TRUE AND i.fecha_retiro IS NULL
+         ))`,
+      [idMaquina, activo]
+    );
+    if (rowCount === 0) return 'asignada';
+    await auditarFila(client, {
+      tabla: 'maquinas', idRegistro: idMaquina, accion: activo ? ACCIONES.ACTIVAR : ACCIONES.DESACTIVAR, antes, ...auditoria,
+    });
+    return 'ok';
+  });
 
 // --- Catálogos ---
 

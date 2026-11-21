@@ -4,7 +4,9 @@ require('module-alias/register');
 const test = require('node:test');
 const assert = require('node:assert');
 const pool = require('../src/config/db');
-const { approveStagingBatch } = require('../src/models/reportemes_staging/reportemes_staging.model');
+const {
+  approveStagingBatch, rejectStagingBatch, periodoParaAprobar, verificarRechazable,
+} = require('../src/models/reportemes_staging/reportemes_staging.model');
 
 const fila = (cambios = {}) => ({
   id_staging_consolidado: 10,
@@ -25,11 +27,13 @@ const fila = (cambios = {}) => ({
 });
 
 // Cliente falso: guarda cada consulta y responde según el texto
-const usarClienteFalso = (t, { staging, asignacion = { area_nombre: 'Secretaría' } }) => {
+const LOTE = { id_lote: 7, periodo: '2026-10', fecha_aprobacion: null };
+const usarClienteFalso = (t, { staging, asignacion = { area_nombre: 'Secretaría' }, lote = LOTE }) => {
   const consultas = [];
   const client = {
     async query(sql, params = []) {
       consultas.push({ sql, params });
+      if (/to_jsonb\(t\) AS fila FROM lotes_carga/.test(sql)) return { rows: lote ? [{ fila: lote }] : [] };
       if (/FROM reportes_consolidado_staging WHERE lote_id/.test(sql)) return { rows: staging };
       if (/FROM instalaciones i\s+JOIN areas a/.test(sql)) return { rows: asignacion ? [asignacion] : [] };
       if (/INSERT INTO reportes_oficiales/.test(sql)) return { rows: [{ id_reporte: 99 }] };
@@ -136,6 +140,47 @@ test('sin contrato, el reporte queda sin tarifas congeladas', async (t) => {
 
 test('un lote vacío no se aprueba y se deshace la transacción', async (t) => {
   const consultas = usarClienteFalso(t, { staging: [] });
-  await assert.rejects(approveStagingBatch(7, '2026-10'), /No se encontraron registros/);
+  await assert.rejects(approveStagingBatch(7, '2026-10'), { status: 409, message: 'El lote fue rechazado y no se puede aprobar' });
+  assert.ok(consultas.some((c) => c.sql === 'ROLLBACK'));
+});
+
+// Doble clic, aprobar y rechazar a la vez u otro período: se revisa con el lote bloqueado (FOR UPDATE)
+test('periodoParaAprobar: estados del lote y período pedido', () => {
+  assert.equal(periodoParaAprobar(LOTE, 2), '2026-10');
+  assert.equal(periodoParaAprobar(LOTE, 2, '2026-10'), '2026-10');
+  assert.equal(periodoParaAprobar({ ...LOTE, periodo: null }, 2, '2026-09'), '2026-09');
+  assert.match(periodoParaAprobar({ ...LOTE, periodo: null }, 2), /^\d{4}-\d{2}$/);
+  assert.throws(() => periodoParaAprobar(null, 2), { status: 404 });
+  assert.throws(() => periodoParaAprobar({ ...LOTE, fecha_aprobacion: '2026-11-01' }, 0), { status: 409, message: 'El lote ya fue aprobado' });
+  assert.throws(() => periodoParaAprobar(LOTE, 0), { status: 409, message: 'El lote fue rechazado y no se puede aprobar' });
+  assert.throws(() => periodoParaAprobar(LOTE, 2, '2026-05'), { status: 409, message: 'El lote es del período 2026-10: no se puede aprobar como 2026-05' });
+});
+
+test('verificarRechazable: no rechaza un lote aprobado ni uno ya rechazado', () => {
+  assert.doesNotThrow(() => verificarRechazable(LOTE, 2));
+  assert.throws(() => verificarRechazable(null, 2), { status: 404 });
+  assert.throws(() => verificarRechazable({ ...LOTE, fecha_aprobacion: '2026-11-01' }, 0), { status: 409, message: 'El lote ya fue aprobado y no se puede rechazar' });
+  assert.throws(() => verificarRechazable(LOTE, 0), { status: 409, message: 'El lote ya fue rechazado' });
+});
+
+test('aprobar un lote en otro período: 409 y no guarda nada', async (t) => {
+  const consultas = usarClienteFalso(t, { staging: [fila()] });
+  await assert.rejects(approveStagingBatch(7, '2026-05'), { status: 409 });
+  assert.ok(!consultas.some((c) => /INSERT INTO reportes_oficiales/.test(c.sql)));
+  assert.ok(consultas.some((c) => c.sql === 'ROLLBACK'));
+  // El lote se lee bloqueado: la segunda petición espera a que termine la primera
+  assert.ok(consultas.some((c) => /FROM lotes_carga t WHERE t\.id_lote = \$1 FOR UPDATE/.test(c.sql)));
+});
+
+test('sin período en la petición, se aprueba con el del lote', async (t) => {
+  const consultas = usarClienteFalso(t, { staging: [fila()] });
+  await approveStagingBatch(7, null);
+  assert.equal(insertado(consultas).periodo, '2026-10');
+});
+
+test('rechazar un lote ya aprobado: 409 y no borra ni audita', async (t) => {
+  const consultas = usarClienteFalso(t, { staging: [], lote: { ...LOTE, fecha_aprobacion: '2026-11-01' } });
+  await assert.rejects(rejectStagingBatch(7, { motivo: 'tarde' }), { status: 409 });
+  assert.ok(!consultas.some((c) => /DELETE FROM|UPDATE notificaciones|registro_auditoria/.test(c.sql)));
   assert.ok(consultas.some((c) => c.sql === 'ROLLBACK'));
 });

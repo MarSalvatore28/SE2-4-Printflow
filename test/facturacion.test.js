@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { calcularFacturacion } = require('../src/utils/facturacion');
+const { calcularFacturacion, vigenciaDelContrato } = require('../src/utils/facturacion');
 
 test('Cálculo de Facturación (S3-06)', async (t) => {
   
@@ -94,4 +94,13 @@ test('Cálculo de Facturación (S3-06)', async (t) => {
     assert.strictEqual(result.color.monto_excedente, '21.48');
     assert.strictEqual(result.filtrado, false);
   });
+});
+
+test('vigenciaDelContrato: fechas del contrato para nombrarlo sin su id', () => {
+  assert.deepStrictEqual(vigenciaDelContrato({ id_contrato: 1, fecha_inicio: '2026-01-01', fecha_fin: null }),
+    { contrato_fecha_inicio: '2026-01-01', contrato_fecha_fin: null });
+  assert.deepStrictEqual(vigenciaDelContrato({ fecha_inicio: '2026-01-01', fecha_fin: '2026-12-31' }),
+    { contrato_fecha_inicio: '2026-01-01', contrato_fecha_fin: '2026-12-31' });
+  // Un contrato que no se encontró no rompe la facturación: van en null
+  assert.deepStrictEqual(vigenciaDelContrato(undefined), { contrato_fecha_inicio: null, contrato_fecha_fin: null });
 });

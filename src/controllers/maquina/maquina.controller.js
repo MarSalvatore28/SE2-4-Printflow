@@ -15,6 +15,7 @@ const {
   getFormatosImpresion,
   getFormatoActivoById,
 } = require('@models/maquina/maquina.model');
+const { contextoAuditoria } = require('@services/auditoria');
 
 // --- Reglas de negocio ---
 
@@ -156,7 +157,7 @@ const crearMaquinaController = async (req, res) => {
       return res.status(409).json({ success: false, message: MSG_SERIE_REPETIDA });
     }
 
-    const nuevoId = await createMaquina(data);
+    const nuevoId = await createMaquina(data, contextoAuditoria(req));
     const maquina = await getMaquinaById(nuevoId);
 
     res.status(201).json({ success: true, message: 'Máquina creada exitosamente', data: maquina });
@@ -189,7 +190,7 @@ const actualizarMaquinaController = async (req, res) => {
       return res.status(409).json({ success: false, message: MSG_SERIE_REPETIDA });
     }
 
-    const filas = await updateMaquina(id, data);
+    const filas = await updateMaquina(id, data, contextoAuditoria(req));
     if (filas === 0) {
       return res.status(404).json({ success: false, message: 'Máquina no encontrada' });
     }
@@ -216,7 +217,7 @@ const cambiarEstadoMaquinaController = async (req, res) => {
       return res.status(400).json({ success: false, message: 'El campo activo debe ser true o false' });
     }
 
-    const resultado = await setActivoMaquina(id, activo);
+    const resultado = await setActivoMaquina(id, activo, contextoAuditoria(req));
     if (resultado === 'no_existe') {
       return res.status(404).json({ success: false, message: 'Máquina no encontrada' });
     }

@@ -83,6 +83,32 @@ test('solo se eliminan notificaciones leídas', async (t) => {
   assert.equal(eliminada, false);
 });
 
+test('la notificación de un lote pendiente o rechazado no se elimina (guarda el motivo del rechazo)', async (t) => {
+  let notificacion = { id_notificacion: 3, leida: true, lote_id: 9, fecha_aprobacion: null };
+  const eliminadas = [];
+  reemplazar(t, Notificaciones, {
+    obtenerNotificacion: async () => notificacion,
+    eliminarNotificacion: async (id) => { eliminadas.push(id); return 1; },
+  });
+  const rechazada = await llamar(controller.eliminarController, { params: { id: '3' } });
+  assert.equal(rechazada.statusCode, 409);
+  assert.match(rechazada.body.message, /motivo del rechazo/);
+  // Lote aprobado (la aprobación queda en lotes_carga) o notificación sin lote: sí
+  notificacion = { ...notificacion, fecha_aprobacion: '2026-11-21T16:00:00Z' };
+  assert.equal((await llamar(controller.eliminarController, { params: { id: '3' } })).statusCode, 200);
+  notificacion = { id_notificacion: 4, leida: true, lote_id: null };
+  assert.equal((await llamar(controller.eliminarController, { params: { id: '4' } })).statusCode, 200);
+  assert.deepEqual(eliminadas, [3, 4]);
+});
+
+test('limpiar antiguas conserva las notificaciones de lotes no aprobados', async (t) => {
+  const pool = require('../src/config/db');
+  let sql = '';
+  t.mock.method(pool, 'query', async (texto) => { sql = texto; return { rowCount: 0, rows: [] }; });
+  await Notificaciones.eliminarLeidasAntiguas(30);
+  assert.match(sql, /n\.lote_id IS NULL OR EXISTS \(\s*SELECT 1 FROM lotes_carga l WHERE l\.id_lote = n\.lote_id AND l\.fecha_aprobacion IS NOT NULL\)/);
+});
+
 test('listar lotes valida estado, cliente y fechas, y pasa los filtros al modelo', async (t) => {
   let filtros;
   reemplazar(t, Notificaciones, { listarLotes: async (f) => { filtros = f; return []; } });
@@ -148,6 +174,24 @@ test('no se aprueba ni se rechaza un lote ya procesado o descartado', async (t) 
   estado = 'DESCARTADO';
   assert.equal((await llamar(controller.aprobarLoteController, { params: { loteId: '5' } })).statusCode, 409);
   assert.equal((await llamar(controller.rechazarLoteController, { params: { loteId: '5' } })).statusCode, 409);
+});
+
+// Dos clics seguidos (o aprobar y rechazar a la vez): el segundo encuentra el lote ya resuelto
+// dentro de la transacción y staging lanza 409. No es un 500.
+test('aprobar o rechazar un lote que otro resolvió al mismo tiempo responde 409, no 500', async (t) => {
+  const yaAprobado = Object.assign(new Error('El lote ya fue aprobado'), { status: 409 });
+  reemplazar(t, Notificaciones, { obtenerLote: async () => lote('PENDIENTE') });
+  reemplazar(t, Staging, {
+    validarLoteStaging: async () => ({ esValido: true, errores: [] }),
+    approveStagingBatch: async () => { throw yaAprobado; },
+    rejectStagingBatch: async () => { throw Object.assign(new Error('El lote ya fue aprobado y no se puede rechazar'), { status: 409 }); },
+  });
+  const aprobar = await llamar(controller.aprobarLoteController, { params: { loteId: '5' } });
+  assert.equal(aprobar.statusCode, 409);
+  assert.deepEqual(aprobar.body.errores, ['El lote ya fue aprobado']);
+  const rechazar = await llamar(controller.rechazarLoteController, { params: { loteId: '5' } });
+  assert.equal(rechazar.statusCode, 409);
+  assert.equal(rechazar.body.message, 'El lote ya fue aprobado y no se puede rechazar');
 });
 
 test('rechazar guarda el motivo, el usuario y los clientes del lote', async (t) => {

@@ -24,6 +24,7 @@ const ACCIONES = Object.freeze({
 const TABLAS = Object.freeze({
   contratos: 'id_contrato',
   instalaciones: 'id_instalacion',
+  maquinas: 'id_maquina',
   maquinas_cambio: 'id_maquina_cambio',
   lotes_carga: 'id_lote',
   usuarios: 'id_usuario',
