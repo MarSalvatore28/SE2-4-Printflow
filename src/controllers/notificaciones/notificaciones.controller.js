@@ -211,6 +211,14 @@ const eliminarController = async (req, res) => {
     if (!notificacion.leida) {
       return res.status(409).json({ success: false, message: 'Solo se pueden eliminar notificaciones leídas' });
     }
+    // La notificación de un lote pendiente o rechazado es su historial: el rechazo (motivo, fecha y
+    // clientes) solo queda ahí, y borrarla también se la quitaría a los demás usuarios
+    if (!Notificaciones.sePuedeEliminar(notificacion)) {
+      return res.status(409).json({
+        success: false,
+        message: 'La notificación de un lote pendiente o rechazado no se elimina: guarda su estado y el motivo del rechazo',
+      });
+    }
     await Notificaciones.eliminarNotificacion(id);
     avisarCambio({ id_notificacion: id });
     res.json({ success: true, data: { id_notificacion: id }, message: 'Notificación eliminada' });

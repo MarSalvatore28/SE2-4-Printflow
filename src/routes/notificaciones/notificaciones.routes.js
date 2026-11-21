@@ -214,7 +214,7 @@ router.get('/estadisticas', estadisticasController);
  *       200: { description: Cuántas se marcaron (data.actualizadas) }
  * /api/notificaciones/limpiar-antiguas:
  *   delete:
- *     summary: Borra las notificaciones LEÍDAS de más de N días
+ *     summary: Borra las notificaciones LEÍDAS de más de N días (salvo las de lotes pendientes o rechazados)
  *     tags: [Notificaciones]
  *     parameters:
  *       - in: query
@@ -379,7 +379,7 @@ router.get('/lote/:loteId', listarPorLoteController);
  *     responses:
  *       200: { description: Notificación eliminada }
  *       404: { description: Notificación no encontrada }
- *       409: { description: La notificación no está leída }
+ *       409: { description: La notificación no está leída, o es de un lote pendiente o rechazado (guarda su estado y el motivo del rechazo) }
  * /api/notificaciones/{id}/marcar-leida:
  *   patch:
  *     summary: Marca una notificación como leída

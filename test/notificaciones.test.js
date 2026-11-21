@@ -83,6 +83,32 @@ test('solo se eliminan notificaciones leídas', async (t) => {
   assert.equal(eliminada, false);
 });
 
+test('la notificación de un lote pendiente o rechazado no se elimina (guarda el motivo del rechazo)', async (t) => {
+  let notificacion = { id_notificacion: 3, leida: true, lote_id: 9, fecha_aprobacion: null };
+  const eliminadas = [];
+  reemplazar(t, Notificaciones, {
+    obtenerNotificacion: async () => notificacion,
+    eliminarNotificacion: async (id) => { eliminadas.push(id); return 1; },
+  });
+  const rechazada = await llamar(controller.eliminarController, { params: { id: '3' } });
+  assert.equal(rechazada.statusCode, 409);
+  assert.match(rechazada.body.message, /motivo del rechazo/);
+  // Lote aprobado (la aprobación queda en lotes_carga) o notificación sin lote: sí
+  notificacion = { ...notificacion, fecha_aprobacion: '2026-11-21T16:00:00Z' };
+  assert.equal((await llamar(controller.eliminarController, { params: { id: '3' } })).statusCode, 200);
+  notificacion = { id_notificacion: 4, leida: true, lote_id: null };
+  assert.equal((await llamar(controller.eliminarController, { params: { id: '4' } })).statusCode, 200);
+  assert.deepEqual(eliminadas, [3, 4]);
+});
+
+test('limpiar antiguas conserva las notificaciones de lotes no aprobados', async (t) => {
+  const pool = require('../src/config/db');
+  let sql = '';
+  t.mock.method(pool, 'query', async (texto) => { sql = texto; return { rowCount: 0, rows: [] }; });
+  await Notificaciones.eliminarLeidasAntiguas(30);
+  assert.match(sql, /n\.lote_id IS NULL OR EXISTS \(\s*SELECT 1 FROM lotes_carga l WHERE l\.id_lote = n\.lote_id AND l\.fecha_aprobacion IS NOT NULL\)/);
+});
+
 test('listar lotes valida estado, cliente y fechas, y pasa los filtros al modelo', async (t) => {
   let filtros;
   reemplazar(t, Notificaciones, { listarLotes: async (f) => { filtros = f; return []; } });
