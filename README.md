@@ -11,6 +11,35 @@ Proyecto de la materia **Ingeniería de Software II** (ESPOL, sección 4).
 | Frontend | [MarSalvatore28/SE2-4-Printflow-Frontend](https://github.com/MarSalvatore28/SE2-4-Printflow-Frontend) |
 | Plan de trabajo | [`PLAN.md`](PLAN.md) |
 | Documentación de la API | `/api-docs` (Swagger), con el sistema levantado |
+| Cómo probarlo, paso a paso | [`docs/probar.md`](docs/probar.md) |
+| Guion de la demo | [`docs/guion-demo.md`](docs/guion-demo.md) |
+
+## Qué hace
+
+| Función | Detalle |
+|---|---|
+| Ingesta de lecturas | Recibe los contadores que n8n extrae de los correos; cada envío queda como un lote en revisión |
+| Validaciones | Rechaza máquinas no autorizadas, contadores que retroceden, saltos anómalos y lecturas duplicadas; un lote con errores no se aprueba y cada reporte se puede reprocesar |
+| Lectura manual | Para una impresora que no envió su correo, con las mismas validaciones |
+| Reemplazo de máquinas | Registro a mitad de mes, con el consumo de cada tramo; se puede anular si el período no está aprobado |
+| Consolidado y facturación | Consumo por máquina y por usuario; importe por contrato (cuota fija + excedente + renta) con las tarifas congeladas al aprobar |
+| Notificaciones | Avisos en tiempo real (Socket.IO), leídas por usuario y aviso por correo al operador |
+| Seguridad | JWT con sesión deslizante, permisos por rol (admin, operador, auditor) y la ingesta solo desde la red interna |
+| Auditoría | Quién cambió qué, cuándo y desde dónde, con el valor anterior y el nuevo (`GET /api/auditoria`, solo admin) |
+
+## Documentación
+
+| Documento | Para qué |
+|---|---|
+| [`docs/probar.md`](docs/probar.md) | Levantar el sistema, sacar el token y probar la API y la seguridad, paso a paso |
+| [`docs/e2e.md`](docs/e2e.md) | La prueba de punta a punta (`npm run e2e`) |
+| [`docs/guion-demo.md`](docs/guion-demo.md) | El recorrido de 10 minutos para el sponsor |
+| [`docs/despliegue.md`](docs/despliegue.md) | Producción en Azure: servidor, HTTPS, respaldos, migraciones, despliegue automático y monitoreo |
+| [`docs/rendimiento.md`](docs/rendimiento.md) | Tiempos del consolidado con 500 máquinas |
+| [`docs/avisos-por-correo.md`](docs/avisos-por-correo.md) | El aviso por correo al operador |
+| [`simulador/README.md`](simulador/README.md) | El simulador de los correos de las impresoras, con datos ficticios |
+| [`docs/postman/`](docs/postman/) | Colección de Postman con el token automático y los casos de seguridad |
+| [`docs/tareas/`](docs/tareas/) | Reparto y estado de las tareas del equipo |
 
 ---
 
@@ -136,6 +165,8 @@ Se definen en `.env`. `npm run configurar` lo crea a partir de [`.env.example`](
 | `npm start` | Inicia la API |
 | `npm run verificar` | Comprueba que la aplicación carga sin errores (lo usa el CI) |
 | `npm test` | Ejecuta las pruebas con el *test runner* de Node |
+| `npm run e2e` | Prueba de punta a punta contra una copia aparte del sistema en Docker ([`docs/e2e.md`](docs/e2e.md)) |
+| `npm run migrar` | Aplica las migraciones pendientes a una base que ya existe (`-- --estado` para ver cuáles) |
 
 ## Estructura del proyecto
 
