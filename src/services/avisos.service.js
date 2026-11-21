@@ -3,7 +3,13 @@
 // después del commit de la ingesta, así que los reportes del lote ya están en staging.
 const { enviarCorreo } = require('./correo.service');
 
-const APP_URL = () => (process.env.APP_URL || 'http://localhost:8080').replace(/\/+$/, '');
+// Sin las «/» del final. Sin regex: «una o más al final» retrocede de más
+const APP_URL = () => {
+  const url = process.env.APP_URL || 'http://localhost:8080';
+  let fin = url.length;
+  while (fin > 0 && url[fin - 1] === '/') fin -= 1;
+  return url.slice(0, fin);
+};
 
 // Texto del correo a partir de los datos del lote (función pura, se prueba sin base de datos)
 function armarAvisoLote({ codigo, periodo, clientes, reportes, errores }) {

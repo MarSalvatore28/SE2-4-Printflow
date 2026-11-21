@@ -14,6 +14,12 @@ const estadoEsOk = (estado) => ESTADOS_OK.includes(String(estado || '').trim().t
 const dosDigitos = (n) => String(n).padStart(2, '0');
 const isoCorto = (fecha) =>
   `${fecha.getUTCFullYear()}-${dosDigitos(fecha.getUTCMonth() + 1)}-${dosDigitos(fecha.getUTCDate())}T${dosDigitos(fecha.getUTCHours())}:${dosDigitos(fecha.getUTCMinutes())}`;
+// Quita las repeticiones de `caracter` al final del texto. Sin regex: «uno o más al final» retrocede de más
+const sinFinal = (texto, caracter) => {
+  let fin = texto.length;
+  while (fin > 0 && texto[fin - 1] === caracter) fin -= 1;
+  return texto.slice(0, fin);
+};
 const entero = (texto) => {
   const n = Number.parseInt(String(texto).replace(/[^\d-]/g, ''), 10);
   if (Number.isNaN(n)) throw new Error(`Contador ilegible: "${texto}"`);
@@ -124,7 +130,7 @@ const textoContadores = {
     for (const linea of texto.split(/\r?\n/)) {
       const partes = linea.split(' : ');
       if (partes.length < 2) continue;
-      const etiqueta = partes[0].replace(/\.+$/, '').trim();
+      const etiqueta = sinFinal(partes[0], '.').trim();
       const clave = Object.keys(ETIQUETAS_TEXTO).find((k) => ETIQUETAS_TEXTO[k] === etiqueta);
       if (clave) valores[clave] = partes.slice(1).join(' : ').trim();
     }

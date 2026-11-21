@@ -7,7 +7,9 @@ const PASSWORD_MIN = 8;
 const PASSWORD_MAX_BYTES = 72; // bcrypt ignora lo que pase de 72 bytes
 const INT_MAX = 2147483647;
 
-const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// algo@dominio.ext, sin espacios ni otra «@»: el dominio lleva un punto que no es ni su primer ni su
+// último carácter. Se toma el primer punto después del primer carácter, así la regex no retrocede de más.
+const EMAIL_VALIDO = /^[^\s@]+@[^\s@][^\s@.]*\.[^\s@]+$/;
 
 const MENSAJES = Object.freeze({
   EMAIL_REPETIDO: 'Ya existe un usuario con ese correo',
