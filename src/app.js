@@ -6,6 +6,11 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerDocs = require('./config/swagger');
 const app = express();
 
+// S3-02: la auditoría guarda req.ip. La API solo se alcanza por el nginx del frontend (y Caddy en
+// producción) dentro de la red privada de Docker: se confía en esos proxies para que req.ip sea la
+// IP del cliente (X-Forwarded-For) y no la del contenedor de nginx.
+app.set('trust proxy', 'loopback, linklocal, uniquelocal');
+
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173')
   .split(',')
   .map((o) => o.trim());
