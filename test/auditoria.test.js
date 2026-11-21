@@ -144,7 +144,7 @@ test('leerFila devuelve null si no existe y no acepta tablas fuera de la lista',
 
 test('cada tabla auditada tiene su clave primaria', () => {
   assert.deepEqual(Object.keys(TABLAS).sort(), [
-    'contratos', 'instalaciones', 'lotes_carga', 'maquinas_cambio',
+    'contratos', 'instalaciones', 'lotes_carga', 'maquinas', 'maquinas_cambio',
     'reportes_consolidado_staging', 'reportes_oficiales', 'usuarios',
   ]);
 });
