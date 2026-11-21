@@ -19,6 +19,16 @@ const {
   getRentaByClienteController,
   updateInstalacionController
 } = require('@controllers/instalacion/instalacion.controller');
+const { parseId } = require('@utils/maquinasCambio.reglas');
+
+// Los ids de la ruta tienen que ser enteros positivos: «abc» responde 400, no un 500 de la base
+const NOMBRES_ID = { cliente_id: 'cliente', maquina_id: 'máquina', id_instalacion: 'instalación' };
+Object.entries(NOMBRES_ID).forEach(([param, nombre]) => {
+  router.param(param, (req, res, next, valor) => {
+    if (!parseId(valor)) return res.status(400).json({ success: false, message: `ID de ${nombre} inválido` });
+    next();
+  });
+});
 
 /**
  * @swagger
