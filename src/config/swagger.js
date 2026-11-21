@@ -4,17 +4,15 @@ const swaggerOptions = {
     definition: {
         openapi: '3.0.0',
         info: {
-            title: 'BackContadores API',
+            title: 'PrintFlow API',
             version: '1.0.0',
-            description: 'API documentation for BackContadores system',
-            contact: {
-                name: 'Developer',
-            },
+            description: 'API de PrintFlow. Para probar: POST /api/auth/login con un usuario de prueba, copia el token de la respuesta y pégalo en «Authorize» (sin la palabra Bearer). Guía completa: docs/probar.md del backend.',
         },
+        // Relativo: «Try it out» llama a la misma dirección de esta página (http://localhost:8080 en Docker).
         servers: [
             {
-                url: 'http://localhost:3000',
-                description: 'Local server',
+                url: '/',
+                description: 'Esta misma dirección',
             },
         ],
         components: {

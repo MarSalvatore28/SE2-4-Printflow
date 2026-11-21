@@ -31,7 +31,7 @@ La exportación está en `src/utils/exportUtils.ts` (repo **frontend**). **El PD
 ## 2. QA de cada PR
 
 Eres la revisora. En cada PR de tus compañeros:
-1. Bájalo (`git fetch` y `git checkout <rama>`), levanta Docker con datos del simulador y prueba lo que dice en «Cómo probarlo».
+1. Bájalo (`git fetch` y `git checkout <rama>`), levanta Docker con datos del simulador y prueba lo que dice en «Cómo probarlo». Guía para el `.env`, el token y los endpoints (colección de Postman con los casos de seguridad): [`docs/probar.md`](docs/probar.md).
 2. Con los **3 usuarios** (admin, operador y auditor): que cada uno vea y pueda hacer lo que le toca, sin errores en la consola del navegador (F12).
 3. Que el CI esté en verde (`test`, `docker` y `smoke`).
 4. Deja un comentario con lo que probaste. **Aprueba solo lo que probaste.** Si algo falla, escribe los pasos para repetirlo.
