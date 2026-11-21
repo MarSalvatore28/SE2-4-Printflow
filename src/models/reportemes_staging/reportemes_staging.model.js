@@ -523,13 +523,14 @@ const deleteStaging = async (id_staging_consolidado) => {
   }
 };
 
+// Los días van como parámetro ($1), nunca dentro del texto de la consulta
 const deleteOldAprobados = async (dias = 90) => {
-  const { rowCount } = await pool.query(`DELETE FROM reportes_consolidado_staging WHERE lote_id IN (SELECT id_lote FROM lotes_carga WHERE fecha_aprobacion < NOW() - INTERVAL '${dias} days')`);
+  const { rowCount } = await pool.query('DELETE FROM reportes_consolidado_staging WHERE lote_id IN (SELECT id_lote FROM lotes_carga WHERE fecha_aprobacion < NOW() - make_interval(days => $1::int))', [dias]);
   return rowCount;
 };
 
 const deleteOldRechazados = async (dias = 30) => {
-  const { rowCount } = await pool.query(`DELETE FROM reportes_consolidado_staging WHERE lote_id IN (SELECT id_lote FROM lotes_carga WHERE fecha_aprobacion IS NULL AND fecha_carga < NOW() - INTERVAL '${dias} days')`);
+  const { rowCount } = await pool.query('DELETE FROM reportes_consolidado_staging WHERE lote_id IN (SELECT id_lote FROM lotes_carga WHERE fecha_aprobacion IS NULL AND fecha_carga < NOW() - make_interval(days => $1::int))', [dias]);
   return rowCount;
 };
 

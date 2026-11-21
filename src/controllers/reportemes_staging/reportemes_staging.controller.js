@@ -159,6 +159,8 @@ const limpiarAprobadosController = async (req, res) => {
   try {
     const { dias } = req.query;
     const diasInt = Number.parseInt(dias, 10) || 90;
+    // Con días negativos la fecha límite quedaría en el futuro y se borraría todo
+    if (diasInt < 1) return res.status(400).json({ success: false, message: 'dias debe ser un entero positivo' });
 
     const affected = await deleteOldAprobados(diasInt);
 
@@ -177,6 +179,8 @@ const limpiarRechazadosController = async (req, res) => {
   try {
     const { dias } = req.query;
     const diasInt = Number.parseInt(dias, 10) || 30;
+    // Con días negativos la fecha límite quedaría en el futuro y se borraría todo
+    if (diasInt < 1) return res.status(400).json({ success: false, message: 'dias debe ser un entero positivo' });
 
     const affected = await deleteOldRechazados(diasInt);
 
