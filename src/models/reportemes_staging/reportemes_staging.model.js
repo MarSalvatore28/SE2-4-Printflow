@@ -2,6 +2,7 @@ const pool = require('@config/db');
 
 const { validarLectura } = require('@services/validacionLecturas');
 const { sqlFechaEcuador, sqlDiaEcuador, diaEcuador } = require('@utils/fechaCorte');
+const { agruparPorCliente, erroresDelCliente, erroresSinCliente } = require('@utils/validacionLote');
 
 const getAllStaging = async () => {
   const query = `
@@ -674,75 +675,56 @@ const rejectStagingBatch = async (loteId) => {
 };
 
 const validarLoteStaging = async (loteId) => {
-  const getClienteQuery = `SELECT cliente_id_tentativo FROM reportes_consolidado_staging WHERE lote_id = $1 LIMIT 1`;
-  const { rows: clienteRows } = await pool.query(getClienteQuery, [loteId]);
+  const { rows: stagingConsolidado } = await pool.query(
+    `SELECT id_staging_consolidado, ip_detectada, serie_maquina, procesar_lectura, mensaje_aviso, cliente_id_tentativo
+       FROM reportes_consolidado_staging
+      WHERE lote_id = $1
+      ORDER BY id_staging_consolidado`,
+    [loteId]
+  );
 
-  if (clienteRows.length === 0) {
+  if (stagingConsolidado.length === 0) {
     return { esValido: false, errores: ["El lote está vacío o no contiene registros consolidados."] };
   }
 
-  const cliente_id = clienteRows[0].cliente_id_tentativo;
+  // Cada cliente del lote se valida con sus propias máquinas (antes: el del primer reporte, LIMIT 1)
+  const { porCliente, sinCliente } = agruparPorCliente(stagingConsolidado);
+  const clienteIds = [...porCliente.keys()];
 
-  const queryMaquinasDB = `
-    SELECT i.ip_address, m.serie, i.contabilidad_por_usuario
-    FROM instalaciones i INNER JOIN maquinas m ON i.maquina_id = m.id_maquina INNER JOIN areas a ON i.area_id = a.id_area
-    WHERE a.cliente_id = $1 AND i.activo = TRUE AND i.fecha_retiro IS NULL
-  `;
-  const { rows: maquinasDB } = await pool.query(queryMaquinasDB, [cliente_id]);
+  const { rows: maquinasDB } = clienteIds.length === 0 ? { rows: [] } : await pool.query(
+    `SELECT a.cliente_id, i.ip_address, m.serie, i.contabilidad_por_usuario
+       FROM instalaciones i
+       INNER JOIN maquinas m ON i.maquina_id = m.id_maquina
+       INNER JOIN areas a ON i.area_id = a.id_area
+      WHERE a.cliente_id = ANY($1::int[]) AND i.activo = TRUE AND i.fecha_retiro IS NULL`,
+    [clienteIds]
+  );
 
-  const queryStagingConsolidado = `
-    SELECT id_staging_consolidado, ip_detectada, serie_maquina, procesar_lectura, mensaje_aviso 
-    FROM reportes_consolidado_staging 
-    WHERE lote_id = $1
-  `;
-  const { rows: stagingConsolidado } = await pool.query(queryStagingConsolidado, [loteId]);
+  // Con varios clientes, cada error dice de cuál es
+  const nombres = new Map();
+  if (clienteIds.length > 1) {
+    const { rows } = await pool.query(
+      'SELECT id_cliente, nombre FROM clientes WHERE id_cliente = ANY($1::int[])',
+      [clienteIds]
+    );
+    rows.forEach((c) => nombres.set(Number(c.id_cliente), c.nombre));
+  }
+
+  const { rows: stagingDetalle } = await pool.query(
+    'SELECT DISTINCT consolidado_staging_id FROM reportes_detalle_staging WHERE lote_id = $1',
+    [loteId]
+  );
+  const consolidadosConDetalle = new Set(stagingDetalle.map((d) => d.consolidado_staging_id));
 
   const errores = [];
-
-  if (maquinasDB.length !== stagingConsolidado.length) {
-    errores.push(`Cantidad inconsistente: El cliente tiene ${maquinasDB.length} máquinas instaladas, pero el lote trajo ${stagingConsolidado.length} reportes.`);
+  for (const [clienteId, reportes] of porCliente) {
+    const prefijo = clienteIds.length > 1 ? `Cliente ${nombres.get(clienteId) || `#${clienteId}`}: ` : '';
+    const maquinasDelCliente = maquinasDB.filter((m) => Number(m.cliente_id) === clienteId);
+    errores.push(...erroresDelCliente(maquinasDelCliente, reportes, consolidadosConDetalle, prefijo));
   }
+  errores.push(...erroresSinCliente(sinCliente));
 
-  stagingConsolidado.forEach(stg => {
-    const maquinaBD = maquinasDB.find(m => m.serie === stg.serie_maquina);
-
-    if (!maquinaBD) {
-      errores.push(`La máquina con Serie ${stg.serie_maquina} (IP: ${stg.ip_detectada}) reportada en el lote no está asignada a este cliente en el sistema.`);
-    } else if (maquinaBD.ip_address !== stg.ip_detectada) {
-      errores.push(`Discrepancia de IP en la máquina ${stg.serie_maquina}: El archivo indica ${stg.ip_detectada}, pero en el sistema está registrada con ${maquinaBD.ip_address}.`);
-    }
-
-    if (stg.procesar_lectura === false) {
-      errores.push(stg.mensaje_aviso || `La máquina ${stg.serie_maquina} tiene un error de estado y sus lecturas fueron bloqueadas.`);
-    }
-  });
-
-  maquinasDB.forEach(m => {
-    const estaEnStaging = stagingConsolidado.some(stg => stg.serie_maquina === m.serie);
-    if (!estaEnStaging) {
-      errores.push(`Falta el reporte de la máquina: Serie ${m.serie} (IP: ${m.ip_address}).`);
-    }
-  });
-
-  const maquinasConContabilidadDB = maquinasDB.filter(m => m.contabilidad_por_usuario === true);
-
-  if (maquinasConContabilidadDB.length > 0) {
-    const queryStagingDetalle = `SELECT DISTINCT consolidado_staging_id FROM reportes_detalle_staging WHERE lote_id = $1`;
-    const { rows: stagingDetalle } = await pool.query(queryStagingDetalle, [loteId]);
-    const consolidadosConDetalle = new Set(stagingDetalle.map(d => d.consolidado_staging_id));
-
-    maquinasConContabilidadDB.forEach(m => {
-      const reporteConsolidado = stagingConsolidado.find(stg => stg.serie_maquina === m.serie);
-
-      if (reporteConsolidado) {
-        if (reporteConsolidado.procesar_lectura !== false && !consolidadosConDetalle.has(reporteConsolidado.id_staging_consolidado)) {
-          errores.push(`La máquina Serie ${m.serie} (IP: ${m.ip_address}) requiere contabilidad por usuario, pero no se reportaron los contadores de los usuarios.`);
-        }
-      }
-    });
-  }
-
-    // S3-01: volver a validar cada lectura. Entre la ingesta y la aprobación pudo
+  // S3-01: volver a validar cada lectura. Entre la ingesta y la aprobación pudo
   // aprobarse otra lectura de la misma máquina y período.
   const { rows: loteRows } = await pool.query(
     'SELECT periodo FROM lotes_carga WHERE id_lote = $1',
