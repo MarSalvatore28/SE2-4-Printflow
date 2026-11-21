@@ -1,6 +1,7 @@
 const pool = require('@config/db');
 const { consumoDelCambio } = require('@utils/maquinasCambio.consumo');
 const { consumoDeCuenta } = require('@utils/consumoPorCuenta');
+const { calcularFacturacion } = require('@utils/facturacion');
 
 const getPeriodoAnterior = (periodoActual) => {
   const [year, month] = periodoActual.split('-').map(Number);
@@ -16,7 +17,7 @@ const getPeriodoAnterior = (periodoActual) => {
 // período, usa la vigente, como antes.
 const INSTALACION_DEL_PERIODO = `
   LEFT JOIN LATERAL (
-    SELECT i2.id_instalacion, i2.area_id, i2.contador_acumulativo
+    SELECT i2.id_instalacion, i2.area_id, i2.contador_acumulativo, i2.contrato_id
     FROM instalaciones i2
     JOIN areas a2 ON a2.id_area = i2.area_id
     WHERE i2.maquina_id = ro.maquina_id
@@ -102,6 +103,16 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
         ro.snap_costo_impresion_bn,
         ro.snap_costo_impresion_color,
         
+        -- ========== DATOS DEL CONTRATO (el de la asignación de la máquina en el período) ==========
+        i.contrato_id,
+        c.impresiones_bn_incluidas,
+        c.impresiones_color_incluidas,
+        c.costo_impresion_bn AS costo_contrato_bn,
+        c.costo_impresion_color AS costo_contrato_color,
+        c.costo_x_excedente_impresion_bn,
+        c.costo_x_excedente_impresion_color,
+        c.facturacion_de_impresora,
+
         -- ========== SUMA DETALLES ACTUAL ==========
         det_cur.det_cur_imp_bn,
         det_cur.det_cur_imp_col,
@@ -208,6 +219,9 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
       
       LEFT JOIN areas area_cambio
         ON mc.area_id = area_cambio.id_area
+
+      LEFT JOIN contratos c
+        ON c.id_contrato = i.contrato_id
       
       -- Las asignaciones que el registro del reemplazo retiró y creó
       LEFT JOIN instalaciones inst_saliente
@@ -289,7 +303,9 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
       const cambioCalculado = tieneCambio ? cambios.get(row.maquina_cambio_id) : null;
       const consumoFinal = cambioCalculado ? cambioCalculado.total : calcularConsumoNormal(row);
 
-      const dineroTotal = consumoFinal.gran_total * parseFloat(row.snap_costo_impresion_bn || 0);
+      // Cálculo referencial (solo informativo, por máquina)
+      const dineroReferencial = (consumoFinal.total_bn * parseFloat(row.costo_contrato_bn || 0)) + 
+                                (consumoFinal.total_color * parseFloat(row.costo_contrato_color || 0));
       const tipoNombre = row.tipo_impresion_nombre || 'BN';
       const esColor = tipoNombre !== 'BN';
 
@@ -421,7 +437,9 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
         },
         consumo: consumoFinal,
         financiero: {
-          monto_total: dineroTotal.toFixed(2)
+          // Consumo × tarifa por página: solo informativo. El importe oficial es resumen.facturacion.
+          monto_total: dineroReferencial.toFixed(2),
+          monto_referencial: dineroReferencial.toFixed(2)
         }
       };
     });
@@ -475,6 +493,7 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
     const { rows: rentaRows } = await pool.query(`
     SELECT 
         i.id_instalacion,
+        i.contrato_id,
         i.costo_renta_mensual,
         m.serie,
         mod.nombre as modelo_nombre,
@@ -497,6 +516,7 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
 
     const rentaEquipos = rentaRows.map(r => ({
       id_instalacion: r.id_instalacion,
+      contrato_id: r.contrato_id,
       serie: r.serie,
       modelo: r.modelo_nombre,
       area: r.area_nombre,
@@ -505,18 +525,66 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
 
     const totalRenta = rentaEquipos.reduce((acc, r) => acc + r.costo_mensual, 0);
 
+    // --- FACTURACIÓN POR CONTRATO (S3-06): cuota fija + excedente + renta, por contrato y por mes ---
+    // Se suma el consumo de todas las máquinas de cada contrato (detalles va en el mismo orden que filasVisibles).
+    const consumosPorContrato = new Map();
+    filasVisibles.forEach((row, indice) => {
+      if (!row.contrato_id) return;
+      if (!consumosPorContrato.has(row.contrato_id)) {
+        consumosPorContrato.set(row.contrato_id, {
+          bn: 0,
+          color: 0,
+          contrato: {
+            impresiones_bn_incluidas: row.impresiones_bn_incluidas,
+            impresiones_color_incluidas: row.impresiones_color_incluidas,
+            costo_impresion_bn: row.costo_contrato_bn,
+            costo_impresion_color: row.costo_contrato_color,
+            costo_x_excedente_impresion_bn: row.costo_x_excedente_impresion_bn,
+            costo_x_excedente_impresion_color: row.costo_x_excedente_impresion_color,
+            facturacion_de_impresora: row.facturacion_de_impresora
+          }
+        });
+      }
+      const acumulado = consumosPorContrato.get(row.contrato_id);
+      acumulado.bn += detalles[indice].consumo.total_bn;
+      acumulado.color += detalles[indice].consumo.total_color;
+    });
+
+    const rentaDelContrato = (contratoId) => rentaEquipos
+      .filter((r) => r.contrato_id === contratoId)
+      .reduce((acc, r) => acc + r.costo_mensual, 0);
+
+    const filtrado = Boolean(areaId || maquinaId);
+    let facturacion = [...consumosPorContrato.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([contratoId, { bn, color, contrato }]) => ({
+        contrato_id: contratoId,
+        ...calcularFacturacion(contrato, { bn, color }, rentaDelContrato(contratoId), filtrado)
+      }));
+
+    // Con filtro por área o máquina, la facturación sigue siendo la del contrato completo (filtrado: true).
+    if (filtrado) {
+      const completo = await getReporteConsolidado(clienteId, periodo);
+      facturacion = completo.resumen.facturacion.map((c) => ({ ...c, filtrado: true }));
+    }
+
+    const montoTotalGeneral = facturacion.reduce((acc, c) => acc + parseFloat(c.total), 0);
+
     const resumen = {
       total_bn: detalles.reduce((acc, d) => acc + d.consumo.total_bn, 0),
       total_color: detalles.reduce((acc, d) => acc + d.consumo.total_color, 0),
       total_impresiones: detalles.reduce((acc, d) => acc + d.consumo.gran_total, 0),
-      monto_total_general: detalles.reduce((acc, d) => acc + parseFloat(d.financiero.monto_total), 0),
+      facturacion,
+      monto_total_general: montoTotalGeneral.toFixed(2),
+      filtrado,
       total_maquinas: detalles.length,
       total_cambios: detalles.filter(d => d.info.tiene_cambio).length,
       periodo: periodo,
       cliente_id: clienteId,
       renta_equipos: rentaEquipos,
       total_renta: totalRenta,
-      total_general: detalles.reduce((acc, d) => acc + parseFloat(d.financiero.monto_total), 0) + totalRenta
+      // La renta ya está dentro del total de cada contrato
+      total_general: Math.round(montoTotalGeneral * 100) / 100
     };
 
     return { detalles, resumen };

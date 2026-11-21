@@ -1,33 +1,33 @@
 # Reparto de lo que falta · Sprints 3 y 4
 
-Estado al 19/11/2026: las Fases 0, 1 y 2 están en `main`, con máquinas y reemplazos, notificaciones en vivo, lotes, informes, usuarios, roles, el simulador del correo, la lectura manual (S3-04) y el reprocesar (S3-05). Este documento reparte **todo lo que falta** para cerrar el proyecto.
+Estado al 20/11/2026: las Fases 0, 1 y 2 están en `main`, con máquinas y reemplazos, notificaciones en vivo, lotes, informes, usuarios, roles, el simulador del correo, la lectura manual (S3-04) y el reprocesar (S3-05). También están las **validaciones de lecturas (S3-01, Samuel, #58)**, el **importe del consolidado (S3-06, Christian, #57)** y la **pantalla de informes con facturación y el PDF (S4-01)**: Colegio Horizonte de octubre da **$395,48**. Este documento reparte **todo lo que falta** para cerrar el proyecto.
 
 Los repos son **`MarSalvatore28/SE2-4-Printflow`** (backend) y **`MarSalvatore28/SE2-4-Printflow-Frontend`**. Cada integrante tiene que aceptar la invitación que le llegó por correo para poder hacer push.
 
-**Todo es urgente: es lo que falta para el medio parcial.** Lo más pesado del backend es de **Samuel** y **Christian**. Marlo ya terminó la lectura manual y el reprocesar; la pantalla de informes con facturación y el PDF están listos y esperan el importe de Christian (S3-06). Gabriela, Roberto y Kiara tienen tareas propias más chicas y que no dependen de nadie.
+**Todo es urgente: es lo que falta para el medio parcial.** Lo más pesado del backend es de **Samuel** y **Christian**. Marlo terminó la lectura manual, el reprocesar, la pantalla de informes con facturación y el PDF. **Para probar cualquier cosa, sigue [`docs/probar.md`](../probar.md), paso a paso.** Gabriela, Roberto y Kiara tienen tareas propias más chicas y que no dependen de nadie.
 
 **Cada tarea se puede hacer sin esperar a otra persona.** Donde había una dependencia, el contrato se fijó por adelantado (ver «Contratos compartidos»).
 
 | Persona | Documento | Qué le toca | Puntos | Estado |
 |---|---|---|---|---|
-| **Samuel** (líder técnico backend) | [TAREAS-SAMUEL.md](../../TAREAS-SAMUEL.md) | **S3-01 validaciones**, **S3-02 auditoría**, tests de login y seguridad, 4 fallos del backend, **S4-06 prueba E2E y UAT**, **S4-04 despliegue: puesta en marcha y migraciones en producción** | ~18 | **URGENTE · le toca a él** |
-| **Christian** | [TAREAS-CHRISTIAN.md](../../TAREAS-CHRISTIAN.md) | **S3-06 cálculo del importe**, congelar tarifas al aprobar, **anular un reemplazo**, **S4-05 rendimiento con 500 máquinas**, endpoints 501 y limpieza, **S4-04 despliegue automático, respaldos fuera de la VM y monitoreo** | ~18 | **URGENTE · le toca a él** |
+| **Samuel** (líder técnico backend) | [TAREAS-SAMUEL.md](../../TAREAS-SAMUEL.md) | ~~S3-01 validaciones~~ (**hecho**, #58), **S3-02 auditoría**, tests de login y seguridad, 4 fallos del backend, **S4-06 prueba E2E y UAT**, **S4-04 despliegue: puesta en marcha y migraciones en producción** | ~18 | **URGENTE · le toca a él** |
+| **Christian** | [TAREAS-CHRISTIAN.md](../../TAREAS-CHRISTIAN.md) | ~~S3-06 cálculo del importe~~ (**hecho**, #57), congelar tarifas al aprobar, **anular un reemplazo**, **S4-05 rendimiento con 500 máquinas**, endpoints 501 y limpieza, **S4-04 despliegue automático, respaldos fuera de la VM y monitoreo** | ~18 | **URGENTE · le toca a él** |
 | **Roberto** | [TAREAS-ROBERTO.md](../../TAREAS-ROBERTO.md) | Pruebas automáticas del frontend (Vitest en el CI), limpieza de Asignaciones y Máquinas | ~4 | **Hecho** (frontend #22 y #25) |
 | **Gabriela** | [TAREAS-GABRIELA.md](../../TAREAS-GABRIELA.md) | SonarCloud en verde (accesibilidad de los componentes compartidos), web usable en el celular | ~4 | Le toca a ella |
 | **Kiara** | [TAREAS-KIARA.md](../../TAREAS-KIARA.md) | S4-02 Excel, QA de los PR y guion de la demo | ~3 | Le toca a ella |
-| **Marlo** | [MARLO.md](MARLO.md) · [lectura manual y reprocesar](marlo-lectura-manual-y-reprocesar.md) · [informes y PDF](marlo-informes-y-pdf.md) | S3-03 aviso por correo, S3-04 lectura manual y S3-05 reprocesar (**hechos**), informes con facturación y S4-01 PDF (**listos, esperan S3-06**), integración de los PR y decisiones para la demo (**hechas**, `PLAN.md` §9) | ~17 | En curso |
+| **Marlo** | [MARLO.md](MARLO.md) · [lectura manual y reprocesar](marlo-lectura-manual-y-reprocesar.md) · [informes y PDF](marlo-informes-y-pdf.md) | S3-03 aviso por correo, S3-04 lectura manual y S3-05 reprocesar (**hechos**), informes con facturación y S4-01 PDF (**hechos**, frontend #31 y #32), integración de los PR y decisiones para la demo (**hechas**, `PLAN.md` §9) | ~17 | En curso |
 
 ## Contratos compartidos (lo que hace que cada uno sea independiente)
 
 ### 1. `validarLectura` (S3-01 ↔ S3-04 y S3-05)
-Está en `src/services/validacionLecturas.js`, con su contrato documentado y `test/validacionLecturas.contrato.test.js`. **Hoy acepta todas las lecturas** (devuelve `null`).
+Está en `src/services/validacionLecturas.js`, con su contrato documentado y `test/validacionLecturas.contrato.test.js`. **Ya está implementado** (Samuel, #58): rechaza RETROCESO, SALTO_ANOMALO y DUPLICADA.
 - La **lectura manual** y el **reprocesar** ya están en `develop` y la llaman.
 - **Samuel** reemplaza su contenido con las 3 reglas **sin cambiar la firma**.
 
-Cuando se mergee lo de Samuel, la lectura manual y el reprocesar empiezan a rechazar sin tocar nada.
+La lectura manual, el reprocesar, la ingesta y la aprobación del lote ya rechazan con esas reglas.
 
 ### 2. Importe del consolidado (S3-06 ↔ S4-01)
-`GET /api/reportes/consolidado/:clienteId/:periodo` devolverá (Christian lo implementa; **la pantalla de informes y el PDF ya lo muestran**):
+`GET /api/reportes/consolidado/:clienteId/:periodo` devuelve (Christian, #57; **la pantalla de informes y el PDF lo muestran**):
 
 ```jsonc
 {
@@ -46,7 +46,7 @@ Cuando se mergee lo de Samuel, la lectura manual y el reprocesar empiezan a rech
 }
 ```
 
-Hasta que Christian termine, `facturacion` puede venir vacío o con ceros: la pantalla y el PDF deben mostrarlo igual, sin romperse.
+Si un cliente no tiene lecturas en el período, `facturacion` viene vacío y la pantalla lo indica sin romperse. Con filtro por área o máquina se factura el contrato completo y cada elemento trae `filtrado: true`.
 
 ### 3. Migraciones: un rango de números por persona
 Para que no choquen dos archivos con el mismo número:
