@@ -108,7 +108,7 @@ borrar_temporal() {
 # pg_dump 17.6+ escribe con una clave al azar en cada volcado.
 huella() {
   pg_dump --schema-only --no-owner --no-privileges -d "$TEMPORAL" \
-    | grep -v -E '^(--|[\]restrict |[\]unrestrict |$)' | md5sum | cut -d' ' -f1
+    | grep -v -E '^(--|[\]restrict |[\]unrestrict |$)' | sha256sum | cut -d' ' -f1
 }
 
 adoptar() {
@@ -120,7 +120,9 @@ adoptar() {
   pg_dump --schema-only --no-owner --no-privileges -d "$BD" \
     | psql -X -q -v ON_ERROR_STOP=1 -d "$TEMPORAL" >/dev/null
   # Sin cambios, dos volcados seguidos deben dar lo mismo; si no, la comparación no sirve
-  [ "$(huella)" = "$(huella)" ] || falla "el volcado del esquema no es estable: no se puede adoptar la base sola"
+  primera=$(huella)
+  segunda=$(huella)
+  [ "$primera" = "$segunda" ] || falla "el volcado del esquema no es estable: no se puede adoptar la base sola"
 
   ya=""; dudosas=""
   for nombre in $(migraciones); do
