@@ -67,20 +67,18 @@ const hoyEcuador = (ahora = new Date()) => new Date(ahora.getTime() - 5 * 60 * 6
 
 const error = (status, message) => ({ error: { status, message } });
 
-/**
- * Valida y normaliza el cuerpo de POST /api/maquinas-cambio.
- * Devuelve { error: { status, message } } o { data }.
- * `hoy` ('YYYY-MM-DD') se recibe para poder probar sin depender de la fecha real.
- */
-const validarDatosReemplazo = (body, hoy = hoyEcuador()) => {
-  const b = body && typeof body === 'object' ? body : {};
+// Pasos de validarDatosReemplazo: cada uno devuelve { error } o los valores que validó.
 
+const validarMaquinasReemplazo = (b) => {
   const salienteId = parseId(b.maquina_saliente_id);
   if (!salienteId) return error(400, 'Seleccione la máquina saliente');
   const entranteId = parseId(b.maquina_entrante_id);
   if (!entranteId) return error(400, 'Seleccione la máquina entrante');
   if (salienteId === entranteId) return error(400, 'La máquina entrante debe ser distinta de la saliente');
+  return { salienteId, entranteId };
+};
 
+const validarFechasReemplazo = (b, hoy) => {
   const fechaDanio = parseFecha(b.fecha_danio);
   if (!fechaDanio) return error(400, 'La fecha del daño es obligatoria y debe tener el formato AAAA-MM-DD');
   const fechaInstalacion = parseFecha(b.fecha_instalacion_entrante);
@@ -92,7 +90,10 @@ const validarDatosReemplazo = (body, hoy = hoyEcuador()) => {
   if (fechaInstalacion < fechaDanio) {
     return error(400, 'La fecha de instalación de la entrante no puede ser anterior a la fecha del daño');
   }
+  return { fechaDanio, fechaInstalacion };
+};
 
+const validarPeriodoReemplazo = (b, { fechaDanio, fechaInstalacion }) => {
   const periodo = typeof b.periodo_afectado === 'string' ? b.periodo_afectado.trim() : '';
   if (!esPeriodo(periodo)) return error(400, 'El período afectado debe tener el formato AAAA-MM');
   // El cambio se factura en el mes del daño o, si el daño fue después del corte, en el siguiente
@@ -104,7 +105,10 @@ const validarDatosReemplazo = (body, hoy = hoyEcuador()) => {
   if (periodoDeFecha(fechaInstalacion) > periodo) {
     return error(400, `La entrante debe instalarse dentro del período afectado (${periodo}) para que su lectura entre en ese consolidado`);
   }
+  return { periodo };
+};
 
+const validarMotivoReemplazo = (b) => {
   const tipo = typeof b.tipo_cambio === 'string' ? b.tipo_cambio.trim() : '';
   if (!TIPOS_CAMBIO.includes(tipo)) {
     return error(400, `Seleccione un tipo de cambio válido: ${TIPOS_CAMBIO.join(', ')}`);
@@ -113,38 +117,66 @@ const validarDatosReemplazo = (body, hoy = hoyEcuador()) => {
   const razon = typeof b.razon_cambio === 'string' ? b.razon_cambio.trim().replace(/\s+/g, ' ') : '';
   if (razon.length < RAZON_MIN) return error(400, `Describa la razón del cambio (mínimo ${RAZON_MIN} caracteres)`);
   if (razon.length > RAZON_MAX) return error(400, `La razón del cambio admite hasta ${RAZON_MAX} caracteres`);
+  return { tipo, razon };
+};
 
+const CAMPOS_CONTADOR = [
+  ['contador_final_saliente_bn', 'El contador final B/N de la saliente'],
+  ['contador_final_saliente_color', 'El contador final color de la saliente'],
+  ['contador_inicial_entrante_bn', 'El contador inicial B/N de la entrante'],
+  ['contador_inicial_entrante_color', 'El contador inicial color de la entrante'],
+];
+
+const validarContadoresReemplazo = (b) => {
   const contadores = {};
-  const campos = [
-    ['contador_final_saliente_bn', 'El contador final B/N de la saliente'],
-    ['contador_final_saliente_color', 'El contador final color de la saliente'],
-    ['contador_inicial_entrante_bn', 'El contador inicial B/N de la entrante'],
-    ['contador_inicial_entrante_color', 'El contador inicial color de la entrante'],
-  ];
-  for (const [campo, nombre] of campos) {
+  for (const [campo, nombre] of CAMPOS_CONTADOR) {
     const valor = parseContador(b[campo]);
     if (valor === null) return error(400, `${nombre} es obligatorio y debe ser un número entero mayor o igual a 0`);
     contadores[campo] = valor;
   }
+  return { contadores };
+};
 
-  // IP opcional: si no viene, la entrante usa la IP de la saliente
-  let ip = null;
-  if (b.ip_address !== undefined && b.ip_address !== null && String(b.ip_address).trim() !== '') {
-    ip = String(b.ip_address).trim();
-    if (ip.length > IP_MAX || !IPV4_REGEX.test(ip)) return error(400, 'La IP debe ser una dirección IPv4 válida (p. ej. 10.20.1.12)');
-  }
+// IP opcional: si no viene, la entrante usa la IP de la saliente
+const validarIpReemplazo = (b) => {
+  if (b.ip_address === undefined || b.ip_address === null || String(b.ip_address).trim() === '') return { ip: null };
+  const ip = String(b.ip_address).trim();
+  if (ip.length > IP_MAX || !IPV4_REGEX.test(ip)) return error(400, 'La IP debe ser una dirección IPv4 válida (p. ej. 10.20.1.12)');
+  return { ip };
+};
+
+/**
+ * Valida y normaliza el cuerpo de POST /api/maquinas-cambio.
+ * Devuelve { error: { status, message } } o { data }.
+ * `hoy` ('YYYY-MM-DD') se recibe para poder probar sin depender de la fecha real.
+ */
+const validarDatosReemplazo = (body, hoy = hoyEcuador()) => {
+  const b = body && typeof body === 'object' ? body : {};
+
+  const maquinas = validarMaquinasReemplazo(b);
+  if (maquinas.error) return maquinas;
+  const fechas = validarFechasReemplazo(b, hoy);
+  if (fechas.error) return fechas;
+  const periodo = validarPeriodoReemplazo(b, fechas);
+  if (periodo.error) return periodo;
+  const motivo = validarMotivoReemplazo(b);
+  if (motivo.error) return motivo;
+  const contadores = validarContadoresReemplazo(b);
+  if (contadores.error) return contadores;
+  const ip = validarIpReemplazo(b);
+  if (ip.error) return ip;
 
   return {
     data: {
-      maquina_saliente_id: salienteId,
-      maquina_entrante_id: entranteId,
-      fecha_danio: fechaDanio,
-      fecha_instalacion_entrante: fechaInstalacion,
-      periodo_afectado: periodo,
-      tipo_cambio: tipo,
-      razon_cambio: razon,
-      ...contadores,
-      ip_address: ip,
+      maquina_saliente_id: maquinas.salienteId,
+      maquina_entrante_id: maquinas.entranteId,
+      fecha_danio: fechas.fechaDanio,
+      fecha_instalacion_entrante: fechas.fechaInstalacion,
+      periodo_afectado: periodo.periodo,
+      tipo_cambio: motivo.tipo,
+      razon_cambio: motivo.razon,
+      ...contadores.contadores,
+      ip_address: ip.ip,
     },
   };
 };

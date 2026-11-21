@@ -98,6 +98,8 @@ $P run --rm simulador demo.js
 
 **Cambia las contraseñas de los usuarios de prueba** (vienen con `Printflow2026*`). Entra como admin y, en **Usuarios**, edita a cada uno (admin, operador y auditor) con una contraseña nueva. Compártelas solo con el equipo y el PO.
 
+Otra forma: antes del **primer** despliegue (cuando todavía no existe la base), pon `DEMO_PASSWORD=<una contraseña nueva>` en el `.env` de la VM. La base calcula el hash al crearse y los tres usuarios nacen con esa contraseña; `demo.js` también la usa. Con la base ya creada, cambiar `DEMO_PASSWORD` no hace nada: se cambian en **Usuarios**.
+
 ## 5. Respaldos
 
 El servicio `backup` hace un respaldo al arrancar y luego uno cada 24 h, en `./backups/printflow_AAAA-MM-DD_HHMM.dump`. Conserva **30 días** (`RETENCION_DIAS` en el `.env`).

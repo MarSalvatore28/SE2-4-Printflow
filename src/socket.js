@@ -51,7 +51,8 @@ module.exports = {
                 console.error('❌ Error conectando cliente PG para notificaciones:', err);
             } else {
                 console.log('✅ Cliente PG conectado para escuchar notificaciones');
-                pgClient.query('LISTEN nueva_notificacion');
+                pgClient.query('LISTEN nueva_notificacion')
+                    .catch((error) => console.error('❌ No se pudo escuchar nueva_notificacion:', error));
             }
         });
 
@@ -61,7 +62,8 @@ module.exports = {
                     const payload = JSON.parse(msg.payload);
                     io.emit('nueva_notificacion', payload);
                     // S3-03: si es un lote nuevo, aviso por correo a operadores y admins (sin bloquear)
-                    avisarSiEsLoteNuevo(pool, payload);
+                    // (avisarSiEsLoteNuevo nunca rechaza: registra sus errores y devuelve { enviado: false })
+                    void avisarSiEsLoteNuevo(pool, payload);
                 } catch (e) {
                     console.error('Error parseando notificación:', e);
                 }

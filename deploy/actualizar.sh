@@ -44,6 +44,7 @@ if [ "${1:-}" != "--despues-del-pull" ]; then
   case $COMMIT in
     "") ;;
     *[!0-9a-f]*) echo "Commit no válido: $COMMIT"; exit 1 ;;
+    *) ;;  # un hash: git merge --ff-only confirma que existe
   esac
 
   paso "1/6 Respaldo de la base"

@@ -22,6 +22,8 @@ services:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?Falta DB_PASSWORD en el .env}
       POSTGRES_DB: ${DB_NAME:-printflow}
+      # Contraseña de los usuarios de prueba al crear la base (vacía = Printflow2026*, ver init.sh)
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-}
       TZ: America/Guayaquil
     volumes:
       - db_data:/var/lib/postgresql/data
@@ -108,6 +110,7 @@ services:
     environment:
       API_URL: http://api:9000
       INGESTA_TOKEN: ${INGESTA_TOKEN:-}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-}
       TZ: America/Guayaquil
     volumes:
       - ./simulador:/simulador

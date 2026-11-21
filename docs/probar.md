@@ -188,6 +188,8 @@ Si ves **$395.48**, el sistema funciona completo. Para más escenarios (noviembr
 
 Abre http://localhost:8080 en el navegador y entra con uno de estos usuarios. La contraseña de los tres es **`Printflow2026*`**, con el asterisco al final.
 
+> La contraseña no está escrita en el repo: la base calcula su hash al crearse, con la de `DEMO_PASSWORD` del `.env` (vacía = `Printflow2026*`). Si pones otra, recrea la base (`docker compose down -v` y `docker compose up -d --build`) y pásala a `npm run token` con `--clave` o en la variable `DEMO_PASSWORD`.
+
 | Correo | Rol | Qué puede hacer |
 |---|---|---|
 | `admin@printflow.local` | admin | Todo, incluidos usuarios, clientes, contratos y máquinas |
@@ -398,7 +400,7 @@ Todo desde `C:\printflow\SE2-4-Printflow`:
 | `port is already allocated` (8080 o 5433) | Otro programa usa ese puerto | En tu `.env` cambia `WEB_PORT=8081` o `DB_HOST_PORT=5434`, y usa esa dirección (en Postman, cambia `baseUrl`) |
 | 401 «No hay token» | La petición no lleva `Authorization: Bearer ...` | En Postman, ejecuta «Iniciar sesión»; en Swagger, **Authorize** |
 | 401 «Token inválido» | Venció (30 min sin uso), es de otra compu o cambiaste `SECRET_KEY` | Vuelve a iniciar sesión |
-| 401 «Credenciales incorrectas» con `Printflow2026*` | La base es vieja o alguien cambió la contraseña | `docker compose down -v`, `docker compose up -d --build` y el paso 5 |
+| 401 «Credenciales incorrectas» con `Printflow2026*` | La base es vieja, alguien cambió la contraseña o tu `.env` tiene otra `DEMO_PASSWORD` | `docker compose down -v`, `docker compose up -d --build` y el paso 5 |
 | 403 en un POST, PUT o DELETE | Tu rol no tiene permiso (por ejemplo, el auditor) | Inicia sesión como admin u operador |
 | 403 en `/api/ingesta` desde Postman o el navegador | Es a propósito: la ingesta solo se acepta desde dentro de Docker | Usa el simulador: `docker compose run --rm simulador procesar-buzon.js` |
 | 503 «Ingesta no configurada» | `INGESTA_TOKEN` vacío en tu `.env` | `npm run configurar` y luego `docker compose up -d` |

@@ -28,8 +28,14 @@ const agruparPorCliente = (reportes) => {
   return { porCliente, sinCliente };
 };
 
-const mensajeBloqueada = (stg) =>
-  stg.mensaje_aviso || `La máquina ${stg.serie_maquina} tiene un error de estado y sus lecturas fueron bloqueadas.`;
+// Motivo de una lectura bloqueada, con la máquina a la que corresponde: «Máquina SIMC0003: Retroceso
+// de contador…». Si el aviso ya nombra la serie (p. ej. «la serie SIMX9999 no está registrada»), va tal cual.
+const mensajeBloqueada = (stg) => {
+  const serie = stg.serie_maquina;
+  if (!stg.mensaje_aviso) return `La máquina ${serie} tiene un error de estado y sus lecturas fueron bloqueadas.`;
+  if (!serie || stg.mensaje_aviso.includes(serie)) return stg.mensaje_aviso;
+  return `Máquina ${serie}: ${stg.mensaje_aviso}`;
+};
 
 /**
  * Errores de un cliente: cantidad de reportes, máquinas no asignadas, IP distinta, lecturas

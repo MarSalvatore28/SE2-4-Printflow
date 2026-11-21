@@ -101,6 +101,8 @@ const main = () => {
   if (existia && generadas.includes('DB_PASSWORD')) {
     console.log('  Ojo: la base ya creada tiene otra contraseña. Recréala con: docker compose down -v');
   }
+  console.log('Usuarios de prueba: admin@, operador@ y auditor@printflow.local, con la contraseña DEMO_PASSWORD del .env');
+  console.log('  (vacía = Printflow2026*; se aplica al crear la base).');
   console.log('Siguiente paso: docker compose up -d --build');
 };
 
