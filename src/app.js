@@ -6,6 +6,11 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerDocs = require('./config/swagger');
 const app = express();
 
+// S3-02: la auditoría guarda req.ip. La API solo se alcanza por el nginx del frontend (y Caddy en
+// producción) dentro de la red privada de Docker: se confía en esos proxies para que req.ip sea la
+// IP del cliente (X-Forwarded-For) y no la del contenedor de nginx.
+app.set('trust proxy', 'loopback, linklocal, uniquelocal');
+
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173')
   .split(',')
   .map((o) => o.trim());
@@ -88,6 +93,8 @@ const reprocesoRoutes = require('@routes/reproceso/reproceso.routes'); // [B-F3]
 app.use('/api/staging', reprocesoRoutes); // [B-F3]
 const usuariosRoutes = require('@routes/usuario/usuarios.routes'); // [B-F4]
 app.use('/api/usuarios', usuariosRoutes); // [B-F4]
+const auditoriaRoutes = require('@routes/auditoria/auditoria.routes'); // [C-F3]
+app.use('/api/auditoria', auditoriaRoutes); // [C-F3]
 
 // Ruta que no existe: responde JSON (el frontend siempre espera JSON)
 app.use((req, res) => {

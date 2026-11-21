@@ -121,6 +121,9 @@ const poolFalso = ({
     async query(sql, params = []) {
       consultas.push({ sql, params });
       if (/^\s*(BEGIN|COMMIT|ROLLBACK)/.test(sql)) return { rows: [] };
+      // Auditoría: la fila antes y después, y el registro en la bitácora
+      if (/SELECT to_jsonb\(t\) AS fila/.test(sql)) return { rows: [{ fila: { id: params[0] } }] };
+      if (/INSERT INTO registro_auditoria/.test(sql)) return { rows: [{ id: 1, fecha: '2026-11-21T00:00:00Z' }] };
       if (/FROM maquinas_cambio WHERE id_maquina_cambio = \$1\s+FOR UPDATE/.test(sql)) return { rows: cambio ? [cambio] : [] };
       if (/FROM reportes_oficiales ro/.test(sql)) return { rows: lectura ? [lectura] : [] };
       if (/FROM reportes_consolidado_staging s/.test(sql)) return { rows: lote ? [lote] : [] };

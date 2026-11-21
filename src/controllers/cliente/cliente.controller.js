@@ -25,6 +25,7 @@ const {
   getContratoSuperpuesto
 
 } = require('@models/cliente/cliente.model');
+const { ACCIONES, leerFila, auditarFila, contextoAuditoria, enTransaccion } = require('@services/auditoria');
 
 // --- Reglas de negocio (caja 5, mejoras 3.1 y 3.3) ---
 
@@ -398,7 +399,12 @@ const crearContratoController = async (req, res) => {
     }
 
     const advertencia = await advertenciaSuperposicion(cliente_id, contratoData);
-    const nuevoId = await createContrato(contratoData);
+    // S3-02: el alta y su auditoría van en la misma transacción
+    const nuevoId = await enTransaccion(req.pool, async (db) => {
+      const id = await createContrato(contratoData, db);
+      await auditarFila(db, { tabla: 'contratos', idRegistro: id, accion: ACCIONES.CREAR, ...contextoAuditoria(req) });
+      return id;
+    });
 
     res.status(201).json({
       success: true,
@@ -432,7 +438,14 @@ const actualizarContratoController = async (req, res) => {
     }
 
     const advertencia = await advertenciaSuperposicion(actual.cliente_id, contratoData, Number(id));
-    const affectedRows = await updateContrato(id, contratoData);
+    const affectedRows = await enTransaccion(req.pool, async (db) => {
+      const antes = await leerFila(db, 'contratos', id, { bloquear: true });
+      const filas = await updateContrato(id, contratoData, db);
+      if (filas > 0) {
+        await auditarFila(db, { tabla: 'contratos', idRegistro: id, accion: ACCIONES.ACTUALIZAR, antes, ...contextoAuditoria(req) });
+      }
+      return filas;
+    });
 
     if (affectedRows === 0) {
       return res.status(404).json({
@@ -459,7 +472,14 @@ const actualizarContratoController = async (req, res) => {
 const desactivarContratoController = async (req, res) => {
   try {
     const { id } = req.params;
-    const affectedRows = await desactivarContrato(id);
+    const affectedRows = await enTransaccion(req.pool, async (db) => {
+      const antes = await leerFila(db, 'contratos', id, { bloquear: true });
+      const filas = await desactivarContrato(id, db);
+      if (filas > 0) {
+        await auditarFila(db, { tabla: 'contratos', idRegistro: id, accion: ACCIONES.DESACTIVAR, antes, ...contextoAuditoria(req) });
+      }
+      return filas;
+    });
 
     if (affectedRows === 0) {
       return res.status(404).json({

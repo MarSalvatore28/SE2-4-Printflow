@@ -3,6 +3,7 @@
 // regla de la ingesta y con validarLectura (S3-01). Máximo MAX_INTENTOS veces por reporte.
 const validacionLecturas = require('@services/validacionLecturas');
 const { buscarMaquinaPorSerie, motivoNoAutorizada } = require('@services/autorizacionMaquina');
+const { ACCIONES, leerFila, registrarAuditoria } = require('@services/auditoria');
 
 const MAX_INTENTOS = 3;
 const MENSAJE_MAXIMO = 'Máximo de intentos alcanzado: descarte o corrija manualmente';
@@ -61,8 +62,9 @@ const exigeCuentasDeUsuario = async (db, instalacionId, reporteId) => {
 /**
  * Reprocesa el reporte `id`. Lanza errorNegocio(404/409) si no se puede.
  * Devuelve { reporte, intentos, max_intentos, intentos_texto, corregido, motivo, codigo, aviso }.
+ * S3-02: cada intento queda auditado con `auditoria` = { usuarioId, ip } de la petición.
  */
-const reprocesarReporte = async (pool, id) => {
+const reprocesarReporte = async (pool, id, auditoria = {}) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -72,6 +74,7 @@ const reprocesarReporte = async (pool, id) => {
     if (bloqueo) throw errorNegocio(bloqueo.status, bloqueo.message, bloqueo.extra);
 
     const intentos = (reporte.intentos_reproceso ?? 0) + 1;
+    const antes = await leerFila(client, 'reportes_consolidado_staging', id);
 
     // 1. La máquina por serie y su asignación vigente, igual que la ingesta
     const maquina = await buscarMaquinaPorSerie(client, reporte.serie_maquina);
@@ -116,6 +119,10 @@ const reprocesarReporte = async (pool, id) => {
     const aviso = corregido && (await exigeCuentasDeUsuario(client, maquina.instalacionId, id))
       ? 'La asignación lleva contabilidad por usuario y este reporte no trae las cuentas: el lote no pasará la validación. Registre una lectura manual o pida el correo de nuevo.'
       : null;
+
+    await registrarAuditoria(client, {
+      tabla: 'reportes_consolidado_staging', idRegistro: id, accion: ACCIONES.REPROCESAR, antes, despues: rows[0], ...auditoria,
+    });
 
     await client.query('COMMIT');
     return {

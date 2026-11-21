@@ -16,6 +16,7 @@ const {
   validarDatosUsuario,
   validarCambioPropio,
 } = require('@utils/usuarios.validacion');
+const { ACCIONES, auditarFila, contextoAuditoria, enTransaccion } = require('@services/auditoria');
 
 const BCRYPT_RONDAS = 10;
 const PG_UNIQUE_VIOLATION = '23505';
@@ -60,7 +61,12 @@ const crearUsuarioController = async (req, res) => {
     }
 
     const passwordHash = await bcrypt.hash(datos.password, BCRYPT_RONDAS);
-    const usuario = await crearUsuario({ ...datos, passwordHash });
+    // S3-02: el alta y su auditoría van en la misma transacción (sin la contraseña)
+    const usuario = await enTransaccion(req.pool, async (db) => {
+      const nuevo = await crearUsuario({ ...datos, passwordHash }, db);
+      await auditarFila(db, { tabla: 'usuarios', idRegistro: nuevo.id_usuario, accion: ACCIONES.CREAR, ...contextoAuditoria(req) });
+      return nuevo;
+    });
 
     res.status(201).json({ success: true, message: 'Usuario creado exitosamente', data: usuario });
   } catch (err) {
@@ -94,7 +100,7 @@ const actualizarUsuarioController = async (req, res) => {
     }
 
     const passwordHash = datos.password ? await bcrypt.hash(datos.password, BCRYPT_RONDAS) : null;
-    const resultado = await actualizarUsuario(id, { ...datos, passwordHash });
+    const resultado = await actualizarUsuario(id, { ...datos, passwordHash }, contextoAuditoria(req));
 
     if (resultado.sinAdmin) return res.status(409).json({ success: false, message: MENSAJES.ULTIMO_ADMIN });
     if (!resultado.usuario) return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
@@ -125,7 +131,7 @@ const cambiarActivoController = async (req, res) => {
     const errorPropio = validarCambioPropio(req.user.id, id, { activo });
     if (errorPropio) return res.status(409).json({ success: false, message: errorPropio });
 
-    const resultado = await cambiarActivo(id, activo);
+    const resultado = await cambiarActivo(id, activo, contextoAuditoria(req));
     if (resultado.sinAdmin) return res.status(409).json({ success: false, message: MENSAJES.ULTIMO_ADMIN });
     if (!resultado.usuario) return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
 

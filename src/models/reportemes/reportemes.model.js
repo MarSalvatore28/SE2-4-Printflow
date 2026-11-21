@@ -67,6 +67,10 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
         ro.id_reporte,
         ro.maquina_id,
         ${sqlFechaEcuador('ro.fecha_corte')} as fecha_corte,
+        -- Trazabilidad (S3-02): el lote que trajo la lectura y quién la aprobó
+        ro.lote_origen_id,
+        ro.usuario_validacion_id,
+        ro.origen,
         ro.snap_maquina_serie as serie,
         COALESCE(mod.nombre, 'No disponible') as modelo,
         ro.snap_maquina_ip as ip,
@@ -359,7 +363,11 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
           fecha_corte_actual: row.fecha_corte_actual,
           fecha_corte_anterior: row.fecha_corte_anterior,
           tiene_cambio: tieneCambio,
-          es_parte_cambio: row.es_parte_cambio || false
+          es_parte_cambio: row.es_parte_cambio || false,
+          // Trazabilidad (S3-02)
+          origen: row.origen,
+          lote_origen_id: row.lote_origen_id,
+          usuario_validacion_id: row.usuario_validacion_id
         },
 
         ...(tieneCambio && {
