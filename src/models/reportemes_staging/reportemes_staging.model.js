@@ -3,6 +3,7 @@ const pool = require('@config/db');
 const { validarLectura } = require('@services/validacionLecturas');
 const { sqlFechaEcuador, sqlDiaEcuador, diaEcuador } = require('@utils/fechaCorte');
 const { agruparPorCliente, erroresDelCliente, erroresSinCliente } = require('@utils/validacionLote');
+const { tarifasParaCongelar, COLUMNAS_CONGELADAS } = require('@utils/tarifasCongeladas');
 
 const getAllStaging = async () => {
   const query = `
@@ -521,11 +522,21 @@ const getEstadisticasStaging = async () => {
 
 // Asignación de la máquina en el período que se aprueba (la misma regla que INSTALACION_DEL_PERIODO
 // del consolidado): prefiere la del cliente del reporte, luego la que cubre el período y luego la
-// vigente. De ahí sale el área que queda guardada en el reporte oficial.
+// vigente. De ahí salen el área y las tarifas de su contrato, que quedan guardadas (congeladas)
+// en el reporte oficial.
 const ASIGNACION_DEL_PERIODO = `
-  SELECT a.nombre AS area_nombre
+  SELECT a.nombre AS area_nombre,
+         i.contrato_id,
+         c.impresiones_bn_incluidas,
+         c.impresiones_color_incluidas,
+         c.costo_impresion_bn,
+         c.costo_impresion_color,
+         c.costo_x_excedente_impresion_bn,
+         c.costo_x_excedente_impresion_color,
+         c.facturacion_de_impresora
   FROM instalaciones i
   JOIN areas a ON a.id_area = i.area_id
+  LEFT JOIN contratos c ON c.id_contrato = i.contrato_id
   WHERE i.maquina_id = $1
   ORDER BY
     (a.cliente_id = $2::int) DESC NULLS LAST,
@@ -561,6 +572,9 @@ const approveStagingBatch = async (loteId, periodo = null, usuarioId = null) => 
     for (const row of stagingRows) {
       // El consolidado de meses pasados toma el área y las copias de aquí, no de la asignación de hoy
       const asignacion = await asignacionDelReporte(client, row, periodoFinal);
+      // Tarifas del contrato en el momento de aprobar: el importe de este mes ya no cambia
+      // aunque después se modifique el contrato (TAREAS-CHRISTIAN.md, sección 2)
+      const tarifas = tarifasParaCongelar(asignacion);
 
       const insertOficialQuery = `
         INSERT INTO reportes_oficiales (
@@ -579,9 +593,13 @@ const approveStagingBatch = async (loteId, periodo = null, usuarioId = null) => 
           copy_total,
           total_servicio,
           fecha_procesamiento,
-          fecha_corte
-        ) 
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), $15)
+          fecha_corte,
+          ${COLUMNAS_CONGELADAS.join(',\n          ')},
+          fecha_congelacion
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), $15,
+          ${COLUMNAS_CONGELADAS.map((_, i) => `$${16 + i}`).join(', ')},
+          CASE WHEN $16::int IS NULL THEN NULL ELSE NOW() END)
         RETURNING id_reporte
       `;
 
@@ -600,7 +618,8 @@ const approveStagingBatch = async (loteId, periodo = null, usuarioId = null) => 
         (row.print_total || 0) - (row.copy_total || 0),
         row.copy_total || 0,
         row.totalservicio || 0,
-        row.fecha_corte || null
+        row.fecha_corte || null,
+        ...COLUMNAS_CONGELADAS.map((col) => (tarifas ? tarifas[col] : null))
       ];
 
       const { rows: [newOficial] } = await client.query(insertOficialQuery, oficialValues);
