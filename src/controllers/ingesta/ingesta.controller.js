@@ -6,6 +6,7 @@ const {
 } = require('@services/autorizacionMaquina');
 
 const { validarLectura } = require('@services/validacionLecturas');
+const { fechaCorteDelReporte, fechaLecturaDelDetalle } = require('@utils/fechaCorte');
 
 const processIngestaController = async (req, res) => {
   const payload = req.body;
@@ -101,59 +102,11 @@ const processIngestaController = async (req, res) => {
         procesarLectura = false;
         mensajeAviso = motivoNoAutorizada(maquina);
       }
-      // Función para extraer YYYY-MM-DD seguro
-      const extractDate = (dateStr) => {
-        if (!dateStr) return null;
-        const s = dateStr.trim();
-        // Si tiene formato YYYY-MM-DD
-        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
-        // Si tiene formato DD/MM/YYYY o DD-MM-YYYY
-        const parts = s.split(/[/-]/);
-        if (parts.length === 3) {
-          if (parts[2].length === 4) { // DD/MM/YYYY
-             const day = parts[0].padStart(2, '0');
-             const month = parts[1].padStart(2, '0');
-             return `${parts[2]}-${month}-${day}`;
-          }
-        }
-        try {
-          const d = new Date(s);
-          if (!isNaN(d.getTime())) return d.toISOString().substring(0, 10);
-        } catch (e) {}
-        return null;
-      };
-
-      let fechaLecturaConsolidado;
-      let fechaCorteConsolidado;
-
-      if (detalles && detalles.length > 0) {
-        let maxTime = 0;
-        let bestDateStr = null;
-        
-        for (const d of detalles) {
-          const fmtDate = extractDate(d.fecha_transaccion);
-          if (fmtDate) {
-            const time = new Date(`${fmtDate}T00:00:00.000Z`).getTime();
-            if (time > maxTime) {
-              maxTime = time;
-              bestDateStr = fmtDate;
-            }
-          }
-        }
-
-        if (bestDateStr) {
-          fechaCorteConsolidado = bestDateStr;
-          fechaLecturaConsolidado = `${bestDateStr}T00:00:00.000Z`;
-        } else {
-          const fb = lote_info.fecha_carga ? new Date(lote_info.fecha_carga) : new Date();
-          fechaLecturaConsolidado = fb.toISOString();
-          fechaCorteConsolidado = fb.toISOString().substring(0, 10);
-        }
-      } else {
-        const fb = lote_info.fecha_carga ? new Date(lote_info.fecha_carga) : new Date();
-        fechaLecturaConsolidado = fb.toISOString();
-        fechaCorteConsolidado = fb.toISOString().substring(0, 10);
-      }
+      // Fecha de corte en hora de Ecuador (no a medianoche UTC): src/utils/fechaCorte.js
+      // fecha_corte se guarda igual que fecha_lectura, con su desfase (-05:00): así el trigger
+      // fix_global_time no la mueve y el día no depende de la zona horaria de la base.
+      const { fechaCorte: fechaCorteConsolidado, fechaLectura: fechaLecturaConsolidado } =
+        fechaCorteDelReporte(detalles, lote_info.fecha_carga);
 
       // S3-01: la lectura debe pasar las reglas (retroceso, salto anómalo, duplicada).
       // Solo se valida si la máquina está autorizada; si no, ya quedó en ERROR arriba.
@@ -193,7 +146,7 @@ const processIngestaController = async (req, res) => {
         consolidado.print_total,
         consolidado.copy_total,
         fechaLecturaConsolidado,
-        fechaCorteConsolidado,
+        fechaLecturaConsolidado, // fecha_corte: el mismo instante, en hora de Ecuador
         maquinaIdTentativa,
         clienteIdTentativo,
         consolidado.serie_maquina,
@@ -214,13 +167,8 @@ const processIngestaController = async (req, res) => {
       if (maquinaAutorizada && detalles && detalles.length > 0) {
         for (const det of detalles) {
 
-          let fechaLecturaDetalle = new Date();
-          const pFmt = extractDate(det.fecha_transaccion);
-          if (pFmt && det.hora_transaccion) {
-            fechaLecturaDetalle = `${pFmt} ${det.hora_transaccion}`;
-          } else if (pFmt) {
-            fechaLecturaDetalle = `${pFmt} 00:00:00`;
-          }
+          // Hora de Ecuador explícita: el trigger sync_fecha_corte_from_detalle copia la mayor al corte
+          const fechaLecturaDetalle = fechaLecturaDelDetalle(det) || new Date();
 
           let imp_bn = det.impresion_bn || 0;
           let imp_color = det.impresion_color || 0;
