@@ -3,6 +3,7 @@
 // Se importa el módulo entero (no la función) para usar siempre la versión vigente de validarLectura.
 const validacionLecturas = require('@services/validacionLecturas');
 const { motivoAsignacionNoVigente } = require('@utils/lecturaManual.reglas');
+const { ACCIONES, auditarFila } = require('@services/auditoria');
 
 // Error de negocio: el controlador lo responde con su status y su mensaje
 const errorNegocio = (status, message, extra = {}) => Object.assign(new Error(message), { status, esNegocio: true, ...extra });
@@ -29,6 +30,7 @@ const getAsignacion = async (db, instalacionId) => {
 // Igual que la aprobación de un lote: contador_impresiones_* guarda el total B/N y el total
 // color (impresiones + copias) y las columnas de copias quedan en 0. La fecha de corte es el
 // mediodía de Ecuador del día de la lectura, para que no cambie de día con la zona horaria.
+// Trazabilidad (S3-02): no viene de un lote (lote_origen_id = null) y la valida quien la registra.
 const insertarLectura = async (db, asignacion, datos, usuarioId) => {
   const total = datos.contadorBn + datos.contadorColor;
   const { rows } = await db.query(
@@ -38,19 +40,20 @@ const insertarLectura = async (db, asignacion, datos, usuarioId) => {
        print_total, copy_total, total_servicio,
        snap_maquina_serie, snap_maquina_ip, snap_area_nombre,
        fecha_procesamiento, fecha_corte,
-       origen, observacion, usuario_registro_id
+       origen, observacion, usuario_registro_id, usuario_validacion_id
      ) VALUES (
        $1, $2, $3,
        $4, $5, 0, 0,
        $6, 0, $6,
        $7, $8, $9,
        NOW(), ($10::date + TIME '12:00') AT TIME ZONE 'America/Guayaquil',
-       'MANUAL', $11, $12
+       'MANUAL', $11, $12, $12
      )
      RETURNING id_reporte, periodo, maquina_id, cliente_id,
                contador_impresiones_bn AS contador_bn, contador_impresiones_color AS contador_color,
                snap_maquina_serie, snap_maquina_ip, snap_area_nombre,
-               fecha_corte, fecha_procesamiento, origen, observacion, usuario_registro_id`,
+               fecha_corte, fecha_procesamiento, origen, observacion, usuario_registro_id,
+               lote_origen_id, usuario_validacion_id`,
     [
       datos.periodo, asignacion.maquina_id, asignacion.cliente_id,
       datos.contadorBn, datos.contadorColor,
@@ -67,8 +70,9 @@ const insertarLectura = async (db, asignacion, datos, usuarioId) => {
  * Registra una lectura manual. `datos` viene de validarDatosLecturaManual.
  * Lanza errorNegocio(400) si la asignación no está vigente o si validarLectura la rechaza
  * (con su motivo tal cual y su código).
+ * S3-02: el alta queda auditada con el usuario y la `ip` de la petición.
  */
-const registrarLecturaManual = async (pool, datos, usuarioId) => {
+const registrarLecturaManual = async (pool, datos, usuarioId, ip = null) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -88,6 +92,9 @@ const registrarLecturaManual = async (pool, datos, usuarioId) => {
     if (rechazo) throw errorNegocio(400, rechazo.motivo, { codigo: rechazo.codigo });
 
     const lectura = await insertarLectura(client, asignacion, datos, usuarioId);
+    await auditarFila(client, {
+      tabla: 'reportes_oficiales', idRegistro: lectura.id_reporte, accion: ACCIONES.CREAR, usuarioId, ip,
+    });
     await client.query('COMMIT');
 
     return {

@@ -16,10 +16,12 @@ const protect = async (req, res, next) => {
     try {
         decoded = verifyToken(header.split(' ')[1]);
 
+        // El rol se lee de la base en cada petición: si se lo cambian al usuario, vale desde ya
         const result = await pool.query(
-            `SELECT id_usuario, email, nombre, apellido, rol_id, activo
-             FROM usuarios
-             WHERE id_usuario = $1`,
+            `SELECT u.id_usuario, u.email, u.nombre, u.apellido, u.rol_id, u.activo, r.nombre AS rol_nombre
+             FROM usuarios u
+             LEFT JOIN roles r ON r.id_rol = u.rol_id
+             WHERE u.id_usuario = $1`,
             [decoded.id]
         );
         user = result.rows[0];
@@ -43,6 +45,8 @@ const protect = async (req, res, next) => {
         nombre: user.nombre,
         apellido: user.apellido,
         rol_id: user.rol_id,
+        // requireRole lo usa sin volver a consultar la base
+        rol: user.rol_nombre || null,
         activo: user.activo,
         loginAt: decoded.loginAt,
         tokenIssuedAt: new Date(decoded.iat * 1000).toISOString(),
@@ -50,11 +54,12 @@ const protect = async (req, res, next) => {
     };
 
     // Sesión de 30 min sin actividad: cada petición válida recibe un token nuevo.
-    // El frontend lo guarda (apiFetch, cabecera X-Nuevo-Token).
+    // El frontend lo guarda (apiFetch, cabecera X-Nuevo-Token). Lleva el rol y el correo
+    // actuales de la base, no los del token viejo.
     res.setHeader('X-Nuevo-Token', generateToken({
-        id: decoded.id,
-        email: decoded.email,
-        rol: decoded.rol,
+        id: user.id_usuario,
+        email: user.email,
+        rol: user.rol_nombre || null,
         loginAt: decoded.loginAt
     }));
 

@@ -139,7 +139,26 @@ consumo = (contador final de SIMB0002 − su lectura de octubre) + (lectura de n
 
 Los meses anteriores no cambian. Si el reemplazo no se registra antes de aprobar, el lote de noviembre no pasa la validación (SIMF0006 no está asignada y falta SIMB0002). Un período ya aprobado no admite reemplazos.
 
+**Si se registró por error**, el administrador lo anula en **Máquinas → Reemplazos → Anular** (o `POST /api/maquinas-cambio/:id/anular`): SIMB0002 vuelve a su asignación, SIMF0006 queda libre y el cambio deja de contar. Solo se puede **antes de aprobar** el lote del período; si el lote ya llegó pero sigue pendiente, primero se rechaza. Con noviembre aprobado, la API responde 409.
+
 Para otro caso, agregar un objeto a `reemplazos` con `periodo`, `saliente` (serie del escenario), `entrante` (como una máquina del escenario; `ip` es opcional) y `registro` (los datos que se anotan en PrintFlow).
+
+## Escenario grande: 500 máquinas (S4-05)
+
+Para medir el rendimiento del consolidado, `--maquinas N` (y opcionalmente `--clientes M`, 20 por defecto) genera un escenario grande **determinista**: los dos clientes de la demo **sin cambios** (Colegio Horizonte sigue dando $395,48 en octubre) más clientes «Cliente de carga NN (demo)» con máquinas `SIMG0001`, `SIMG0002`… El primero de ellos, **Cliente de carga 01**, es el más grande (99 máquinas con 500/20); el resto se reparte en partes iguales. Lo aceptan `preparar-datos.js`, `generar-correos.js` y `demo.js`; sin la opción, todo sigue igual. También sirve `SIM_MAQUINAS=500`.
+
+```powershell
+# Base limpia, datos grandes y diez meses (enero a octubre de 2026) aprobados
+docker compose down -v
+docker compose up -d --build db api web
+docker compose run --rm -T simulador preparar-datos.js --maquinas 500 | docker compose exec -T db psql -U postgres -d printflow
+docker compose run --rm simulador demo.js --maquinas 500 --desde 2026-01 --hasta 2026-10 --sin-errores
+
+# Tiempos del consolidado por cliente (el más grande y los 20)
+docker compose run --rm simulador medir-consolidado.js --maquinas 500 --periodo 2026-10
+```
+
+Los resultados y el análisis están en [`docs/rendimiento.md`](../docs/rendimiento.md).
 
 ## Archivos
 
@@ -150,6 +169,8 @@ Para otro caso, agregar un objeto a `reemplazos` con `periodo`, `saliente` (seri
 | `generar-correos.js` | Arma los correos de un mes y los deja en `buzon/entrada/` (con `--reemplazos`, aplica los de `escenario.json`) |
 | `procesar-buzon.js` | El «n8n»: lee el buzón, convierte y llama a `POST /api/ingesta/cargar` con `Authorization: Bearer <INGESTA_TOKEN>`; si falla, reintenta y avisa al administrador (S3-08) |
 | `demo.js` | Todo junto: varios meses, aprobación y consolidado |
+| `medir-consolidado.js` | Mide cuánto tarda el consolidado de cada cliente (S4-05) |
+| `lib/escenarioGrande.js` | Genera el escenario grande de `--maquinas N` |
 | `lib/formatos.js` | Generador y lector de cada formato |
 | `lib/correo.js` | Crea y lee correos `.eml` con adjuntos |
 | `lib/n8n.js` | Convierte un correo en el cuerpo de la ingesta |

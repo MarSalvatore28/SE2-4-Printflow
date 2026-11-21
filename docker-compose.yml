@@ -25,14 +25,17 @@ services:
       TZ: America/Guayaquil
     volumes:
       - db_data:/var/lib/postgresql/data
-      # Migraciones y seeds del Equipo C. Se aplican SOLO la primera vez que se crea el volumen.
+      # Migraciones y seeds del Equipo C. Al crear el volumen se aplican todas (init.sh); en una base
+      # que ya existe, las nuevas se aplican con `npm run migrar` (db/migrar.sh).
       - ./db:/printflow-db:ro
       - ./docker/postgres/init.sh:/docker-entrypoint-initdb.d/10-printflow.sh:ro
     ports:
       # 5433 en tu PC para no chocar con un PostgreSQL instalado en Windows (cambiar con DB_HOST_PORT)
       - "127.0.0.1:${DB_HOST_PORT:-5433}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      # Por TCP (-h 127.0.0.1): mientras init.sh crea la base, Postgres solo escucha en el socket, así
+      # que la base no figura «healthy» (ni arranca la API, ni corre migrar.sh) hasta que termina.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10

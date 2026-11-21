@@ -188,3 +188,58 @@ test('preparar-datos registra la entrante libre (sin asignación)', () => {
   assert.match(sql, /INSERT INTO maquinas \(serie, tipo_impresion_id, modelo_id\) VALUES \('SIMF0006'/);
   assert.doesNotMatch(sql, /INSERT INTO instalaciones[^\n]*'SIMF0006'/);
 });
+
+// --- Escenario grande para medir el rendimiento (S4-05) ---
+const { generarEscenarioGrande, escenarioDeArgs, repartirMaquinas } = require('../simulador/lib/escenarioGrande');
+
+test('--maquinas 500 reparte 500 máquinas entre 20 clientes, sin series ni RUC repetidos', () => {
+  const grande = generarEscenarioGrande({ maquinas: 500, clientes: 20 });
+  const maquinas = grande.clientes.flatMap((c) => c.maquinas);
+  assert.equal(grande.clientes.length, 20);
+  assert.equal(maquinas.length, 500);
+  assert.equal(new Set(maquinas.map((m) => m.serie)).size, 500);
+  assert.equal(new Set(grande.clientes.map((c) => c.ruc)).size, 20);
+  assert.equal(new Set(grande.clientes.map((c) => c.codigo)).size, 20);
+  // El cliente más grande es el primero agregado
+  const tamanos = grande.clientes.map((c) => c.maquinas.length);
+  assert.equal(Math.max(...tamanos), grande.clientes.find((c) => c.codigo === 'carga01').maquinas.length);
+  assert.deepEqual(generarEscenarioGrande({ maquinas: 500, clientes: 20 }), grande, 'es reproducible');
+});
+
+test('el escenario grande conserva los clientes de la demo tal cual (Horizonte sigue dando lo mismo)', () => {
+  const grande = generarEscenarioGrande({ maquinas: 500, clientes: 20 });
+  assert.deepEqual(grande.clientes.slice(0, escenario.clientes.length), escenario.clientes);
+  assert.deepEqual(grande.reemplazos, escenario.reemplazos);
+});
+
+test('repartirMaquinas suma exactamente lo pedido', () => {
+  for (const [total, clientes] of [[495, 18], [10, 3], [7, 7], [100, 1]]) {
+    const reparto = repartirMaquinas(total, clientes);
+    assert.equal(reparto.length, clientes);
+    assert.equal(reparto.reduce((s, n) => s + n, 0), total);
+    assert.ok(reparto.every((n) => n >= 1));
+  }
+});
+
+test('sin --maquinas se usa el escenario normal; con --maquinas, el grande', () => {
+  assert.deepEqual(escenarioDeArgs([], {}), escenario);
+  assert.equal(escenarioDeArgs(['--maquinas', '60', '--clientes', '5'], {}).clientes.length, 5);
+  assert.equal(escenarioDeArgs([], { SIM_MAQUINAS: '60', SIM_CLIENTES: '4' }).clientes.flatMap((c) => c.maquinas).length, 60);
+  assert.throws(() => escenarioDeArgs(['--maquinas', '3'], {}), /escenario grande/);
+});
+
+test('preparar-datos y generar-correos aceptan el escenario grande', () => {
+  const grande = generarEscenarioGrande({ maquinas: 60, clientes: 5 });
+  const sql = generarSql(grande);
+  assert.equal((sql.match(/INSERT INTO instalaciones/g) || []).length, 60);
+  const buzon = fs.mkdtempSync(path.join(os.tmpdir(), 'pf-grande-'));
+  try {
+    const archivos = generarCorreos({ periodo: '2026-10', escenario: grande, buzon });
+    assert.equal(archivos.length, 5);
+    const series = archivos.flatMap((a) => correoAIngesta(leerCorreo(fs.readFileSync(path.join(buzon, a), 'utf8'))).items
+      .map((i) => i.consolidado.serie_maquina));
+    assert.deepEqual(series.sort(), grande.clientes.flatMap((c) => c.maquinas.map((m) => m.serie)).sort());
+  } finally {
+    fs.rmSync(buzon, { recursive: true, force: true });
+  }
+});

@@ -1,0 +1,86 @@
+# PrintFlow · monitoreo de producción (S4-04). Ver docs/despliegue.md, sección 8.
+#
+# Cada 5 minutos (y a mano: Actions → «Monitoreo» → Run workflow) hace GET a la variable de repo
+# MONITOREO_URL, p. ej. https://DOMINIO/api/health (responde 200 solo si la API y la base contestan).
+#   - Sin MONITOREO_URL: termina en verde sin revisar nada.
+#   - Si no responde 200 en 3 intentos: el job queda en rojo (GitHub avisa por correo) y se abre un
+#     issue «[monitoreo] Producción no responde», que les llega a todos los que siguen el repo.
+#     Mientras siga caído no se abren más. Cuando vuelve a responder, se cierra solo.
+#   - MONITOREO_ISSUES = false (variable de repo) desactiva los issues.
+# GitHub corre los «schedule» solo desde main y a veces con varios minutos de retraso.
+name: Monitoreo
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: monitoreo
+  cancel-in-progress: false
+
+jobs:
+  chequeo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      MONITOREO_URL: ${{ vars.MONITOREO_URL }}
+      TITULO: "[monitoreo] Producción no responde"
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: GET a la API de producción
+        id: chequeo
+        run: |
+          if [ -z "$MONITOREO_URL" ]; then
+            echo "::notice title=Monitoreo no configurado::Falta la variable de repo MONITOREO_URL; no se revisó nada."
+            echo "configurado=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "configurado=true" >> "$GITHUB_OUTPUT"
+          for intento in 1 2 3; do
+            codigo=$(curl -sS -o respuesta.txt -w '%{http_code}' --max-time 20 "$MONITOREO_URL") || codigo="sin respuesta"
+            if [ "$codigo" = "200" ]; then
+              echo "OK (HTTP 200): $(head -c 200 respuesta.txt | tr -s '\r\n' ' ')"
+              exit 0
+            fi
+            echo "Intento $intento: HTTP $codigo $(head -c 200 respuesta.txt 2>/dev/null | tr -s '\r\n' ' ')"
+            [ "$intento" = 3 ] || sleep 20
+          done
+          echo "detalle=HTTP $codigo" >> "$GITHUB_OUTPUT"
+          echo "::error title=Producción no responde::$MONITOREO_URL no respondió 200 en 3 intentos (último: HTTP $codigo)."
+          exit 1
+
+      - name: Abre un issue (avisa a quienes siguen el repo)
+        if: failure() && steps.chequeo.outputs.configurado == 'true' && vars.MONITOREO_ISSUES != 'false'
+        env:
+          DETALLE: ${{ steps.chequeo.outputs.detalle }}
+          EJECUCION: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          abierto=$(gh issue list --state open --limit 100 --json number,title \
+            --jq '.[] | select(.title == env.TITULO) | .number' | head -n 1)
+          if [ -n "$abierto" ]; then
+            echo "Ya hay un issue abierto por esta caída: #$abierto"
+            exit 0
+          fi
+          gh issue create --title "$TITULO" --body "$(cat <<EOF
+          El monitoreo no recibió respuesta 200 de \`$MONITOREO_URL\` en 3 intentos (último: $DETALLE).
+
+          - Ejecución: $EJECUCION
+          - Qué revisar: \`docs/despliegue.md\`, sección 8 («Si el monitoreo avisa»).
+
+          Este issue se cierra solo cuando la API vuelve a responder.
+          EOF
+          )"
+
+      - name: Cierra el issue si producción volvió
+        if: success() && steps.chequeo.outputs.configurado == 'true' && vars.MONITOREO_ISSUES != 'false'
+        run: |
+          for n in $(gh issue list --state open --limit 100 --json number,title \
+              --jq '.[] | select(.title == env.TITULO) | .number'); do
+            gh issue close "$n" --comment "Producción volvió a responder ($(date -u '+%F %H:%M') UTC)."
+          done

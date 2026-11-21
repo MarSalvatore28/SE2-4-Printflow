@@ -462,7 +462,9 @@ const getContratoSuperpuesto = async (clienteId, fechaInicio, fechaFin, excluirI
   return rows[0] || null;
 };
 
-const createContrato = async (contratoData) => {
+// Alta, cambio y baja de contratos: `db` es el client de la transacción del que llama (S3-02: el
+// controlador guarda el cambio y su auditoría juntos). Sin él, usan el pool.
+const createContrato = async (contratoData, db = pool) => {
   const {
     cliente_id,
     fecha_inicio,
@@ -498,7 +500,7 @@ const createContrato = async (contratoData) => {
     RETURNING id_contrato
   `;
 
-  const { rows } = await pool.query(query, [
+  const { rows } = await db.query(query, [
     cliente_id, fecha_inicio, fecha_fin,
     impresiones_bn_incluidas, impresiones_color_incluidas,
     costo_impresion_bn, costo_impresion_color,
@@ -512,7 +514,7 @@ const createContrato = async (contratoData) => {
   return rows[0].id_contrato;
 };
 
-const updateContrato = async (contratoId, contratoData) => {
+const updateContrato = async (contratoId, contratoData, db = pool) => {
   const {
     fecha_inicio,
     fecha_fin,
@@ -550,7 +552,7 @@ const updateContrato = async (contratoId, contratoData) => {
     WHERE id_contrato = $12
   `;
 
-  const { rowCount } = await pool.query(query, [
+  const { rowCount } = await db.query(query, [
     fecha_inicio, fecha_fin,
     impresiones_bn_incluidas, impresiones_color_incluidas,
     costo_impresion_bn, costo_impresion_color,
@@ -565,14 +567,14 @@ const updateContrato = async (contratoId, contratoData) => {
   return rowCount;
 };
 
-const desactivarContrato = async (contratoId) => {
+const desactivarContrato = async (contratoId, db = pool) => {
   const query = `
     UPDATE contratos
     SET activo = FALSE
     WHERE id_contrato = $1
   `;
 
-  const { rowCount } = await pool.query(query, [contratoId]);
+  const { rowCount } = await db.query(query, [contratoId]);
   return rowCount;
 };
 

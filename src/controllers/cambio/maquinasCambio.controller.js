@@ -1,5 +1,6 @@
 const {
   registrarReemplazo,
+  anularReemplazo,
   listarReemplazos,
   getReemplazoById,
   ultimaLecturaAntesDe,
@@ -10,7 +11,9 @@ const {
   parseId,
   validarDatosReemplazo,
   validarFiltrosListado,
+  validarDatosAnulacion,
 } = require('@utils/maquinasCambio.reglas');
+const { contextoAuditoria } = require('@services/auditoria');
 
 const PERIODO_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -28,7 +31,7 @@ const registrarReemplazoController = async (req, res) => {
     const { error, data } = validarDatosReemplazo(req.body);
     if (error) return res.status(error.status).json({ success: false, message: error.message });
 
-    const id = await registrarReemplazo(data);
+    const id = await registrarReemplazo(data, contextoAuditoria(req));
     const reemplazo = await getReemplazoById(id);
     res.status(201).json({
       success: true,
@@ -38,6 +41,27 @@ const registrarReemplazoController = async (req, res) => {
   } catch (err) {
     if (err.esNegocio) return res.status(err.status).json({ success: false, message: err.message });
     errorServidor(res, 'Error al registrar el reemplazo', err);
+  }
+};
+
+// POST /api/maquinas-cambio/:id/anular (solo admin)
+const anularReemplazoController = async (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ success: false, message: 'ID de reemplazo inválido' });
+  const { error, data } = validarDatosAnulacion(req.body);
+  if (error) return res.status(error.status).json({ success: false, message: error.message });
+
+  try {
+    await anularReemplazo(req.pool, id, { motivo: data.motivo, ...contextoAuditoria(req) });
+    const reemplazo = await getReemplazoById(id, req.pool);
+    res.status(200).json({
+      success: true,
+      message: `Reemplazo anulado: ${reemplazo.saliente_serie} vuelve a quedar asignada en ${reemplazo.area_nombre} y ${reemplazo.entrante_serie} queda libre`,
+      data: reemplazo,
+    });
+  } catch (err) {
+    if (err.esNegocio) return res.status(err.status).json({ success: false, message: err.message });
+    errorServidor(res, 'Error al anular el reemplazo', err);
   }
 };
 
@@ -93,6 +117,7 @@ const tiposCambioController = (_req, res) => {
 
 module.exports = {
   registrarReemplazoController,
+  anularReemplazoController,
   listarReemplazosController,
   getReemplazoController,
   ultimaLecturaController,

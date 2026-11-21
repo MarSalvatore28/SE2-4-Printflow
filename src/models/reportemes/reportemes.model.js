@@ -2,6 +2,8 @@ const pool = require('@config/db');
 const { consumoDelCambio } = require('@utils/maquinasCambio.consumo');
 const { consumoDeCuenta } = require('@utils/consumoPorCuenta');
 const { calcularFacturacion } = require('@utils/facturacion');
+const { sqlFechaEcuador } = require('@utils/fechaCorte');
+const { tarifasDelReporte, preferirTarifas } = require('@utils/tarifasCongeladas');
 
 const getPeriodoAnterior = (periodoActual) => {
   const [year, month] = periodoActual.split('-').map(Number);
@@ -35,47 +37,45 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
   try {
     const periodoAnterior = getPeriodoAnterior(periodo);
 
-    let queryText = `
-      WITH unique_reports AS (
-        SELECT DISTINCT ro.id_reporte
-        FROM reportes_oficiales ro
-        ${INSTALACION_DEL_PERIODO}
-        LEFT JOIN areas a ON i.area_id = a.id_area
-        
-        WHERE ro.cliente_id = $1
-          AND ro.periodo = $2
-    `;
-
-    let params = [clienteId, periodo, periodoAnterior];
+    // Rendimiento (S4-05): los reportes del cliente y período se filtran en la misma consulta (índice
+    // reportes_oficiales (cliente_id, periodo), migración 020) y la asignación del período se busca
+    // una sola vez por reporte. Los detalles por usuario se suman solo para los reportes del
+    // resultado (LATERAL), no para toda la tabla. Los resultados son los mismos de antes.
+    const params = [clienteId, periodo, periodoAnterior];
     let paramCounter = 4;
+    let filtros = '';
 
     if (areaId) {
-      queryText += ` AND COALESCE(ro.snap_area_nombre, a.nombre) IN (SELECT nombre FROM areas WHERE id_area = $${paramCounter})`;
+      filtros += ` AND COALESCE(ro.snap_area_nombre, a.nombre) IN (SELECT nombre FROM areas WHERE id_area = $${paramCounter})`;
       params.push(areaId);
       paramCounter++;
     }
     if (maquinaId) {
-      queryText += ` AND ro.maquina_id = $${paramCounter}`;
+      filtros += ` AND ro.maquina_id = $${paramCounter}`;
       params.push(maquinaId);
     }
 
-    queryText += `
-      )
+    const queryText = `
       SELECT 
         ro.id_reporte,
         ro.maquina_id,
-        ro.fecha_corte,
+        ${sqlFechaEcuador('ro.fecha_corte')} as fecha_corte,
+        -- Trazabilidad (S3-02): el lote que trajo la lectura y quién la aprobó
+        ro.lote_origen_id,
+        ro.usuario_validacion_id,
+        ro.origen,
         ro.snap_maquina_serie as serie,
         COALESCE(mod.nombre, 'No disponible') as modelo,
         ro.snap_maquina_ip as ip,
         COALESCE(ro.snap_area_nombre, a.nombre, 'Sin Área') as area,
         
-        -- FECHAS DE CORTE REALES
-        ro.fecha_corte as fecha_corte_actual,
-        prev.fecha_corte as fecha_corte_anterior,
+        -- FECHAS DE CORTE REALES, en hora de Ecuador con su desfase ('2026-10-31T23:00:00-05:00'):
+        -- en UTC, un corte del 31 de octubre a las 23:00 se veía como del 1 de noviembre
+        ${sqlFechaEcuador('ro.fecha_corte')} as fecha_corte_actual,
+        ${sqlFechaEcuador('prev.fecha_corte')} as fecha_corte_anterior,
         
         -- FECHA CORTE ANTERIOR ESPECÍFICA DE LA MÁQUINA SALIENTE
-        prev_saliente.fecha_corte as saliente_ultimo_corte,
+        ${sqlFechaEcuador('prev_saliente.fecha_corte')} as saliente_ultimo_corte,
 
         -- Configuración Técnica
         i.contador_acumulativo,
@@ -99,11 +99,19 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
         COALESCE(prev.contador_copias_color, 0) as prev_cop_col,
         COALESCE(prev.total_servicio, 0) as prev_total_servicio,
 
-        -- ========== COSTOS ==========
+        -- ========== TARIFAS CONGELADAS AL APROBAR (snap_contrato_id en NULL = sin congelar) ==========
+        ro.snap_contrato_id,
+        ro.fecha_congelacion,
         ro.snap_costo_impresion_bn,
         ro.snap_costo_impresion_color,
-        
-        -- ========== DATOS DEL CONTRATO (el de la asignación de la máquina en el período) ==========
+        ro.snap_impresiones_bn_incluidas,
+        ro.snap_impresiones_color_incluidas,
+        ro.snap_costo_excedente_bn,
+        ro.snap_costo_excedente_color,
+        ro.snap_facturacion_de_impresora,
+
+        -- ========== DATOS DEL CONTRATO ACTUAL (el de la asignación de la máquina en el período) ==========
+        -- Solo se usan si el reporte no tiene tarifas congeladas
         i.contrato_id,
         c.impresiones_bn_incluidas,
         c.impresiones_color_incluidas,
@@ -171,8 +179,7 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
         inst_saliente.fecha_retiro as saliente_fecha_retiro,
         inst_entrante.fecha_instalacion as entrante_fecha_instalacion
 
-      FROM unique_reports ur
-      JOIN reportes_oficiales ro ON ro.id_reporte = ur.id_reporte
+      FROM reportes_oficiales ro
       JOIN maquinas m ON ro.maquina_id = m.id_maquina
       LEFT JOIN tipos_impresion ti ON m.tipo_impresion_id = ti.id_tipo_impresion
       LEFT JOIN modelos mod ON m.modelo_id = mod.id_modelo
@@ -244,28 +251,30 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
           LIMIT 1
         ))
       
-      -- DETALLES ACTUALES
-      LEFT JOIN (
-        SELECT reporte_oficial_id,
-               SUM(cnt_impresion_bn) as det_cur_imp_bn,
-               SUM(cnt_impresion_color) as det_cur_imp_col,
-               SUM(cnt_copia_bn) as det_cur_cop_bn,
-               SUM(cnt_copia_color) as det_cur_cop_col
-        FROM reportes_detalle_oficial
-        GROUP BY reporte_oficial_id
-      ) det_cur ON det_cur.reporte_oficial_id = ro.id_reporte
+      -- DETALLES ACTUALES (sin detalle por usuario, las sumas quedan en NULL)
+      LEFT JOIN LATERAL (
+        SELECT SUM(d.cnt_impresion_bn) as det_cur_imp_bn,
+               SUM(d.cnt_impresion_color) as det_cur_imp_col,
+               SUM(d.cnt_copia_bn) as det_cur_cop_bn,
+               SUM(d.cnt_copia_color) as det_cur_cop_col
+        FROM reportes_detalle_oficial d
+        WHERE d.reporte_oficial_id = ro.id_reporte
+      ) det_cur ON TRUE
 
       -- DETALLES ANTERIORES
-      LEFT JOIN (
-        SELECT reporte_oficial_id,
-               SUM(cnt_impresion_bn) as det_prev_imp_bn,
-               SUM(cnt_impresion_color) as det_prev_imp_col,
-               SUM(cnt_copia_bn) as det_prev_cop_bn,
-               SUM(cnt_copia_color) as det_prev_cop_col
-        FROM reportes_detalle_oficial
-        GROUP BY reporte_oficial_id
-      ) det_prev_rel ON det_prev_rel.reporte_oficial_id = prev.id_reporte
-      
+      LEFT JOIN LATERAL (
+        SELECT SUM(d.cnt_impresion_bn) as det_prev_imp_bn,
+               SUM(d.cnt_impresion_color) as det_prev_imp_col,
+               SUM(d.cnt_copia_bn) as det_prev_cop_bn,
+               SUM(d.cnt_copia_color) as det_prev_cop_col
+        FROM reportes_detalle_oficial d
+        WHERE d.reporte_oficial_id = prev.id_reporte
+      ) det_prev_rel ON TRUE
+
+      WHERE ro.cliente_id = $1
+        AND ro.periodo = $2
+        ${filtros}
+
       ORDER BY ro.id_reporte, ro.snap_maquina_ip ASC
     `;
 
@@ -303,9 +312,10 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
       const cambioCalculado = tieneCambio ? cambios.get(row.maquina_cambio_id) : null;
       const consumoFinal = cambioCalculado ? cambioCalculado.total : calcularConsumoNormal(row);
 
-      // Cálculo referencial (solo informativo, por máquina)
-      const dineroReferencial = (consumoFinal.total_bn * parseFloat(row.costo_contrato_bn || 0)) + 
-                                (consumoFinal.total_color * parseFloat(row.costo_contrato_color || 0));
+      // Cálculo referencial (solo informativo, por máquina), con las tarifas congeladas si las tiene
+      const { contrato: tarifasFila } = tarifasDelReporte(row);
+      const dineroReferencial = (consumoFinal.total_bn * parseFloat(tarifasFila.costo_impresion_bn || 0)) +
+                                (consumoFinal.total_color * parseFloat(tarifasFila.costo_impresion_color || 0));
       const tipoNombre = row.tipo_impresion_nombre || 'BN';
       const esColor = tipoNombre !== 'BN';
 
@@ -347,7 +357,11 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
           fecha_corte_actual: row.fecha_corte_actual,
           fecha_corte_anterior: row.fecha_corte_anterior,
           tiene_cambio: tieneCambio,
-          es_parte_cambio: row.es_parte_cambio || false
+          es_parte_cambio: row.es_parte_cambio || false,
+          // Trazabilidad (S3-02)
+          origen: row.origen,
+          lote_origen_id: row.lote_origen_id,
+          usuario_validacion_id: row.usuario_validacion_id
         },
 
         ...(tieneCambio && {
@@ -510,6 +524,7 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
             SELECT 1 FROM maquinas_cambio mc 
             WHERE mc.maquina_saliente_id = i.maquina_id 
             AND mc.periodo_afectado = $2
+            AND mc.activo = TRUE -- un reemplazo anulado no cambia la renta
         )
     ORDER BY mod.nombre ASC
 `, [clienteId, periodo]);
@@ -527,27 +542,17 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
 
     // --- FACTURACIÓN POR CONTRATO (S3-06): cuota fija + excedente + renta, por contrato y por mes ---
     // Se suma el consumo de todas las máquinas de cada contrato (detalles va en el mismo orden que filasVisibles).
+    // Un mes ya aprobado se factura con las tarifas congeladas al aprobar (src/utils/tarifasCongeladas.js):
+    // si después cambia el contrato, el importe de ese mes no cambia.
     const consumosPorContrato = new Map();
     filasVisibles.forEach((row, indice) => {
-      if (!row.contrato_id) return;
-      if (!consumosPorContrato.has(row.contrato_id)) {
-        consumosPorContrato.set(row.contrato_id, {
-          bn: 0,
-          color: 0,
-          contrato: {
-            impresiones_bn_incluidas: row.impresiones_bn_incluidas,
-            impresiones_color_incluidas: row.impresiones_color_incluidas,
-            costo_impresion_bn: row.costo_contrato_bn,
-            costo_impresion_color: row.costo_contrato_color,
-            costo_x_excedente_impresion_bn: row.costo_x_excedente_impresion_bn,
-            costo_x_excedente_impresion_color: row.costo_x_excedente_impresion_color,
-            facturacion_de_impresora: row.facturacion_de_impresora
-          }
-        });
-      }
-      const acumulado = consumosPorContrato.get(row.contrato_id);
+      const tarifas = tarifasDelReporte(row);
+      if (!tarifas.contratoId) return;
+      const acumulado = consumosPorContrato.get(tarifas.contratoId) || { bn: 0, color: 0, tarifas: null };
+      acumulado.tarifas = preferirTarifas(acumulado.tarifas, tarifas);
       acumulado.bn += detalles[indice].consumo.total_bn;
       acumulado.color += detalles[indice].consumo.total_color;
+      consumosPorContrato.set(tarifas.contratoId, acumulado);
     });
 
     const rentaDelContrato = (contratoId) => rentaEquipos
@@ -557,9 +562,9 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
     const filtrado = Boolean(areaId || maquinaId);
     let facturacion = [...consumosPorContrato.entries()]
       .sort(([a], [b]) => a - b)
-      .map(([contratoId, { bn, color, contrato }]) => ({
+      .map(([contratoId, { bn, color, tarifas }]) => ({
         contrato_id: contratoId,
-        ...calcularFacturacion(contrato, { bn, color }, rentaDelContrato(contratoId), filtrado)
+        ...calcularFacturacion(tarifas.contrato, { bn, color }, rentaDelContrato(contratoId), filtrado)
       }));
 
     // Con filtro por área o máquina, la facturación sigue siendo la del contrato completo (filtrado: true).
@@ -603,7 +608,7 @@ const getReporteDetallado = async (clienteId, periodo, areaId = null, maquinaId 
       SELECT
         -- DATOS DEL DETALLE (Hijo)
         rd.id_detalle,
-        rd.fecha_transaccion,
+        ${sqlFechaEcuador('rd.fecha_transaccion')} AS fecha_transaccion,
         rd.cuenta_id,
         rd.usuario_trabajo,
 

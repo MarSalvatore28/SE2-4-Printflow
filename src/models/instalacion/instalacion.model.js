@@ -1,4 +1,5 @@
 const pool = require('../../config/db');
+const { ACCIONES, leerFila, auditarFila, enTransaccion } = require('@services/auditoria');
 
 // Error de regla de negocio: el controller responde con este status en lugar de 500.
 const errorNegocio = (status, message) => Object.assign(new Error(message), { status });
@@ -319,7 +320,8 @@ const createInstalacion = async (
   fecha_instalacion = null,
   costo_renta_mensual = 0,
   contador_acumulativo = true,
-  contabilidad_por_usuario = false
+  contabilidad_por_usuario = false,
+  auditoria = {} // S3-02: { usuarioId, ip } de la petición
 ) => {
   const client = await pool.connect();
 
@@ -406,6 +408,10 @@ const createInstalacion = async (
       ]
     );
 
+    await auditarFila(client, {
+      tabla: 'instalaciones', idRegistro: result[0].id_instalacion, accion: ACCIONES.CREAR, ...auditoria,
+    });
+
     await client.query('COMMIT');
 
     return {
@@ -425,7 +431,8 @@ const createInstalacion = async (
   }
 };
 
-const deleteInstalacion = async (id_instalacion, observaciones_retiro = null, fecha_retiro = null) => {
+// auditoria (S3-02): { usuarioId, ip } de la petición
+const deleteInstalacion = async (id_instalacion, observaciones_retiro = null, fecha_retiro = null, auditoria = {}) => {
   const client = await pool.connect();
 
   try {
@@ -451,6 +458,7 @@ const deleteInstalacion = async (id_instalacion, observaciones_retiro = null, fe
     }
 
     const observacionesFinal = observaciones_retiro || 'Retiro sin observaciones';
+    const antes = await leerFila(client, 'instalaciones', id_instalacion, { bloquear: true });
 
     await client.query(
       `UPDATE instalaciones
@@ -460,6 +468,10 @@ const deleteInstalacion = async (id_instalacion, observaciones_retiro = null, fe
        WHERE id_instalacion = $2`,
       [observacionesFinal, id_instalacion, fecha_retiro || null]
     );
+
+    await auditarFila(client, {
+      tabla: 'instalaciones', idRegistro: id_instalacion, accion: ACCIONES.RETIRAR, antes, ...auditoria,
+    });
 
     await client.query('COMMIT');
 
@@ -724,36 +736,41 @@ const updateInstalacionCompleta = async (
   costo_renta_mensual,
   contador_acumulativo,
   contabilidad_por_usuario,
-  fecha_instalacion
+  fecha_instalacion,
+  auditoria = {} // S3-02: { usuarioId, ip } de la petición
 ) => {
-  try {
-    const renta = costo_renta_mensual || 0;
-    const acumulativo = contador_acumulativo !== undefined ? contador_acumulativo : true;
-    const contabilidad = contabilidad_por_usuario !== undefined ? contabilidad_por_usuario : false;
+  const renta = costo_renta_mensual || 0;
+  const acumulativo = contador_acumulativo !== undefined ? contador_acumulativo : true;
+  const contabilidad = contabilidad_por_usuario !== undefined ? contabilidad_por_usuario : false;
 
-    const query = `
-      UPDATE instalaciones 
-      SET 
-          ip_address = $1,
-          costo_renta_mensual = $2,
-          contador_acumulativo = $3,
-          contabilidad_por_usuario = $4,
-          fecha_instalacion = COALESCE($5, fecha_instalacion)
-      WHERE id_instalacion = $6 AND fecha_retiro IS NULL
-      RETURNING *;
-    `;
+  const query = `
+    UPDATE instalaciones
+    SET
+        ip_address = $1,
+        costo_renta_mensual = $2,
+        contador_acumulativo = $3,
+        contabilidad_por_usuario = $4,
+        fecha_instalacion = COALESCE($5, fecha_instalacion)
+    WHERE id_instalacion = $6 AND fecha_retiro IS NULL
+    RETURNING *;
+  `;
 
-    const values = [ip_address, renta, acumulativo, contabilidad, fecha_instalacion, id_instalacion];
-    const { rows } = await pool.query(query, values);
+  const values = [ip_address, renta, acumulativo, contabilidad, fecha_instalacion, id_instalacion];
+
+  // El cambio y su auditoría, en la misma transacción
+  return enTransaccion(pool, async (client) => {
+    const antes = await leerFila(client, 'instalaciones', id_instalacion, { bloquear: true });
+    const { rows } = await client.query(query, values);
 
     if (rows.length === 0) {
       throw new Error("Instalación no encontrada o ya está retirada.");
     }
 
+    await auditarFila(client, {
+      tabla: 'instalaciones', idRegistro: id_instalacion, accion: ACCIONES.ACTUALIZAR, antes, ...auditoria,
+    });
     return rows[0];
-  } catch (error) {
-    throw error;
-  }
+  });
 };
 
 module.exports = {

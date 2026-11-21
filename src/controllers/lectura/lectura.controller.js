@@ -7,7 +7,7 @@ const registrarLecturaManualController = async (req, res) => {
   if (error) return res.status(error.status).json({ success: false, message: error.message });
 
   try {
-    const lectura = await registrarLecturaManual(req.pool, data, req.user.id);
+    const lectura = await registrarLecturaManual(req.pool, data, req.user.id, req.ip);
     res.status(201).json({ success: true, message: 'Lectura manual registrada', data: lectura });
   } catch (err) {
     if (err.esNegocio) {
