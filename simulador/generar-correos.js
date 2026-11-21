@@ -4,6 +4,7 @@
 //   node generar-correos.js --periodo 2026-10 --errores          (+ casos de error)
 //   node generar-correos.js --periodo 2026-10 --falla SIMB0002   (equipo con falla)
 //   node generar-correos.js --periodo 2026-11 --reemplazos       (aplica escenario.reemplazos)
+//   node generar-correos.js --periodo 2026-10 --maquinas 500     (escenario grande, S4-05)
 //
 // Un correo por cliente y mes, con un adjunto por impresora en el formato de su marca.
 // El Message-ID es fijo por cliente y mes: generar dos veces el mismo mes simula un reenvío.
@@ -15,6 +16,7 @@ const {
 } = require('./lib/escenario');
 const { FORMATOS } = require('./lib/formatos');
 const { crearCorreo } = require('./lib/correo');
+const { escenarioDeArgs } = require('./lib/escenarioGrande');
 
 const BUZON = path.join(__dirname, 'buzon', 'entrada');
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -114,7 +116,9 @@ if (require.main === module) {
   try {
     const periodo = valor('--periodo');
     const reemplazos = args.includes('--reemplazos');
+    const escenario = escenarioDeArgs(args);
     const archivos = generarCorreos({
+      escenario,
       periodo,
       errores: args.includes('--errores'),
       fallas: (valor('--falla') || '').split(',').map((s) => s.trim()).filter(Boolean),
@@ -123,7 +127,7 @@ if (require.main === module) {
     console.log(`Correos generados en simulador/buzon/entrada (${archivos.length}):`);
     archivos.forEach((a) => console.log(`  ✉  ${a}`));
     if (reemplazos) {
-      for (const r of reemplazosPorRegistrar(cargarEscenario(), periodo)) {
+      for (const r of reemplazosPorRegistrar(escenario, periodo)) {
         console.log(`
 Reemplazo ${r.saliente} → ${r.entrante} desde ${r.periodo_afectado}. Debe estar registrado en Máquinas → Reemplazos` +
           ' antes de aprobar el lote, con estos datos:');

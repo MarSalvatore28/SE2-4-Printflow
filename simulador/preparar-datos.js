@@ -5,8 +5,9 @@
 //   docker compose run --rm -T simulador preparar-datos.js | docker compose exec -T db psql -U postgres -d printflow
 //
 // Va por SQL para que los datos coincidan siempre con los correos que genera el simulador.
+// Con --maquinas 500 (y opcionalmente --clientes 20) registra el escenario grande (S4-05).
 
-const { cargarEscenario } = require('./lib/escenario');
+const { escenarioDeArgs } = require('./lib/escenarioGrande');
 
 const q = (valor) => (valor === null || valor === undefined ? 'NULL' : `'${String(valor).replace(/'/g, "''")}'`);
 const FECHA_INSTALACION = '2026-01-15';
@@ -81,5 +82,5 @@ function generarSql(escenario) {
 module.exports = { generarSql };
 
 if (require.main === module) {
-  process.stdout.write(generarSql(cargarEscenario()));
+  process.stdout.write(generarSql(escenarioDeArgs()));
 }
