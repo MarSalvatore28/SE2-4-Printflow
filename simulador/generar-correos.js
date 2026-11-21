@@ -91,7 +91,7 @@ function generarCorreos({ periodo, errores = false, fallas = [], reemplazos = fa
       nombre: 'Remitente sin registrar',
       codigo: 'desconocido',
       maquinas: [{
-        serie: 'SIMX9999', modelo: 'Equipo no registrado (demo)', formato: 'texto-contadores', ip: '10.99.9.99',
+        serie: 'SIMX9999', modelo: 'Equipo no registrado (demo)', formato: 'texto-contadores', ip: '10.99.9.99', // NOSONAR: IP ficticia del equipo sin registrar de la simulación
         contador_inicial: { impresion_bn: 5000, impresion_color: 0, copia_bn: 0, copia_color: 0 },
         consumo_mensual: { impresion_bn: 900, impresion_color: 0, copia_bn: 0, copia_color: 0 },
       }],
