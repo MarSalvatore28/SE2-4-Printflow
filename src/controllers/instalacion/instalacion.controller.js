@@ -17,6 +17,7 @@ const {
   updateRentaInstalacion,
   getRentaByCliente
 } = require('@models/instalacion/instalacion.model');
+const { contextoAuditoria } = require('@services/auditoria');
 
 const getInstalacionCompletaByMaquinaController = async (req, res) => {
   try {
@@ -179,7 +180,8 @@ const createInstalacionController = async (req, res) => {
       fecha_instalacion,
       costo_renta_mensual,
       contador_acumulativo !== undefined ? contador_acumulativo : true,
-      contabilidad_por_usuario !== undefined ? contabilidad_por_usuario : false
+      contabilidad_por_usuario !== undefined ? contabilidad_por_usuario : false,
+      contextoAuditoria(req)
     );
 
     res.status(201).json({
@@ -209,7 +211,7 @@ const deleteInstalacionController = async (req, res) => {
     const { id_instalacion } = req.params;
     const { observaciones_retiro, fecha_retiro } = req.body;
 
-    const resultado = await deleteInstalacion(id_instalacion, observaciones_retiro, fecha_retiro);
+    const resultado = await deleteInstalacion(id_instalacion, observaciones_retiro, fecha_retiro, contextoAuditoria(req));
 
     res.status(200).json({
       success: true,
@@ -316,7 +318,8 @@ const updateInstalacionController = async (req, res) => {
       costo_renta_mensual,
       contador_acumulativo,
       contabilidad_por_usuario,
-      fecha_instalacion
+      fecha_instalacion,
+      contextoAuditoria(req)
     );
 
     res.status(200).json({
