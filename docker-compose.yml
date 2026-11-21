@@ -25,7 +25,8 @@ services:
       TZ: America/Guayaquil
     volumes:
       - db_data:/var/lib/postgresql/data
-      # Migraciones y seeds del Equipo C. Se aplican SOLO la primera vez que se crea el volumen.
+      # Migraciones y seeds del Equipo C. Al crear el volumen se aplican todas (init.sh); en una base
+      # que ya existe, las nuevas se aplican con `npm run migrar` (db/migrar.sh).
       - ./db:/printflow-db:ro
       - ./docker/postgres/init.sh:/docker-entrypoint-initdb.d/10-printflow.sh:ro
     ports:
