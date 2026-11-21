@@ -88,7 +88,16 @@ respaldar() {
   sincronizar_azure
 }
 
+# Los respaldos tienen todos los datos: solo los lee su dueño (el usuario de la VM, UID 1000)
+umask 077
 mkdir -p "$DIR"
+# Si Docker creó ./backups (como root) antes que el usuario de la VM, el contenedor, que corre sin
+# root, no puede escribir: se avisa con el arreglo en vez de fallar en cada respaldo.
+if [ ! -w "$DIR" ]; then
+  echo "$(ahora) ERROR: no se puede escribir en $DIR (la carpeta backups/ de la VM es de otro usuario)." >&2
+  echo "  Arreglo, en la carpeta del backend: sudo chown -R $(id -u):$(id -g) backups  (ver docs/despliegue.md, sección 4)" >&2
+  exit 1
+fi
 case "${1:-}" in
   --una-vez)
     respaldar
