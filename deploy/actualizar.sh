@@ -16,6 +16,8 @@
 # Usa el .env de la raíz del backend (FRONTEND_PATH, por defecto ../SE2-4-Printflow-Frontend).
 # Para probarlo en la PC sin pisar otro entorno: COMPOSE_PROJECT_NAME=pf-prueba sh deploy/actualizar.sh
 set -eu
+# En Git Bash (para ensayarlo en Windows) no convertir /printflow-db/... en una ruta de Windows
+export MSYS_NO_PATHCONV=1
 
 cd "$(dirname "$0")/.."
 
