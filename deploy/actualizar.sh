@@ -16,6 +16,8 @@
 # Usa el .env de la raíz del backend (FRONTEND_PATH, por defecto ../SE2-4-Printflow-Frontend).
 # Para probarlo en la PC sin pisar otro entorno: COMPOSE_PROJECT_NAME=pf-prueba sh deploy/actualizar.sh
 set -eu
+# En Git Bash (para ensayarlo en Windows) no convertir /printflow-db/... en una ruta de Windows
+export MSYS_NO_PATHCONV=1
 
 cd "$(dirname "$0")/.."
 
@@ -38,6 +40,10 @@ trap al_salir EXIT
 FRONT=$(sed -n 's/^FRONTEND_PATH=//p' .env | tail -n 1 | tr -d '\r"')
 FRONT=${FRONT:-../SE2-4-Printflow-Frontend}
 [ -d "$FRONT/.git" ] || { echo "No encuentro el repo del frontend en $FRONT"; exit 1; }
+
+# Las carpetas que se montan en los contenedores las crea el usuario del despliegue: si las crea
+# Docker quedan de root, y ni el respaldo ni la API (corren sin root, UID 1000) pueden escribir.
+mkdir -p backups buzon-salida
 
 if [ "${1:-}" != "--despues-del-pull" ]; then
   COMMIT=${1:-}
@@ -73,8 +79,6 @@ if [ "${1:-}" != "--despues-del-pull" ]; then
 fi
 
 paso "3/6 Construye las imágenes"
-# El servicio de respaldos corre sin root: la carpeta la crea el usuario del despliegue
-mkdir -p backups
 dc build
 
 paso "4/6 Migraciones pendientes"
