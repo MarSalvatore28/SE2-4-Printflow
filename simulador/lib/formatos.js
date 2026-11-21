@@ -149,8 +149,8 @@ const textoContadores = {
 // ---------------------------------------------------------------------------
 // 3. xml-estado · estado del equipo en XML (plotters y equipos con servicio web)
 // ---------------------------------------------------------------------------
-const escaparXml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const desescaparXml = (s) => String(s).replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+const escaparXml = (s) => String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+const desescaparXml = (s) => String(s).replaceAll('&quot;', '"').replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&amp;', '&');
 
 const xmlEstado = {
   extension: 'xml',

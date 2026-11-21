@@ -9,7 +9,7 @@
 
 const { escenarioDeArgs } = require('./lib/escenarioGrande');
 
-const q = (valor) => (valor === null || valor === undefined ? 'NULL' : `'${String(valor).replace(/'/g, "''")}'`);
+const q = (valor) => (valor === null || valor === undefined ? 'NULL' : `'${String(valor).replaceAll("'", "''")}'`);
 const FECHA_INSTALACION = '2026-01-15';
 
 function generarSql(escenario) {

@@ -140,7 +140,7 @@ const correosEn = (carpeta) => fs.readdirSync(path.join(BUZON, carpeta)).filter(
 function enviarCorreos(periodo, { reemplazos = false } = {}) {
   const antes = correosEn('procesados').length;
   const archivos = generarCorreos({ periodo, reemplazos, buzon: path.join(BUZON, 'entrada'), escenario });
-  const r = compose(['run', '--rm', '--no-deps', '-T', '-v', `${BUZON.replace(/\\/g, '/')}:/simulador/buzon`, 'simulador', 'procesar-buzon.js']);
+  const r = compose(['run', '--rm', '--no-deps', '-T', '-v', `${BUZON.replaceAll('\\', '/')}:/simulador/buzon`, 'simulador', 'procesar-buzon.js']);
   const procesados = correosEn('procesados').length - antes;
   comprobar(r.codigo === 0 && procesados === archivos.length && correosEn('entrada').length === 0,
     `${periodo}: el n8n simulado procesó ${procesados} de ${archivos.length} correos (${archivos.join(', ')})`,
