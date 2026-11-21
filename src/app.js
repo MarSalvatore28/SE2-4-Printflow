@@ -88,6 +88,8 @@ const reprocesoRoutes = require('@routes/reproceso/reproceso.routes'); // [B-F3]
 app.use('/api/staging', reprocesoRoutes); // [B-F3]
 const usuariosRoutes = require('@routes/usuario/usuarios.routes'); // [B-F4]
 app.use('/api/usuarios', usuariosRoutes); // [B-F4]
+const auditoriaRoutes = require('@routes/auditoria/auditoria.routes'); // [C-F3]
+app.use('/api/auditoria', auditoriaRoutes); // [C-F3]
 
 // Ruta que no existe: responde JSON (el frontend siempre espera JSON)
 app.use((req, res) => {
