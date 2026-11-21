@@ -154,6 +154,8 @@ const poolFalso = ({ asignacion: fila = ASIGNACION_BD } = {}) => {
         };
       }
       if (/FROM reportes_oficiales|cabecera_contadores_cambio/.test(sql)) return { rows: [] };
+      // S3-02: la auditoría del alta
+      if (/INSERT INTO registro_auditoria/.test(sql)) return { rows: [{ id: 1 }] };
 
       throw new Error(`consulta inesperada: ${sql}`);
     },

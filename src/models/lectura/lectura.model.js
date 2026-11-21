@@ -3,6 +3,7 @@
 // Se importa el módulo entero (no la función) para usar siempre la versión vigente de validarLectura.
 const validacionLecturas = require('@services/validacionLecturas');
 const { motivoAsignacionNoVigente } = require('@utils/lecturaManual.reglas');
+const { ACCIONES, auditarFila } = require('@services/auditoria');
 
 // Error de negocio: el controlador lo responde con su status y su mensaje
 const errorNegocio = (status, message, extra = {}) => Object.assign(new Error(message), { status, esNegocio: true, ...extra });
@@ -67,8 +68,9 @@ const insertarLectura = async (db, asignacion, datos, usuarioId) => {
  * Registra una lectura manual. `datos` viene de validarDatosLecturaManual.
  * Lanza errorNegocio(400) si la asignación no está vigente o si validarLectura la rechaza
  * (con su motivo tal cual y su código).
+ * S3-02: el alta queda auditada con el usuario y la `ip` de la petición.
  */
-const registrarLecturaManual = async (pool, datos, usuarioId) => {
+const registrarLecturaManual = async (pool, datos, usuarioId, ip = null) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -88,6 +90,9 @@ const registrarLecturaManual = async (pool, datos, usuarioId) => {
     if (rechazo) throw errorNegocio(400, rechazo.motivo, { codigo: rechazo.codigo });
 
     const lectura = await insertarLectura(client, asignacion, datos, usuarioId);
+    await auditarFila(client, {
+      tabla: 'reportes_oficiales', idRegistro: lectura.id_reporte, accion: ACCIONES.CREAR, usuarioId, ip,
+    });
     await client.query('COMMIT');
 
     return {

@@ -1,5 +1,6 @@
 const { parseId } = require('@utils/maquinasCambio.reglas');
 const { reprocesarReporte } = require('@models/reproceso/reproceso.model');
+const { contextoAuditoria } = require('@services/auditoria');
 
 // POST /api/staging/:id/reprocesar (S3-05)
 const reprocesarReporteController = async (req, res) => {
@@ -7,7 +8,7 @@ const reprocesarReporteController = async (req, res) => {
   if (!id) return res.status(400).json({ success: false, message: 'ID de reporte inválido' });
 
   try {
-    const resultado = await reprocesarReporte(req.pool, id);
+    const resultado = await reprocesarReporte(req.pool, id, contextoAuditoria(req));
     res.status(200).json({
       success: true,
       message: resultado.corregido

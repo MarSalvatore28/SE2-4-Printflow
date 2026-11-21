@@ -108,6 +108,9 @@ const poolFalso = ({ reporte = REPORTE, maquina = null, contabilidad = false } =
         return { rows: [{ contabilidad_por_usuario: contabilidad, tiene_cuentas: false }] };
       }
       if (/FROM reportes_oficiales|cabecera_contadores_cambio/.test(sql)) return { rows: [] };
+      // S3-02: la auditoría del intento (la fila antes del cambio y el registro)
+      if (/SELECT to_jsonb\(t\)/.test(sql)) return { rows: reporte ? [{ fila: reporte }] : [] };
+      if (/INSERT INTO registro_auditoria/.test(sql)) return { rows: [{ id: 1 }] };
       throw new Error(`consulta inesperada: ${sql}`);
     },
     release() { liberado = true; },
