@@ -71,6 +71,7 @@ jobs:
           fi
           case $DEPLOY_DIR in
             *[!A-Za-z0-9._/-]*) echo "::error::DEPLOY_DIR solo admite letras, números y . _ / -"; exit 1 ;;
+            *) ;;
           esac
           echo "listo=true" >> "$GITHUB_OUTPUT"
 

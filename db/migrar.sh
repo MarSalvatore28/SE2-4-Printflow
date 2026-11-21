@@ -56,6 +56,7 @@ migraciones() {
     nombre=$(basename "$f")
     case $nombre in
       *[!A-Za-z0-9_.-]*) falla "nombre de migración no permitido: '$nombre' (solo letras, números, _ - .)" ;;
+      *) ;;
     esac
     echo "$nombre"
   done
