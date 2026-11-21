@@ -18,8 +18,22 @@ const {
 } = require('@models/area/area.model');
 const { getClienteById } = require('@models/cliente/cliente.model');
 const { validarArea } = require('@utils/areas.validacion');
+const { ACCIONES, leerFila, auditarFila, contextoAuditoria, enTransaccion } = require('@services/auditoria');
 
 const PG_FOREIGN_KEY_VIOLATION = '23503';
+
+/**
+ * S3-02: aplica `cambio(db)` (devuelve las filas afectadas) y su auditoría en una transacción,
+ * con la fila del área antes (bloqueada) y después. Si no cambió ninguna fila, no audita.
+ */
+const cambiarAreaAuditado = (req, id, accion, cambio) => enTransaccion(req.pool, async (db) => {
+  const antes = await leerFila(db, 'areas', id, { bloquear: true });
+  const filas = await cambio(db);
+  if (filas > 0) {
+    await auditarFila(db, { tabla: 'areas', idRegistro: id, accion, antes, ...contextoAuditoria(req) });
+  }
+  return filas;
+});
 
 // Mensaje si el cliente ya tiene un área con ese nombre, o null
 const nombreRepetido = async (clienteId, nombre, excluirId = null) => {
@@ -185,7 +199,12 @@ const crearAreaController = async (req, res) => {
     const repetido = await nombreRepetido(datos.cliente_id, datos.nombre);
     if (repetido) return res.status(409).json({ success: false, message: repetido });
 
-    const nuevoId = await createArea(datos);
+    // S3-02: el alta y su auditoría van en la misma transacción
+    const nuevoId = await enTransaccion(req.pool, async (db) => {
+      const idArea = await createArea(datos, db);
+      await auditarFila(db, { tabla: 'areas', idRegistro: idArea, accion: ACCIONES.CREAR, ...contextoAuditoria(req) });
+      return idArea;
+    });
 
     res.status(201).json({
       success: true,
@@ -235,7 +254,7 @@ const actualizarAreaController = async (req, res) => {
     const problema = await problemaEdicion(area, datos, Number(id));
     if (problema) return res.status(problema.estado).json({ success: false, message: problema.mensaje });
 
-    const affectedRows = await updateArea(id, datos);
+    const affectedRows = await cambiarAreaAuditado(req, id, ACCIONES.ACTUALIZAR, (db) => updateArea(id, datos, db));
 
     if (affectedRows === 0) {
       return res.status(404).json({
@@ -278,7 +297,7 @@ const eliminarAreaController = async (req, res) => {
       });
     }
 
-    const affectedRows = await deleteArea(id);
+    const affectedRows = await cambiarAreaAuditado(req, id, ACCIONES.DESACTIVAR, (db) => deleteArea(id, db));
 
     if (affectedRows === 0) {
       return res.status(404).json({
@@ -348,7 +367,7 @@ const activarAreaController = async (req, res) => {
       return res.status(409).json({ success: false, message: `El cliente ya tiene un área activa llamada «${otra.nombre}»` });
     }
 
-    const affectedRows = await activarArea(id);
+    const affectedRows = await cambiarAreaAuditado(req, id, ACCIONES.ACTIVAR, (db) => activarArea(id, db));
 
     if (affectedRows === 0) {
       return res.status(404).json({

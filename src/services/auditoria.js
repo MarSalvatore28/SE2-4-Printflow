@@ -23,6 +23,7 @@ const ACCIONES = Object.freeze({
 // van dentro del SQL, por eso no se acepta cualquier texto).
 const TABLAS = Object.freeze({
   contratos: 'id_contrato',
+  areas: 'id_area',
   instalaciones: 'id_instalacion',
   maquinas: 'id_maquina',
   maquinas_cambio: 'id_maquina_cambio',

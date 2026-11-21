@@ -63,7 +63,7 @@ const {
  *           type: string
  *           enum: [PENDIENTE, PROCESADO, DESCARTADO, ERROR]
  *           description: >
- *             PROCESADO = aprobado; DESCARTADO = rechazado (sin reportes en staging);
+ *             PROCESADO = aprobado; DESCARTADO = rechazado (con fecha_rechazo, o sin reportes en staging);
  *             ERROR = en staging con reportes bloqueados (procesar_lectura = false);
  *             PENDIENTE = en staging esperando aprobación.
  *         motivo: { type: string, nullable: true, description: Motivo del error o del rechazo }
@@ -77,6 +77,10 @@ const {
  *         reportes_oficiales: { type: integer }
  *         notificaciones_no_leidas: { type: integer }
  *         usuario_aprobacion_nombre: { type: string, nullable: true }
+ *         fecha_rechazo: { type: string, format: date-time, nullable: true, description: Cuándo se rechazó (guardado en el lote desde la migración 034) }
+ *         motivo_rechazo: { type: string, nullable: true }
+ *         usuario_rechazo_id: { type: integer, nullable: true }
+ *         usuario_rechazo_nombre: { type: string, nullable: true, description: Quién rechazó el lote }
  *         clientes:
  *           type: array
  *           items:
@@ -214,7 +218,7 @@ router.get('/estadisticas', estadisticasController);
  *       200: { description: Cuántas se marcaron (data.actualizadas) }
  * /api/notificaciones/limpiar-antiguas:
  *   delete:
- *     summary: Borra las notificaciones LEÍDAS de más de N días (salvo las de lotes pendientes o rechazados)
+ *     summary: Borra las notificaciones LEÍDAS de más de N días (salvo las de lotes pendientes)
  *     tags: [Notificaciones]
  *     parameters:
  *       - in: query
@@ -379,7 +383,7 @@ router.get('/lote/:loteId', listarPorLoteController);
  *     responses:
  *       200: { description: Notificación eliminada }
  *       404: { description: Notificación no encontrada }
- *       409: { description: La notificación no está leída, o es de un lote pendiente o rechazado (guarda su estado y el motivo del rechazo) }
+ *       409: { description: La notificación no está leída, o es de un lote pendiente (la de un lote aprobado o rechazado sí se borra; el rechazo queda en el lote) }
  * /api/notificaciones/{id}/marcar-leida:
  *   patch:
  *     summary: Marca una notificación como leída

@@ -104,3 +104,19 @@ test('preferirTarifas: entre congeladas, la primera aprobación del mes', () => 
   assert.equal(preferirTarifas(primera, segunda), primera);
   assert.equal(preferirTarifas(segunda, primera), primera);
 });
+
+// Migración 035: los costos del excedente pasan de real/double precision a numeric(10,4) y pg los
+// devuelve como texto ('0.0250'). La facturación y las tarifas congeladas dan los mismos montos.
+test('con los excedentes en numeric(10,4) (texto), Horizonte 2026-10 sigue en $395,48', () => {
+  const comoNumeric = { ...CONTRATO_HORIZONTE, costo_x_excedente_impresion_bn: '0.0250', costo_x_excedente_impresion_color: '0.1200' };
+  const consumo = { bn: 13960, color: 679 };
+  const antes = calcularFacturacion(CONTRATO_HORIZONTE, consumo);
+  const despues = calcularFacturacion(comoNumeric, consumo);
+  assert.equal(despues.total, '395.48');
+  assert.deepEqual(despues, antes);
+
+  const congeladas = tarifasParaCongelar(comoNumeric);
+  assert.equal(congeladas.snap_costo_excedente_bn, '0.0250');
+  const { contrato } = tarifasDelReporte({ ...filaConsolidado(congeladas, comoNumeric), ...congeladas });
+  assert.equal(calcularFacturacion(contrato, consumo).total, '395.48');
+});

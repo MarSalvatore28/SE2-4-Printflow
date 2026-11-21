@@ -82,3 +82,62 @@ test('sin token, con token inválido o con usuario inactivo responde 401 y no re
     assert.equal(r.cabeceras['X-Nuevo-Token'], undefined);
   }
 });
+
+// Versión de la sesión (migración 033): cambiar la contraseña o el rol, o desactivar, la sube
+const { tokenDeSesion, sesionVigente, SESION_TERMINADA } = require('../src/utils/jwt.util');
+const { tokenUsuario } = require('../src/controllers/usuario/usuario.controller');
+
+test('sesionVigente: compara la versión del token con la de la base; sin versión cuenta como 0', () => {
+  assert.equal(sesionVigente({ versionSesion: 2 }, 2), true);
+  assert.equal(sesionVigente({ versionSesion: 1 }, 2), false);
+  assert.equal(sesionVigente({}, 0), true, 'token de antes de la migración, usuario sin cambios');
+  assert.equal(sesionVigente({}, 1), false, 'token de antes de la migración, contraseña ya cambiada');
+  assert.equal(sesionVigente({ versionSesion: 0 }, undefined), true);
+});
+
+test('un token de una versión de sesión anterior responde 401 «Tu sesión terminó» y no se renueva', async (t) => {
+  usarUsuario(t, { ...USUARIO, version_sesion: 3 });
+  const viejo = tokenDeSesion({ id: 5, email: USUARIO.email, rol: 'operador', loginAt: 'x', versionSesion: 2 });
+  const r = await ejecutar(viejo);
+  assert.equal(r.status, 401);
+  assert.equal(r.cuerpo.message, SESION_TERMINADA);
+  assert.equal(r.cuerpo.message, 'Tu sesión terminó: inicia sesión de nuevo');
+  assert.equal(r.siguio, false);
+  assert.equal(r.cabeceras['X-Nuevo-Token'], undefined);
+});
+
+test('la consulta de protect lee version_sesion y el token renovado la conserva', async (t) => {
+  const consultas = usarUsuario(t, { ...USUARIO, version_sesion: 4 });
+  const r = await ejecutar(tokenDeSesion({ id: 5, email: USUARIO.email, rol: 'operador', loginAt: 'x', versionSesion: 4 }));
+  assert.equal(r.siguio, true);
+  assert.match(consultas[0].sql, /version_sesion/);
+  assert.equal(verifyToken(r.cabeceras['X-Nuevo-Token']).versionSesion, 4);
+  assert.equal(r.user.versionSesion, 4);
+});
+
+test('un token de antes de la migración (sin versión) sigue valiendo si el usuario no cambió', async (t) => {
+  usarUsuario(t, { ...USUARIO, version_sesion: 0 });
+  const r = await ejecutar(generateToken({ id: 5, email: USUARIO.email, rol: 'operador', loginAt: 'x' }));
+  assert.equal(r.siguio, true);
+  assert.equal(verifyToken(r.cabeceras['X-Nuevo-Token']).versionSesion, 0, 'el renovado ya lleva la versión');
+});
+
+const validar = async (token) => {
+  const r = { status: 200, cuerpo: null };
+  const res = {
+    status(codigo) { r.status = codigo; return this; },
+    json(cuerpo) { r.cuerpo = cuerpo; return this; },
+  };
+  await tokenUsuario({ headers: { authorization: `Bearer ${token}` } }, res);
+  return r;
+};
+
+test('validate-token aplica la misma regla que protect', async (t) => {
+  usarUsuario(t, { ...USUARIO, version_sesion: 1, id_rol: 2, descripcion: '' });
+  const viejo = await validar(tokenDeSesion({ id: 5, email: USUARIO.email, loginAt: 'x', versionSesion: 0 }));
+  assert.equal(viejo.status, 401);
+  assert.equal(viejo.cuerpo.message, SESION_TERMINADA);
+  const vigente = await validar(tokenDeSesion({ id: 5, email: USUARIO.email, loginAt: 'x', versionSesion: 1 }));
+  assert.equal(vigente.status, 200);
+  assert.equal(vigente.cuerpo.usuario.id, 5);
+});

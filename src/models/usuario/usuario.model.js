@@ -11,7 +11,8 @@ const findByEmail = async (email) => {
       email,
       password_hash,
       rol_id,
-      activo
+      activo,
+      version_sesion
     FROM usuarios
     WHERE LOWER(email) = LOWER(TRIM($1))
   `;
@@ -28,7 +29,8 @@ const findById = async (id_usuario) => {
       email,
       password_hash,
       rol_id,
-      activo
+      activo,
+      version_sesion
     FROM usuarios
     WHERE id_usuario = $1
   `;
@@ -76,6 +78,7 @@ const validateLogin = async (email, password) => {
     email: user.email,
     rol_id: user.rol_id,
     activo: user.activo,
+    versionSesion: user.version_sesion ?? 0,
     rol: rol || null
   };
 };
@@ -113,8 +116,15 @@ const isActive = async (usuarioId) => {
   return result.rows[0]?.activo || false;
 };
 
+// Versión vigente de la sesión del usuario (migración 033); null si no existe
+const getVersionSesion = async (usuarioId) => {
+  const result = await pool.query('SELECT version_sesion FROM usuarios WHERE id_usuario = $1', [usuarioId]);
+  return result.rows[0]?.version_sesion ?? null;
+};
+
 module.exports = {
   findByEmail,
+  getVersionSesion,
   findById,
   getRolCompleto,
   validateLogin,

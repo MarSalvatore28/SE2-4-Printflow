@@ -6,9 +6,6 @@ const { agruparPorCliente, erroresDelCliente, erroresSinCliente, nombreDelClient
 const { tarifasParaCongelar, COLUMNAS_CONGELADAS } = require('@utils/tarifasCongeladas');
 const { ACCIONES, leerFila, auditarFila } = require('@services/auditoria');
 
-// Un campo que no vino en la edición queda en null: el COALESCE del UPDATE conserva el valor actual
-const valorONull = (valor) => (valor === undefined ? null : valor);
-
 // Registro que no existe: el controlador responde 404 con este mensaje
 const noEncontrado = (message) => Object.assign(new Error(message), { status: 404 });
 // Acción que el estado del lote no permite: el controlador responde 409 con este mensaje
@@ -35,28 +32,7 @@ const periodoParaAprobar = (lote, reportes, periodo = null) => {
 const verificarRechazable = (lote, reportes) => {
   if (!lote) throw noEncontrado('Lote no encontrado');
   if (lote.fecha_aprobacion) throw conflicto('El lote ya fue aprobado y no se puede rechazar');
-  if (reportes === 0) throw conflicto('El lote ya fue rechazado');
-};
-
-// print_total, copy_total y totalservicio a guardar al editar un consolidado.
-// El SELECT devuelve consolidado_print_total = print_total - copy_total (impresiones puras).
-// Para guardar correctamente en la BD, hay que reconstruir: print_total = imprimir + copias.
-const totalesEditados = (data) => {
-  const printOnlyEditado = data.consolidado_print_total === undefined ? null : Number(data.consolidado_print_total);
-  const copyTotalEditado = data.consolidado_copy_total === undefined ? null : Number(data.consolidado_copy_total);
-
-  let printTotal = null;
-  if (printOnlyEditado !== null && copyTotalEditado !== null) {
-    // Ambos campos editados: recalcular el total bruto
-    printTotal = printOnlyEditado + copyTotalEditado;
-  } else if (printOnlyEditado !== null) {
-    // Solo se editó el campo "imprimir", usar copy_total tal cual venía (no modificar)
-    printTotal = printOnlyEditado; // el COALESCE de la BD lo completará
-  }
-
-  // totalservicio debe ser consistente con print_total (gran total)
-  const totalServicio = printTotal === null ? valorONull(data.totalservicio) : printTotal;
-  return { printTotal, copyTotal: copyTotalEditado, totalServicio };
+  if (lote.fecha_rechazo || reportes === 0) throw conflicto('El lote ya fue rechazado');
 };
 
 // S3-02: lo que la auditoría guarda de cada reporte del lote antes de aprobarlo o rechazarlo
@@ -289,266 +265,6 @@ const getConsolidadoConDetallesByLote = async (lote_id) => {
   }
 };
 
-const updateConsolidadoStaging = async (id_staging_consolidado, data) => {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const query = `
-      UPDATE reportes_consolidado_staging
-      SET 
-        ip_detectada = COALESCE($1, ip_detectada),
-        print_total = COALESCE($2, print_total),
-        copy_total = COALESCE($3, copy_total),
-        impresion_bn = COALESCE($4, impresion_bn),
-        impresion_color = COALESCE($5, impresion_color),
-        totalservicio = COALESCE($6, totalservicio),
-        maquina_id_tentativa = COALESCE($7, maquina_id_tentativa),
-        cliente_id_tentativo = COALESCE($8, cliente_id_tentativo),
-        serie_maquina = COALESCE($9, serie_maquina),
-        fecha_lectura = COALESCE($10, fecha_lectura),
-        fecha_corte = COALESCE($11, fecha_corte) 
-      WHERE id_staging_consolidado = $12
-      RETURNING *
-    `;
-
-    const totales = totalesEditados(data);
-
-    const values = [
-      valorONull(data.ip_detectada),
-      totales.printTotal,
-      totales.copyTotal,
-      valorONull(data.consolidado_impresion_bn),
-      valorONull(data.consolidado_impresion_color),
-      totales.totalServicio,
-      valorONull(data.maquina_id_tentativa),
-      valorONull(data.cliente_id_tentativo),
-      valorONull(data.serie_maquina),
-      valorONull(data.consolidado_fecha_lectura),
-      valorONull(data.consolidado_fecha_corte),
-      id_staging_consolidado
-    ];
-
-    const { rows, rowCount } = await client.query(query, values);
-    if (rowCount === 0) throw noEncontrado('No se encontró el registro para actualizar');
-
-    // Update IP in Details if ip_detectada is provided
-    if (data.ip_detectada !== undefined && data.ip_detectada !== null) {
-      const updateDetalleQuery = `
-        UPDATE reportes_detalle_staging
-        SET nombre_host = $1
-        WHERE consolidado_staging_id = $2
-      `;
-      await client.query(updateDetalleQuery, [data.ip_detectada, id_staging_consolidado]);
-    }
-
-    // Update Date in Details exactly as provided by the user (now includes both date and time)
-    if (data.consolidado_fecha_corte !== undefined && data.consolidado_fecha_corte !== null) {
-      const updateDetalleDateQuery = `
-        UPDATE reportes_detalle_staging
-        SET fecha_lectura = CAST($1 AS TIMESTAMPTZ)
-        WHERE consolidado_staging_id = $2
-      `;
-      await client.query(updateDetalleDateQuery, [data.consolidado_fecha_corte, id_staging_consolidado]);
-    }
-
-    await client.query('COMMIT');
-    return rows[0];
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error("Error en updateConsolidadoStaging:", error);
-    throw error;
-  } finally {
-    client.release();
-  }
-};
-
-const updateDetalleStaging = async (id_staging_detalle, data) => {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const query = `
-      UPDATE reportes_detalle_staging
-      SET 
-        cuenta_id = COALESCE($1, cuenta_id), print_total = COALESCE($2, print_total),
-        copy_total = COALESCE($3, copy_total), nombre_cuenta = COALESCE($4, nombre_cuenta),
-        impresion_bn = COALESCE($5, impresion_bn), impresion_color = COALESCE($6, impresion_color),
-        copia_bn = COALESCE($7, copia_bn), copia_color = COALESCE($8, copia_color),
-        nombre_host = COALESCE($9, nombre_host), fecha_lectura = COALESCE($10, fecha_lectura)
-      WHERE id_staging_detalle = $11
-      RETURNING *, consolidado_staging_id
-    `;
-    const values = [
-      valorONull(data.cuenta_id), valorONull(data.print_total),
-      valorONull(data.copy_total), valorONull(data.nombre_cuenta),
-      valorONull(data.impresion_bn), valorONull(data.impresion_color),
-      valorONull(data.copia_bn), valorONull(data.copia_color),
-      valorONull(data.nombre_host), valorONull(data.fecha_lectura),
-      id_staging_detalle
-    ];
-
-    const { rows, rowCount } = await client.query(query, values);
-    if (rowCount === 0) throw noEncontrado('No se encontró el detalle para actualizar');
-
-    const updatedDetalle = rows[0];
-    const consolidadoId = updatedDetalle.consolidado_staging_id;
-
-    if (consolidadoId) {
-      const sumQuery = `
-        SELECT SUM(print_total) as total_print, SUM(copy_total) as total_copy,
-               SUM(impresion_bn) as total_impresion_bn, SUM(impresion_color) as total_impresion_color
-        FROM reportes_detalle_staging WHERE consolidado_staging_id = $1
-      `;
-      const { rows: sumRows } = await client.query(sumQuery, [consolidadoId]);
-      const sums = sumRows[0];
-
-      const updateConsolidadoQuery = `
-        UPDATE reportes_consolidado_staging
-        SET print_total = $1, copy_total = $2, impresion_bn = $3, impresion_color = $4,
-            totalservicio = CAST($1 AS INTEGER) + CAST($2 AS INTEGER)
-        WHERE id_staging_consolidado = $5
-      `;
-      await client.query(updateConsolidadoQuery, [
-        Number.parseInt(sums.total_print, 10) || 0, Number.parseInt(sums.total_copy, 10) || 0,
-        Number.parseInt(sums.total_impresion_bn, 10) || 0, Number.parseInt(sums.total_impresion_color, 10) || 0,
-        consolidadoId
-      ]);
-    }
-    await client.query('COMMIT');
-    return updatedDetalle;
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error("Error en updateDetalleStaging:", error);
-    throw error;
-  } finally {
-    client.release();
-  }
-};
-
-const updateMultiplesDetallesStaging = async (detalles) => {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const updatedDetalles = [];
-    for (const detalle of detalles) {
-      const { id_staging_detalle, ...data } = detalle;
-      const query = `
-        UPDATE reportes_detalle_staging
-        SET 
-          cuenta_id = COALESCE($1, cuenta_id), print_total = COALESCE($2, print_total),
-          copy_total = COALESCE($3, copy_total), nombre_cuenta = COALESCE($4, nombre_cuenta),
-          impresion_bn = COALESCE($5, impresion_bn), impresion_color = COALESCE($6, impresion_color),
-          nombre_host = COALESCE($7, nombre_host), fecha_lectura = COALESCE($8, fecha_lectura)
-        WHERE id_staging_detalle = $9 RETURNING *
-      `;
-      const values = [
-        valorONull(data.cuenta_id), valorONull(data.print_total),
-        valorONull(data.copy_total), valorONull(data.nombre_cuenta),
-        valorONull(data.impresion_bn), valorONull(data.impresion_color),
-        valorONull(data.nombre_host), valorONull(data.fecha_lectura),
-        id_staging_detalle
-      ];
-      const { rows } = await client.query(query, values); // NOSONAR: en orden, misma transacción y mismo client
-      updatedDetalles.push(rows[0]);
-    }
-    await client.query('COMMIT');
-    return updatedDetalles;
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error("Error en updateMultiplesDetallesStaging:", error);
-    throw error;
-  } finally {
-    client.release();
-  }
-};
-
-const createStaging = async (reporteData) => {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    let loteId = reporteData.lote_id || reporteData.lote_carga;
-    if (!loteId) throw new Error('lote_id o lote_carga es requerido');
-
-    if (typeof loteId === 'string' && Number.isNaN(Number.parseInt(loteId, 10))) {
-      const loteQuery = `SELECT id_lote FROM lotes_carga WHERE codigo_referencia = $1`;
-      const { rows: loteRows } = await client.query(loteQuery, [loteId]);
-      if (loteRows.length > 0) {
-        loteId = loteRows[0].id_lote;
-      } else {
-        const createLoteQ = `INSERT INTO lotes_carga (codigo_referencia, total_registros_cargados) VALUES ($1, 0) RETURNING id_lote`;
-        const { rows: newLote } = await client.query(createLoteQ, [loteId]);
-        loteId = newLote[0].id_lote;
-      }
-    }
-
-    const insertConsolidadoQuery = `
-      INSERT INTO reportes_consolidado_staging (
-        lote_id, ip_detectada, serie_maquina, print_total, copy_total, impresion_bn, impresion_color, totalservicio, maquina_id_tentativa, cliente_id_tentativo
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id_staging_consolidado
-    `;
-    const consolidadoValues = [
-      loteId, reporteData.ipAddress || reporteData.ip || '0.0.0.0', reporteData.modelName || reporteData.serie || reporteData.serialNumber || 'UNKNOWN',
-      reporteData.printTotal || 0, reporteData.copyTotal || 0, reporteData.impresion_bn || reporteData.printBlackWhite || 0,
-      reporteData.impresion_color || reporteData.printFullColor || 0, (reporteData.printTotal || 0) + (reporteData.copyTotal || 0),
-      reporteData.maquina_id || null, reporteData.clienteId || reporteData.cliente_id || null
-    ];
-    const { rows: consolidadoResult } = await client.query(insertConsolidadoQuery, consolidadoValues);
-    const newConsolidadoId = consolidadoResult[0].id_staging_consolidado;
-
-    const insertDetalleQuery = `
-      INSERT INTO reportes_detalle_staging (
-        lote_id, consolidado_staging_id, cuenta_id, nombre_cuenta, print_total, copy_total, impresion_bn, impresion_color, nombre_host, maquina_id_tentativa
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-    `;
-    const detalleValues = [
-      loteId, newConsolidadoId, reporteData.cuentaId || reporteData.accountId || '', reporteData.cuentaNombre || reporteData.accountName || '',
-      reporteData.printTotal || 0, reporteData.copyTotal || 0, reporteData.impresion_bn || reporteData.printBlackWhite || 0,
-      reporteData.impresion_color || reporteData.printFullColor || 0, reporteData.hostName || reporteData.nombre_host || null, reporteData.maquina_id || null
-    ];
-    await client.query(insertDetalleQuery, detalleValues);
-
-    await client.query(`UPDATE lotes_carga SET total_registros_cargados = total_registros_cargados + 1 WHERE id_lote = $1`, [loteId]);
-    await client.query('COMMIT');
-    return newConsolidadoId;
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
-};
-
-const updateStaging = async (id_staging_consolidado, reporteData) => {
-  const query = `
-    UPDATE reportes_consolidado_staging
-    SET ip_detectada = $1, serie_maquina = $2, print_total = $3, copy_total = $4,
-        impresion_bn = $5, impresion_color = $6, totalservicio = $7, maquina_id_tentativa = $8, cliente_id_tentativo = $9
-    WHERE id_staging_consolidado = $10
-  `;
-  const values = [
-    reporteData.ipAddress || reporteData.ip, reporteData.modelName || reporteData.serie,
-    reporteData.printTotal, reporteData.copyTotal, reporteData.impresion_bn, reporteData.impresion_color,
-    reporteData.totalservicio, reporteData.maquina_id, reporteData.cliente_id, id_staging_consolidado
-  ];
-  const { rowCount } = await pool.query(query, values);
-  return rowCount;
-};
-
-const deleteStaging = async (id_staging_consolidado) => {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query(`DELETE FROM reportes_detalle_staging WHERE consolidado_staging_id = $1`, [id_staging_consolidado]);
-    const { rowCount } = await client.query(`DELETE FROM reportes_consolidado_staging WHERE id_staging_consolidado = $1`, [id_staging_consolidado]);
-    await client.query('COMMIT');
-    return rowCount;
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
-};
-
 // Los días van como parámetro ($1), nunca dentro del texto de la consulta
 const deleteOldAprobados = async (dias = 90) => {
   const { rowCount } = await pool.query('DELETE FROM reportes_consolidado_staging WHERE lote_id IN (SELECT id_lote FROM lotes_carga WHERE fecha_aprobacion < NOW() - make_interval(days => $1::int))', [dias]);
@@ -764,6 +480,12 @@ const approveStagingBatch = async (loteId, periodo = null, usuarioId = null, ip 
   }
 };
 
+// Clientes (sin repetir y en orden) de los reportes de staging de un lote
+const clientesDelStaging = (stagingRows) => [...new Set(stagingRows
+  .map((r) => r.cliente_id_tentativo)
+  .filter((id) => id !== null && id !== undefined)
+  .map(Number))].sort((a, b) => a - b);
+
 // auditoria (S3-02): { usuarioId, ip, motivo } de la petición
 const rejectStagingBatch = async (loteId, { usuarioId = null, ip = null, motivo = null } = {}) => {
   const client = await pool.connect();
@@ -782,11 +504,24 @@ const rejectStagingBatch = async (loteId, { usuarioId = null, ip = null, motivo 
 
     await client.query(`DELETE FROM reportes_consolidado_staging WHERE lote_id = $1`, [loteId]);
 
+    // El rechazo queda en el lote (migración 034), con los clientes que tenía: el staging ya se borró
+    await client.query(
+      `UPDATE lotes_carga
+       SET fecha_rechazo = NOW(),
+           usuario_rechazo_id = $2,
+           motivo_rechazo = $3,
+           cliente_ids_rechazo = $4::int[]
+       WHERE id_lote = $1`,
+      [loteId, usuarioId, motivo || null, clientesDelStaging(stagingRows)]
+    );
+
+    // Sus notificaciones quedan resueltas para todos
     await client.query(
       `UPDATE notificaciones
        SET leida = true,
-           fecha_lectura = NOW(),
-           mensaje = CONCAT(mensaje, ' (RECHAZADO)')
+           fecha_lectura = COALESCE(fecha_lectura, NOW()),
+           mensaje = CONCAT(mensaje, ' (RECHAZADO)'),
+           datos_adicionales = COALESCE(datos_adicionales, '{}'::jsonb) || '{"estado_lote": "DESCARTADO"}'::jsonb
        WHERE lote_id = $1`,
       [loteId]
     );
@@ -925,8 +660,7 @@ const getAlertasPorLote = async (lote_id) => {
 
 module.exports = {
   getAllStaging, getStagingById, getStagingByLote, getStagingPendientes, getStagingByCliente, getStagingByPeriodo,
-  createStaging, updateStaging, deleteStaging, deleteOldAprobados, deleteOldRechazados, getEstadisticasStaging,
-  approveStagingBatch, rejectStagingBatch, getConsolidadoConDetallesByLote, updateConsolidadoStaging,
-  updateDetalleStaging, updateMultiplesDetallesStaging, validarLoteStaging,
+  deleteOldAprobados, deleteOldRechazados, getEstadisticasStaging,
+  approveStagingBatch, rejectStagingBatch, clientesDelStaging, getConsolidadoConDetallesByLote, validarLoteStaging,
   getAlertasPorLote, periodoParaAprobar, verificarRechazable
 };
