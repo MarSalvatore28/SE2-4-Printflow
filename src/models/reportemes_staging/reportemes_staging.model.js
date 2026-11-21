@@ -1,6 +1,7 @@
 const pool = require('@config/db');
 
 const { validarLectura } = require('@services/validacionLecturas');
+const { sqlFechaEcuador, sqlDiaEcuador, diaEcuador } = require('@utils/fechaCorte');
 
 const getAllStaging = async () => {
   const query = `
@@ -147,7 +148,8 @@ const getConsolidadoConDetallesByLote = async (lote_id) => {
       CAST(COALESCE(c.print_total, 0) - COALESCE(c.copy_total, 0) AS INTEGER) as consolidado_print_total,
       c.copy_total as consolidado_copy_total,
       c.fecha_lectura as consolidado_fecha_lectura,
-      c.fecha_corte as consolidado_fecha_corte, 
+      -- En hora de Ecuador con su desfase: en UTC, un corte a las 23:00 se veía del día siguiente
+      ${sqlFechaEcuador('c.fecha_corte')} as consolidado_fecha_corte,
       c.maquina_id_tentativa,
       c.cliente_id_tentativo,
       c.serie_maquina,
@@ -747,7 +749,8 @@ const validarLoteStaging = async (loteId) => {
     [loteId]
   );
   const { rows: lecturas } = await pool.query(
-    `SELECT serie_maquina, maquina_id_tentativa, impresion_bn, impresion_color, fecha_corte
+    `SELECT serie_maquina, maquina_id_tentativa, impresion_bn, impresion_color,
+            ${sqlDiaEcuador('fecha_corte')} AS dia_corte
        FROM reportes_consolidado_staging
       WHERE lote_id = $1
         AND procesar_lectura IS DISTINCT FROM FALSE
@@ -755,11 +758,13 @@ const validarLoteStaging = async (loteId) => {
     [loteId]
   );
   for (const l of lecturas) {
-    const periodoLote = loteRows[0]?.periodo || new Date(l.fecha_corte).toISOString().slice(0, 7);
+    const diaCorte = l.dia_corte || diaEcuador(new Date());
+    // El día del corte en Ecuador, no en UTC (un corte a las 23:00 no es del día siguiente)
+    const periodoLote = loteRows[0]?.periodo || diaCorte.slice(0, 7);
     const rechazo = await validarLectura(pool, {
       maquinaId: l.maquina_id_tentativa,
       periodo: periodoLote,
-      fecha: new Date(l.fecha_corte).toISOString().slice(0, 10),
+      fecha: diaCorte,
       contadorBn: l.impresion_bn || 0,
       contadorColor: l.impresion_color || 0
     });

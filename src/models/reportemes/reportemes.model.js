@@ -2,6 +2,7 @@ const pool = require('@config/db');
 const { consumoDelCambio } = require('@utils/maquinasCambio.consumo');
 const { consumoDeCuenta } = require('@utils/consumoPorCuenta');
 const { calcularFacturacion } = require('@utils/facturacion');
+const { sqlFechaEcuador } = require('@utils/fechaCorte');
 
 const getPeriodoAnterior = (periodoActual) => {
   const [year, month] = periodoActual.split('-').map(Number);
@@ -64,18 +65,19 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
       SELECT 
         ro.id_reporte,
         ro.maquina_id,
-        ro.fecha_corte,
+        ${sqlFechaEcuador('ro.fecha_corte')} as fecha_corte,
         ro.snap_maquina_serie as serie,
         COALESCE(mod.nombre, 'No disponible') as modelo,
         ro.snap_maquina_ip as ip,
         COALESCE(ro.snap_area_nombre, a.nombre, 'Sin Área') as area,
         
-        -- FECHAS DE CORTE REALES
-        ro.fecha_corte as fecha_corte_actual,
-        prev.fecha_corte as fecha_corte_anterior,
+        -- FECHAS DE CORTE REALES, en hora de Ecuador con su desfase ('2026-10-31T23:00:00-05:00'):
+        -- en UTC, un corte del 31 de octubre a las 23:00 se veía como del 1 de noviembre
+        ${sqlFechaEcuador('ro.fecha_corte')} as fecha_corte_actual,
+        ${sqlFechaEcuador('prev.fecha_corte')} as fecha_corte_anterior,
         
         -- FECHA CORTE ANTERIOR ESPECÍFICA DE LA MÁQUINA SALIENTE
-        prev_saliente.fecha_corte as saliente_ultimo_corte,
+        ${sqlFechaEcuador('prev_saliente.fecha_corte')} as saliente_ultimo_corte,
 
         -- Configuración Técnica
         i.contador_acumulativo,
