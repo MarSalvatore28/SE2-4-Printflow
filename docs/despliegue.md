@@ -109,16 +109,49 @@ $P restart api
 ## 6. Actualizar la versión
 
 ```bash
-$P exec backup sh /backup.sh --una-vez        # 1. respaldo
-git pull && (cd ../SE2-4-Printflow-Frontend && git pull)
-$P up -d --build                               # 2. reconstruye solo lo que cambió
+$P exec backup sh /backup.sh --una-vez                    # 1. respaldo
+git pull && (cd ../SE2-4-Printflow-Frontend && git pull)  # 2. código nuevo
+$P exec -T db sh /printflow-db/migrar.sh                  # 3. migraciones pendientes
+$P up -d --build                                          # 4. reconstruye solo lo que cambió
 ```
 
-Las migraciones nuevas (`db/migrations/0NN_*.sql`) **no** se aplican solas sobre una base existente: solo se aplican al crear el volumen. Aplica cada una a mano:
+### Migraciones sobre una base que ya existe (`db/migrar.sh`)
 
-```bash
-$P exec -T db psql -U postgres -d printflow < db/migrations/0NN_nombre.sql
-```
+Al **crear** el volumen, `docker/postgres/init.sh` aplica todas las migraciones de `db/migrations` y los seeds. Sobre una base que **ya existe**, las migraciones nuevas las aplica `db/migrar.sh`, que corre dentro del contenedor `db` (`db/` está montado en `/printflow-db`):
+
+| Comando | Qué hace |
+|---|---|
+| `$P exec -T db sh /printflow-db/migrar.sh` | Aplica las pendientes, en orden alfabético |
+| `$P exec -T db sh /printflow-db/migrar.sh --estado` | Lista aplicadas (`ok`) y pendientes (`--`), sin cambiar nada |
+| `$P exec -T db sh /printflow-db/migrar.sh --marcar 0NN_nombre.sql` | Registra una migración como aplicada **sin ejecutarla** (solo para resolver una adopción dudosa) |
+
+En la PC, lo mismo es `npm run migrar` (y `npm run migrar -- --estado`).
+
+- Lleva la cuenta en la tabla **`schema_migrations`** (`nombre`, `aplicada_en`, `origen`: `init`, `migrar`, `adopcion` o `marcada`). `init.sh` usa el mismo script, así que una base nueva y una migrada quedan iguales.
+- Cada migración va en **su transacción**, junto con su registro: o queda entera y registrada, o no queda nada.
+- Si una falla, **se detiene** y no aplica las siguientes. Se corrige el archivo y se vuelve a correr.
+- Si no hay nada pendiente, dice `la base 'printflow' está al día` y no cambia nada.
+
+**Reglas para escribir una migración**
+
+- Nombre `0NN_descripcion.sql` (letras, números, `_`, `-`, `.`). Nunca renombrar ni editar una que ya está en `main`: se agrega otra.
+- Sin `BEGIN`/`COMMIT` propios ni `CREATE INDEX CONCURRENTLY` (el script ya la envuelve en una transacción y las rechaza).
+- Si cambia datos, que se pueda repetir sin daño (`WHERE`, `ON CONFLICT DO NOTHING`).
+
+**Bases creadas antes de `schema_migrations` («adopción»)**
+
+La primera vez que el script corre sobre una base que tiene tablas pero no `schema_migrations`, averigua solo qué migraciones ya tiene, **sin tocar la base**: copia su esquema (`pg_dump --schema-only`) a una base temporal (`printflow_adopcion_tmp`) y prueba ahí cada migración, en orden:
+
+| Resultado de la prueba | Decisión |
+|---|---|
+| Falla con «ya existe» (SQLSTATE `42P07`, `42701`, `42710`, `42723`, `42P06`) | **Ya estaba**: se registra como `adopcion` |
+| Se aplica y cambia el esquema | **Pendiente**: se aplica después, como cualquier otra |
+| Se aplica y no cambia nada (p. ej. `CREATE INDEX IF NOT EXISTS`) | **Ya estaba**, salvo que también cambie datos (`INSERT`, `UPDATE`, `DELETE`…) |
+| Cambia solo datos, o falla con otro error | **Dudosa**: se detiene **sin cambiar nada** |
+
+Con una dudosa, el script muestra el comando para terminar a mano: revisa en la base si esa migración ya está, y registra todas las que ya están con `--marcar` (el script imprime la lista de las seguras). Luego vuelve a correr el script y aplica el resto.
+
+El criterio supone que cada migración se aplicó **entera o nada**, que es lo que hacía el `init.sh` anterior. Si alguien aplicó una a mano y falló a la mitad, revisa esa tabla antes de adoptar. Funciona igual con las migraciones que vengan (011, 020 a 022…): una base vieja que ya las tenga las marca como «ya estaba», y una que no, las aplica.
 
 ## 7. Comprobación
 
@@ -127,3 +160,4 @@ $P exec -T db psql -U postgres -d printflow < db/migrations/0NN_nombre.sql
 - [ ] `curl -X POST https://DOMINIO/api/ingesta/cargar` responde **403**: la ingesta no se expone.
 - [ ] La base no responde desde fuera: `nc -zv DOMINIO 5432` falla.
 - [ ] Hay al menos un archivo en `backups/` y una restauración de prueba funcionó.
+- [ ] `$P exec -T db sh /printflow-db/migrar.sh --estado` no muestra migraciones pendientes.
