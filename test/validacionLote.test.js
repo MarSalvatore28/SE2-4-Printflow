@@ -5,7 +5,7 @@ require('module-alias/register');
 const test = require('node:test');
 const assert = require('node:assert');
 const pool = require('../src/config/db');
-const { agruparPorCliente, erroresDelCliente, erroresSinCliente } = require('../src/utils/validacionLote');
+const { agruparPorCliente, erroresDelCliente, erroresSinCliente, nombreDelCliente } = require('../src/utils/validacionLote');
 const { validarLoteStaging } = require('../src/models/reportemes_staging/reportemes_staging.model');
 
 const HORIZONTE = 1;
@@ -190,4 +190,11 @@ test('lote vacío: no es válido', async (t) => {
     esValido: false,
     errores: ['El lote está vacío o no contiene registros consolidados.'],
   });
+});
+
+test('nombreDelCliente: el nombre, o el RUC, nunca el id de la base', () => {
+  assert.equal(nombreDelCliente({ id_cliente: 4, nombre: ' Colegio Horizonte ', ruc: '0990000001001' }), 'Colegio Horizonte');
+  assert.equal(nombreDelCliente({ id_cliente: 4, nombre: '', ruc: '0990000001001' }), 'con RUC 0990000001001');
+  assert.equal(nombreDelCliente({ id_cliente: 4, nombre: null, ruc: null }), 'sin nombre registrado');
+  assert.equal(nombreDelCliente(null), 'sin nombre registrado');
 });

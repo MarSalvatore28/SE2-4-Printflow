@@ -2,7 +2,7 @@ const pool = require('@config/db');
 
 const { validarLectura } = require('@services/validacionLecturas');
 const { sqlFechaEcuador, sqlDiaEcuador, diaEcuador } = require('@utils/fechaCorte');
-const { agruparPorCliente, erroresDelCliente, erroresSinCliente } = require('@utils/validacionLote');
+const { agruparPorCliente, erroresDelCliente, erroresSinCliente, nombreDelCliente } = require('@utils/validacionLote');
 const { tarifasParaCongelar, COLUMNAS_CONGELADAS } = require('@utils/tarifasCongeladas');
 const { ACCIONES, leerFila, auditarFila } = require('@services/auditoria');
 
@@ -842,10 +842,10 @@ const validarLoteStaging = async (loteId) => {
   const nombres = new Map();
   if (clienteIds.length > 1) {
     const { rows } = await pool.query(
-      'SELECT id_cliente, nombre FROM clientes WHERE id_cliente = ANY($1::int[])',
+      'SELECT id_cliente, nombre, ruc FROM clientes WHERE id_cliente = ANY($1::int[])',
       [clienteIds]
     );
-    rows.forEach((c) => nombres.set(Number(c.id_cliente), c.nombre));
+    rows.forEach((c) => nombres.set(Number(c.id_cliente), nombreDelCliente(c)));
   }
 
   const { rows: stagingDetalle } = await pool.query(
@@ -856,7 +856,7 @@ const validarLoteStaging = async (loteId) => {
 
   const errores = [];
   for (const [clienteId, reportes] of porCliente) {
-    const nombreCliente = nombres.get(clienteId) || `#${clienteId}`;
+    const nombreCliente = nombres.get(clienteId) || nombreDelCliente(null);
     const prefijo = clienteIds.length > 1 ? `Cliente ${nombreCliente}: ` : '';
     const maquinasDelCliente = maquinasDB.filter((m) => Number(m.cliente_id) === clienteId);
     errores.push(...erroresDelCliente(maquinasDelCliente, reportes, consolidadosConDetalle, prefijo));
