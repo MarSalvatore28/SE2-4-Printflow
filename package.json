@@ -29,6 +29,11 @@
   "devDependencies": {
     "@types/node": "^25.0.10"
   },
+  "overrides": {
+    "swagger-jsdoc": {
+      "glob": "^14.0.6"
+    }
+  },
   "_moduleAliases": {
     "@controllers": "src/controllers",
     "@models": "src/models",
