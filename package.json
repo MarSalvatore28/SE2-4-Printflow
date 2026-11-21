@@ -7,7 +7,7 @@
     "configurar": "node scripts/configurar.js",
     "token": "node simulador/token.js",
     "verificar": "node -e \"require('module-alias/register'); require('./src/app'); console.log('OK: la app carga sin errores'); process.exit(0)\"",
-    "test": "node --test"
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
