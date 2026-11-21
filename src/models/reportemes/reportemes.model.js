@@ -510,6 +510,7 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
             SELECT 1 FROM maquinas_cambio mc 
             WHERE mc.maquina_saliente_id = i.maquina_id 
             AND mc.periodo_afectado = $2
+            AND mc.activo = TRUE -- un reemplazo anulado no cambia la renta
         )
     ORDER BY mod.nombre ASC
 `, [clienteId, periodo]);
