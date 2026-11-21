@@ -37,32 +37,25 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
   try {
     const periodoAnterior = getPeriodoAnterior(periodo);
 
-    let queryText = `
-      WITH unique_reports AS (
-        SELECT DISTINCT ro.id_reporte
-        FROM reportes_oficiales ro
-        ${INSTALACION_DEL_PERIODO}
-        LEFT JOIN areas a ON i.area_id = a.id_area
-        
-        WHERE ro.cliente_id = $1
-          AND ro.periodo = $2
-    `;
-
-    let params = [clienteId, periodo, periodoAnterior];
+    // Rendimiento (S4-05): los reportes del cliente y período se filtran en la misma consulta (índice
+    // reportes_oficiales (cliente_id, periodo), migración 020) y la asignación del período se busca
+    // una sola vez por reporte. Los detalles por usuario se suman solo para los reportes del
+    // resultado (LATERAL), no para toda la tabla. Los resultados son los mismos de antes.
+    const params = [clienteId, periodo, periodoAnterior];
     let paramCounter = 4;
+    let filtros = '';
 
     if (areaId) {
-      queryText += ` AND COALESCE(ro.snap_area_nombre, a.nombre) IN (SELECT nombre FROM areas WHERE id_area = $${paramCounter})`;
+      filtros += ` AND COALESCE(ro.snap_area_nombre, a.nombre) IN (SELECT nombre FROM areas WHERE id_area = $${paramCounter})`;
       params.push(areaId);
       paramCounter++;
     }
     if (maquinaId) {
-      queryText += ` AND ro.maquina_id = $${paramCounter}`;
+      filtros += ` AND ro.maquina_id = $${paramCounter}`;
       params.push(maquinaId);
     }
 
-    queryText += `
-      )
+    const queryText = `
       SELECT 
         ro.id_reporte,
         ro.maquina_id,
@@ -186,8 +179,7 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
         inst_saliente.fecha_retiro as saliente_fecha_retiro,
         inst_entrante.fecha_instalacion as entrante_fecha_instalacion
 
-      FROM unique_reports ur
-      JOIN reportes_oficiales ro ON ro.id_reporte = ur.id_reporte
+      FROM reportes_oficiales ro
       JOIN maquinas m ON ro.maquina_id = m.id_maquina
       LEFT JOIN tipos_impresion ti ON m.tipo_impresion_id = ti.id_tipo_impresion
       LEFT JOIN modelos mod ON m.modelo_id = mod.id_modelo
@@ -259,28 +251,30 @@ const getReporteConsolidado = async (clienteId, periodo, areaId = null, maquinaI
           LIMIT 1
         ))
       
-      -- DETALLES ACTUALES
-      LEFT JOIN (
-        SELECT reporte_oficial_id,
-               SUM(cnt_impresion_bn) as det_cur_imp_bn,
-               SUM(cnt_impresion_color) as det_cur_imp_col,
-               SUM(cnt_copia_bn) as det_cur_cop_bn,
-               SUM(cnt_copia_color) as det_cur_cop_col
-        FROM reportes_detalle_oficial
-        GROUP BY reporte_oficial_id
-      ) det_cur ON det_cur.reporte_oficial_id = ro.id_reporte
+      -- DETALLES ACTUALES (sin detalle por usuario, las sumas quedan en NULL)
+      LEFT JOIN LATERAL (
+        SELECT SUM(d.cnt_impresion_bn) as det_cur_imp_bn,
+               SUM(d.cnt_impresion_color) as det_cur_imp_col,
+               SUM(d.cnt_copia_bn) as det_cur_cop_bn,
+               SUM(d.cnt_copia_color) as det_cur_cop_col
+        FROM reportes_detalle_oficial d
+        WHERE d.reporte_oficial_id = ro.id_reporte
+      ) det_cur ON TRUE
 
       -- DETALLES ANTERIORES
-      LEFT JOIN (
-        SELECT reporte_oficial_id,
-               SUM(cnt_impresion_bn) as det_prev_imp_bn,
-               SUM(cnt_impresion_color) as det_prev_imp_col,
-               SUM(cnt_copia_bn) as det_prev_cop_bn,
-               SUM(cnt_copia_color) as det_prev_cop_col
-        FROM reportes_detalle_oficial
-        GROUP BY reporte_oficial_id
-      ) det_prev_rel ON det_prev_rel.reporte_oficial_id = prev.id_reporte
-      
+      LEFT JOIN LATERAL (
+        SELECT SUM(d.cnt_impresion_bn) as det_prev_imp_bn,
+               SUM(d.cnt_impresion_color) as det_prev_imp_col,
+               SUM(d.cnt_copia_bn) as det_prev_cop_bn,
+               SUM(d.cnt_copia_color) as det_prev_cop_col
+        FROM reportes_detalle_oficial d
+        WHERE d.reporte_oficial_id = prev.id_reporte
+      ) det_prev_rel ON TRUE
+
+      WHERE ro.cliente_id = $1
+        AND ro.periodo = $2
+        ${filtros}
+
       ORDER BY ro.id_reporte, ro.snap_maquina_ip ASC
     `;
 
