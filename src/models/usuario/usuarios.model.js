@@ -2,6 +2,7 @@
 // El login y la sesión siguen en usuario.model.js.
 // Ninguna consulta de este archivo devuelve password_hash.
 const pool = require('@config/db');
+const { ACCIONES, leerFila, auditarFila } = require('@services/auditoria');
 
 // Columnas públicas del usuario (sin la contraseña)
 const COLUMNAS_USUARIO = `
@@ -58,26 +59,29 @@ const existeEmail = async (email, excluirId = null) => {
   return rows.length > 0;
 };
 
-const crearUsuario = async ({ nombre, apellido, email, rol_id, passwordHash }) => {
-  const { rows } = await pool.query(`
+// db: el client de la transacción del que llama (S3-02: el alta y su auditoría van juntas)
+const crearUsuario = async ({ nombre, apellido, email, rol_id, passwordHash }, db = pool) => {
+  const { rows } = await db.query(`
     INSERT INTO usuarios (nombre, apellido, email, password_hash, rol_id, activo)
     VALUES ($1, $2, $3, $4, $5, true)
     RETURNING id_usuario
   `, [nombre, apellido, email, passwordHash, rol_id]);
-  return obtenerUsuario(rows[0].id_usuario);
+  return obtenerUsuario(rows[0].id_usuario, db);
 };
 
 /**
  * Ejecuta un cambio y, antes de confirmarlo, comprueba que siga habiendo al menos
  * un admin activo. Si no queda ninguno, deshace el cambio.
  * Devuelve { usuario } (null si el usuario no existe) o { sinAdmin: true }.
+ * S3-02: si el cambio se confirma, queda auditado con `auditoria` = { id, accion, usuarioId, ip, extra }.
  */
-const conAdminGarantizado = async (cambio) => {
+const conAdminGarantizado = async (cambio, { id: idUsuario, accion, usuarioId = null, ip = null, extra = null }) => {
   const cliente = await pool.connect();
   try {
     await cliente.query('BEGIN');
     await cliente.query('SELECT pg_advisory_xact_lock($1)', [CANDADO_ADMINS]);
 
+    const antes = await leerFila(cliente, 'usuarios', idUsuario, { bloquear: true });
     const id = await cambio(cliente);
     if (!id) {
       await cliente.query('ROLLBACK');
@@ -95,6 +99,7 @@ const conAdminGarantizado = async (cambio) => {
       return { sinAdmin: true };
     }
 
+    await auditarFila(cliente, { tabla: 'usuarios', idRegistro: id, accion, antes, usuarioId, ip, extra });
     const usuario = await obtenerUsuario(id, cliente);
     await cliente.query('COMMIT');
     return { usuario };
@@ -106,8 +111,8 @@ const conAdminGarantizado = async (cambio) => {
   }
 };
 
-// passwordHash null = la contraseña no cambia
-const actualizarUsuario = (id, { nombre, apellido, email, rol_id, passwordHash }) => (
+// passwordHash null = la contraseña no cambia. auditoria: { usuarioId, ip } de la petición
+const actualizarUsuario = (id, { nombre, apellido, email, rol_id, passwordHash }, auditoria = {}) => (
   conAdminGarantizado(async (cliente) => {
     const { rows } = await cliente.query(`
       UPDATE usuarios
@@ -120,17 +125,17 @@ const actualizarUsuario = (id, { nombre, apellido, email, rol_id, passwordHash }
       RETURNING id_usuario
     `, [id, nombre, apellido, email, rol_id, passwordHash]);
     return rows[0]?.id_usuario;
-  })
+  }, { ...auditoria, id, accion: ACCIONES.ACTUALIZAR, extra: { password_cambiada: Boolean(passwordHash) } })
 );
 
-const cambiarActivo = (id, activo) => (
+const cambiarActivo = (id, activo, auditoria = {}) => (
   conAdminGarantizado(async (cliente) => {
     const { rows } = await cliente.query(
       'UPDATE usuarios SET activo = $2 WHERE id_usuario = $1 RETURNING id_usuario',
       [id, activo]
     );
     return rows[0]?.id_usuario;
-  })
+  }, { ...auditoria, id, accion: activo ? ACCIONES.ACTIVAR : ACCIONES.DESACTIVAR })
 );
 
 module.exports = {
