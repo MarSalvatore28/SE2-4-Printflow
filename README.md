@@ -19,7 +19,7 @@ Proyecto de la materia **Ingeniería de Software II** (ESPOL, sección 4).
 1. [Cómo funciona](#cómo-funciona)
 2. [Tecnologías](#tecnologías)
 3. [Requisitos](#requisitos)
-4. [Inicio rápido con Docker](#inicio-rápido-con-docker)
+4. [Inicio rápido con Docker](#inicio-rápido-con-docker) · **[Cómo probar: token, Postman, Swagger y seguridad](docs/probar.md)**
 5. [Desarrollo sin Docker](#desarrollo-sin-docker)
 6. [Variables de entorno](#variables-de-entorno)
 7. [Scripts](#scripts)
@@ -74,7 +74,7 @@ git clone https://github.com/MarSalvatore28/SE2-4-Printflow.git
 git clone https://github.com/MarSalvatore28/SE2-4-Printflow-Frontend.git
 
 cd SE2-4-Printflow
-copy .env.example .env     # completar DB_PASSWORD y SECRET_KEY
+npm run configurar         # crea tu .env con claves nuevas al azar
 docker compose up -d --build
 ```
 
@@ -85,6 +85,8 @@ docker compose up -d --build
 | Swagger | http://localhost:8080/api-docs | |
 | n8n | http://localhost:5678 | solo en el equipo local |
 | PostgreSQL | `127.0.0.1:5433` | para psql o pgAdmin |
+
+No hay que pedirle claves a nadie: `npm run configurar` genera las tuyas (sin Node instalado, ver [`docs/probar.md`](docs/probar.md)). Usuarios de prueba: `admin@`, `operador@` y `auditor@printflow.local`, contraseña `Printflow2026*`. **Para sacar el token y probar la API** (Postman, Swagger o terminal), sigue [`docs/probar.md`](docs/probar.md).
 
 Comandos útiles:
 
@@ -111,24 +113,26 @@ En el `.env`, usar `DB_HOST=localhost` y `DB_PORT=5433` (el valor de `DB_HOST_PO
 
 ## Variables de entorno
 
-Se definen en `.env`, a partir de [`.env.example`](.env.example). El archivo `.env` **nunca** se sube al repositorio.
+Se definen en `.env`. `npm run configurar` lo crea a partir de [`.env.example`](.env.example) y genera las claves. El archivo `.env` **nunca** se sube al repositorio.
 
 | Variable | Descripción | Ejemplo |
 |---|---|---|
 | `NODE_ENV` | Entorno de ejecución | `development` |
 | `PORT` | Puerto de la API | `9000` |
 | `DB_HOST`, `DB_PORT` | Servidor de PostgreSQL (en Docker se fijan solos) | `localhost`, `5432` |
-| `DB_USER`, `DB_PASSWORD`, `DB_NAME` | Credenciales y nombre de la base | `postgres`, *(propia)*, `printflow` |
+| `DB_USER`, `DB_PASSWORD`, `DB_NAME` | Credenciales y nombre de la base | `postgres`, *(la genera `npm run configurar`)*, `printflow` |
 | `DB_SSL` | `true` solo si la base es externa (por ejemplo, Supabase) | `false` |
-| `SECRET_KEY` | Clave para firmar los JWT | *(generada, ver `.env.example`)* |
+| `SECRET_KEY` | Clave para firmar los JWT | *(la genera `npm run configurar`)* |
 | `CORS_ORIGINS` | Orígenes permitidos, separados por coma | `http://localhost:5173` |
-| `INGESTA_TOKEN` | Token que n8n envía a la ingesta | *(generado)* |
+| `INGESTA_TOKEN` | Token que n8n envía a la ingesta | *(lo genera `npm run configurar`)* |
 | `DB_HOST_PORT`, `WEB_PORT` | Puertos publicados en el equipo local | `5433`, `8080` |
 
 ## Scripts
 
 | Comando | Descripción |
 |---|---|
+| `npm run configurar` | Crea o completa el `.env` y genera las claves (nunca cambia lo que ya tiene valor) |
+| `npm run token -- <admin|operador|auditor>` | Inicia sesión con un usuario de prueba y muestra su token |
 | `npm start` | Inicia la API |
 | `npm run verificar` | Comprueba que la aplicación carga sin errores (lo usa el CI) |
 | `npm test` | Ejecuta las pruebas con el *test runner* de Node |

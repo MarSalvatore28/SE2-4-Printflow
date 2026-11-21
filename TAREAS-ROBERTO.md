@@ -47,4 +47,4 @@ Archivos: `src/app/maquina_asignacion/` y `src/app/Maquinas/`.
 
 ---
 
-**Para levantar el sistema con datos:** `simulador/README.md` del backend (`preparar-datos.js` y `demo.js`). Usuarios: `admin@`, `operador@` y `auditor@printflow.local` / `Printflow2026*`.
+**Para levantar el sistema con datos:** [`docs/probar.md`](docs/probar.md) del backend (`npm run configurar`, `docker compose up -d --build`, `preparar-datos.js` y `demo.js`). Para `npm run dev` con la API de Docker: `VITE_API_BASE_URL=http://localhost:8080` en el `.env` del frontend. Usuarios: `admin@`, `operador@` y `auditor@printflow.local` / `Printflow2026*`.
