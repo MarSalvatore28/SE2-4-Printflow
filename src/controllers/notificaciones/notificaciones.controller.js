@@ -1,5 +1,6 @@
 const Notificaciones = require('@models/notificaciones/notificaciones.model');
 const Staging = require('@models/reportemes_staging/reportemes_staging.model');
+const { contextoAuditoria } = require('@services/auditoria');
 
 const PERIODO_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
 const FECHA_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -308,7 +309,7 @@ const aprobarLote = async (loteId, req, res) => {
     periodoFinal = fecha_corte.slice(0, 7);
   }
 
-  await Staging.approveStagingBatch(loteId, periodoFinal, req.user.id);
+  await Staging.approveStagingBatch(loteId, periodoFinal, req.user.id, req.ip);
   await Notificaciones.registrarAprobador(loteId, req.user.id);
   avisarCambio({ lote_id: loteId, estado: 'PROCESADO' });
 
@@ -334,11 +335,12 @@ const rechazarLote = async (loteId, req, res) => {
     return res.status(409).json({ success: false, message: 'El lote ya fue rechazado' });
   }
 
-  await Staging.rejectStagingBatch(loteId);
+  const motivoLimpio = typeof motivo === 'string' ? motivo.trim() : null;
+  await Staging.rejectStagingBatch(loteId, { ...contextoAuditoria(req), motivo: motivoLimpio });
   await Notificaciones.registrarRechazo(
     loteId,
     req.user.id,
-    typeof motivo === 'string' ? motivo.trim() : null,
+    motivoLimpio,
     (lote.clientes || []).map((c) => c.id_cliente)
   );
   avisarCambio({ lote_id: loteId, estado: 'DESCARTADO' });

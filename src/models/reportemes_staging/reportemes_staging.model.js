@@ -1,6 +1,19 @@
 const pool = require('@config/db');
 
 const { validarLectura } = require('@services/validacionLecturas');
+const { ACCIONES, leerFila, auditarFila } = require('@services/auditoria');
+
+// S3-02: lo que la auditoría guarda de cada reporte del lote antes de aprobarlo o rechazarlo
+const resumenStaging = (rows) => rows.map((r) => ({
+  id_staging_consolidado: r.id_staging_consolidado,
+  serie_maquina: r.serie_maquina,
+  maquina_id_tentativa: r.maquina_id_tentativa,
+  cliente_id_tentativo: r.cliente_id_tentativo,
+  impresion_bn: r.impresion_bn,
+  impresion_color: r.impresion_color,
+  estado_maquina: r.estado_maquina,
+  procesar_lectura: r.procesar_lectura,
+}));
 
 const getAllStaging = async () => {
   const query = `
@@ -516,10 +529,13 @@ const getEstadisticasStaging = async () => {
   return rows;
 };
 
-const approveStagingBatch = async (loteId, periodo = null, usuarioId = null) => {
+// ip (S3-02): la de la petición, para la auditoría de la aprobación
+const approveStagingBatch = async (loteId, periodo = null, usuarioId = null, ip = null) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    const loteAntes = await leerFila(client, 'lotes_carga', loteId, { bloquear: true });
 
     const getStagingQuery = `
       SELECT * FROM reportes_consolidado_staging WHERE lote_id = $1
@@ -530,6 +546,8 @@ const approveStagingBatch = async (loteId, periodo = null, usuarioId = null) => 
       throw new Error('No se encontraron registros para este lote');
     }
 
+    const periodoOficial = periodo || new Date().toISOString().slice(0, 7);
+    const idsOficiales = [];
     for (const row of stagingRows) {
       const insertOficialQuery = `
         INSERT INTO reportes_oficiales (
@@ -554,7 +572,7 @@ const approveStagingBatch = async (loteId, periodo = null, usuarioId = null) => 
 
       const oficialValues = [
         row.lote_id,
-        periodo || new Date().toISOString().slice(0, 7),
+        periodoOficial,
         row.maquina_id_tentativa,
         row.cliente_id_tentativo,
         row.impresion_bn || 0,
@@ -570,6 +588,7 @@ const approveStagingBatch = async (loteId, periodo = null, usuarioId = null) => 
       ];
 
       const { rows: [newOficial] } = await client.query(insertOficialQuery, oficialValues);
+      idsOficiales.push(newOficial.id_reporte);
 
       const moveDetailsQuery = `
         INSERT INTO reportes_detalle_oficial (
@@ -634,6 +653,17 @@ const approveStagingBatch = async (loteId, periodo = null, usuarioId = null) => 
       [loteId]
     );
 
+    // S3-02: el lote antes (con sus reportes de staging) y después (con las lecturas oficiales)
+    await auditarFila(client, {
+      tabla: 'lotes_carga',
+      idRegistro: loteId,
+      accion: ACCIONES.APROBAR,
+      antes: { ...loteAntes, reportes_staging: resumenStaging(stagingRows) },
+      extra: { estado: 'PROCESADO', periodo: periodoOficial, reportes_oficiales: idsOficiales },
+      usuarioId,
+      ip,
+    });
+
     await client.query('COMMIT');
     return { success: true, message: 'Lote aprobado correctamente' };
 
@@ -645,10 +675,18 @@ const approveStagingBatch = async (loteId, periodo = null, usuarioId = null) => 
   }
 };
 
-const rejectStagingBatch = async (loteId) => {
+// auditoria (S3-02): { usuarioId, ip, motivo } de la petición
+const rejectStagingBatch = async (loteId, { usuarioId = null, ip = null, motivo = null } = {}) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    // Lo que se descarta queda en la auditoría: el staging se borra
+    const loteAntes = await leerFila(client, 'lotes_carga', loteId, { bloquear: true });
+    const { rows: stagingRows } = await client.query(
+      'SELECT * FROM reportes_consolidado_staging WHERE lote_id = $1 ORDER BY id_staging_consolidado',
+      [loteId]
+    );
 
     await client.query(`DELETE FROM reportes_detalle_staging WHERE lote_id = $1`, [loteId]);
 
@@ -658,10 +696,20 @@ const rejectStagingBatch = async (loteId) => {
       `UPDATE notificaciones 
        SET leida = true, 
            fecha_lectura = NOW(),
-           mensaje = CONCAT(mensaje, ' (RECHAZADO)') 
+           mensaje = CONCAT(mensaje, ' (RECHAZADO)')
        WHERE lote_id = $1`,
       [loteId]
     );
+
+    await auditarFila(client, {
+      tabla: 'lotes_carga',
+      idRegistro: loteId,
+      accion: ACCIONES.RECHAZAR,
+      antes: { ...loteAntes, reportes_staging: resumenStaging(stagingRows) },
+      extra: { estado: 'DESCARTADO', motivo: motivo || null, reportes_descartados: stagingRows.length },
+      usuarioId,
+      ip,
+    });
 
     await client.query('COMMIT');
     return { success: true, message: 'Lote rechazado correctamente' };

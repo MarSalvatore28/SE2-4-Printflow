@@ -19,6 +19,7 @@ const {
   validarImportacionCSV,
   getAlertasPorLote
 } = require('@models/reportemes_staging/reportemes_staging.model');
+const { contextoAuditoria } = require('@services/auditoria');
 
 const fetchAllStaging = async (req, res) => {
   try {
@@ -217,7 +218,7 @@ const approveStagingBatchController = async (req, res) => {
       });
     }
     // Queda registrado quién aprobó el lote
-    const result = await approveStagingBatch(loteId, periodo, req.user?.id ?? null);
+    const result = await approveStagingBatch(loteId, periodo, req.user?.id ?? null, req.ip);
     res.status(200).json({ success: true, message: result.message || 'Lote aprobado correctamente' });
   } catch (err) {
     console.error('Error aprobando lote:', err);
@@ -229,7 +230,8 @@ const rejectStagingBatchController = async (req, res) => {
     const { loteId } = req.body;
     if (!loteId) return res.status(400).json({ success: false, message: 'Falta loteId' });
 
-    await require('@models/reportemes_staging/reportemes_staging.model').rejectStagingBatch(loteId);
+    const motivo = typeof req.body.motivo === 'string' ? req.body.motivo.trim() : null;
+    await require('@models/reportemes_staging/reportemes_staging.model').rejectStagingBatch(loteId, { ...contextoAuditoria(req), motivo });
     res.status(200).json({ success: true, message: 'Lote rechazado correctamente' });
   } catch (err) {
     console.error('Error rechazando lote:', err);
