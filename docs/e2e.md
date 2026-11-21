@@ -34,7 +34,7 @@ Empieza **siempre** con una base vacía (`down -v` del proyecto de la prueba) y,
 
 ## Qué comprueba
 
-Cada comprobación sale en pantalla con ✓ o ✗. Hoy son **132**.
+Cada comprobación sale en pantalla con ✓ o ✗. Hoy son **136**.
 
 1. **Base limpia y sistema arriba:** existe el `.env` con sus claves, Docker responde, `down -v` y `up -d --build db api web`, la API contesta, `preparar-datos.js` registra los clientes, contratos, áreas y las 5 máquinas, y los tres usuarios de prueba inician sesión.
 2. **Agosto, septiembre y octubre de 2026:** el simulador genera los correos de cada mes, el «n8n» simulado los procesa (dentro de Docker, como en la demo), cada cliente tiene su lote en staging sin lecturas en ERROR y el **operador** lo aprueba por la API (`POST /api/staging/approve-batch`).
@@ -63,7 +63,7 @@ Al final siempre sale el resumen, y el código de salida es **1** si algo falló
 
 ```text
 ======================================================================
-132 comprobaciones, 0 fallos · 41 s
+136 comprobaciones, 0 fallos · 41 s
 ======================================================================
 ```
 
@@ -73,7 +73,7 @@ Si algo falla, la línea lleva ✗ y debajo el detalle: casi siempre `esperado �
   ✗ 2026-10 · SIMB0002: consumo B/N 9.930 · color 0
       lectura esperado {"bn":373108,"color":0}, obtenido {"bn":373108,"color":0}; consumo esperado {"bn":9930,"color":0}, obtenido {"bn":373108,"color":0}
 ...
-132 comprobaciones, 1 fallos · 42 s
+136 comprobaciones, 1 fallos · 42 s
 
 Fallos:
   ✗ [3. Consolidado contra el cálculo a mano del escenario (contadoresAlCierre)] 2026-10 · SIMB0002: consumo B/N 9.930 · color 0 — ...
