@@ -43,3 +43,18 @@ test('al editar, solo cambia lo que viene, el nombre no puede quedar vacío y el
   assert.equal(validarCliente({ nombre: 'A', activo: false }, { esCreacion: false }).datos.activo, undefined);
   assert.match(validarCliente(null, { esCreacion: false }).error, /Faltan/);
 });
+
+test('un :id que no es un entero positivo responde 400 en clientes, contratos y áreas', async () => {
+  const { idValido } = require('../src/middlewares/idParam.middleware');
+  const respuesta = () => ({ statusCode: 200, status(c) { this.statusCode = c; return this; }, json(b) { this.body = b; return this; } });
+  for (const malo of ['abc', '0', '-1', '1.5', '99999999999']) {
+    const res = respuesta();
+    let siguio = false;
+    idValido({}, res, () => { siguio = true; }, malo);
+    assert.equal(res.statusCode, 400, malo);
+    assert.equal(siguio, false);
+  }
+  let siguio = false;
+  idValido({}, respuesta(), () => { siguio = true; }, '12');
+  assert.equal(siguio, true);
+});
