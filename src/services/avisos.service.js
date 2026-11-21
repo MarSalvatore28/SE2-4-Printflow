@@ -8,7 +8,8 @@ const APP_URL = () => (process.env.APP_URL || 'http://localhost:8080').replace(/
 // Texto del correo a partir de los datos del lote (función pura, se prueba sin base de datos)
 function armarAvisoLote({ codigo, periodo, clientes, reportes, errores }) {
   const conError = errores.length > 0;
-  const asunto = `${conError ? '⚠ ' : ''}Nuevo lote de contadores: ${codigo}${conError ? ` (${errores.length} con error)` : ''}`;
+  const cuantosConError = conError ? ` (${errores.length} con error)` : '';
+  const asunto = `${conError ? '⚠ ' : ''}Nuevo lote de contadores: ${codigo}${cuantosConError}`;
   const lineas = [
     'Llegó un nuevo lote de reportes de contadores a PrintFlow.',
     '',

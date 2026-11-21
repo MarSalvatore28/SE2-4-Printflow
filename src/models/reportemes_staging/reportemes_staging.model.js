@@ -829,7 +829,8 @@ const validarLoteStaging = async (loteId) => {
 
   const errores = [];
   for (const [clienteId, reportes] of porCliente) {
-    const prefijo = clienteIds.length > 1 ? `Cliente ${nombres.get(clienteId) || `#${clienteId}`}: ` : '';
+    const nombreCliente = nombres.get(clienteId) || `#${clienteId}`;
+    const prefijo = clienteIds.length > 1 ? `Cliente ${nombreCliente}: ` : '';
     const maquinasDelCliente = maquinasDB.filter((m) => Number(m.cliente_id) === clienteId);
     errores.push(...erroresDelCliente(maquinasDelCliente, reportes, consolidadosConDetalle, prefijo));
   }

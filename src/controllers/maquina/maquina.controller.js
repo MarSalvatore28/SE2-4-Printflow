@@ -222,9 +222,8 @@ const cambiarEstadoMaquinaController = async (req, res) => {
     }
     if (resultado === 'asignada') {
       const maquina = await getMaquinaById(id);
-      const donde = maquina?.cliente_nombre
-        ? ` (${maquina.cliente_nombre}${maquina.area_nombre ? ` · ${maquina.area_nombre}` : ''})`
-        : '';
+      const area = maquina?.area_nombre ? ` · ${maquina.area_nombre}` : '';
+      const donde = maquina?.cliente_nombre ? ` (${maquina.cliente_nombre}${area})` : '';
       return res.status(409).json({
         success: false,
         message: `No se puede desactivar: la máquina tiene una asignación vigente${donde}. Retírela primero en Asignaciones.`,

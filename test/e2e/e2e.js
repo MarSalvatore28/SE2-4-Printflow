@@ -508,7 +508,7 @@ async function aprobarNoviembreHorizonte(ctx) {
   const conError = filas.filter((f) => f.estado_maquina === 'ERROR');
   comprobar(conError.length === 0 && filas.some((f) => f.serie_maquina === datosReemplazo.entrante),
     `${codigoH}: trae a ${datosReemplazo.entrante} en lugar de ${datosReemplazo.saliente}, sin errores`,
-    `${filas.map((f) => `${f.serie_maquina} ${f.estado_maquina} ${f.mensaje_aviso || ''}`).join('; ')}`);
+    filas.map((f) => `${f.serie_maquina} ${f.estado_maquina} ${f.mensaje_aviso || ''}`).join('; '));
   const res = await aprobar(ctx.operador, loteH.loteId, NOVIEMBRE);
   comprobar(res.status === 200, `${codigoH} (#${loteH.loteId}) aprobado`, `HTTP ${res.status}: ${motivosDe(res.datos)}`);
 }

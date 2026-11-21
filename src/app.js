@@ -111,9 +111,8 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
   const status = err.status || err.statusCode || 500;
   if (status >= 500) console.error('Error no controlado:', err);
-  const message = err.type === 'entity.parse.failed'
-    ? 'El cuerpo de la petición no es un JSON válido'
-    : status >= 500 ? 'Error interno del servidor' : err.message;
+  let message = status >= 500 ? 'Error interno del servidor' : err.message;
+  if (err.type === 'entity.parse.failed') message = 'El cuerpo de la petición no es un JSON válido';
   res.status(status).json({ success: false, message });
 });
 
