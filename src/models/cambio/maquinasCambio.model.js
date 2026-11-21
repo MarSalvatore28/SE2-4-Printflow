@@ -88,6 +88,82 @@ const insertarCabecera = (db, cambioId, maquinaId, tipo, contador, anterior) => 
   );
 };
 
+// Las dos máquinas y la asignación de la saliente, validadas para registrar el reemplazo
+const validarMaquinasDelCambio = async (client, datos) => {
+  const saliente = await getMaquinaParaCambio(client, datos.maquina_saliente_id);
+  if (!saliente) throw errorNegocio(404, 'La máquina saliente no existe');
+  const entrante = await getMaquinaParaCambio(client, datos.maquina_entrante_id);
+  if (!entrante) throw errorNegocio(404, 'La máquina entrante no existe');
+
+  const asignacion = await getAsignacionVigente(client, saliente.id_maquina);
+  if (!asignacion) {
+    throw errorNegocio(409, `La máquina saliente ${saliente.serie} no tiene una asignación vigente: solo se reemplaza una máquina asignada`);
+  }
+
+  if (!entrante.activo) throw errorNegocio(409, `La máquina entrante ${entrante.serie} está inactiva`);
+  const asignacionEntrante = await getAsignacionVigente(client, entrante.id_maquina);
+  if (asignacionEntrante) {
+    throw errorNegocio(409, `La máquina entrante ${entrante.serie} ya está asignada a ${asignacionEntrante.cliente_nombre} · ${asignacionEntrante.area_nombre}. Elija una máquina libre`);
+  }
+
+  if (datos.fecha_danio < asignacion.fecha_instalacion) {
+    throw errorNegocio(400, `La fecha del daño no puede ser anterior a la instalación de ${saliente.serie} (${asignacion.fecha_instalacion})`);
+  }
+  if (datos.fecha_instalacion_entrante < asignacion.fecha_instalacion) {
+    throw errorNegocio(400, `La fecha de instalación de la entrante no puede ser anterior a la instalación de ${saliente.serie} (${asignacion.fecha_instalacion})`);
+  }
+  return { saliente, entrante, asignacion };
+};
+
+// El período afectado y el contrato admiten el reemplazo
+const validarPeriodoDelCambio = async (client, datos, { saliente, entrante, asignacion }) => {
+  // Un período ya aprobado no se recalcula: el cambio debe registrarse antes de aprobar su lote
+  const { rows: yaAprobado } = await client.query(
+    `SELECT m.serie FROM reportes_oficiales ro JOIN maquinas m ON m.id_maquina = ro.maquina_id
+     WHERE ro.periodo = $1 AND ro.maquina_id = ANY($2::int[]) LIMIT 1`,
+    [datos.periodo_afectado, [saliente.id_maquina, entrante.id_maquina]]
+  );
+  if (yaAprobado.length > 0) {
+    throw errorNegocio(409, `El período ${datos.periodo_afectado} ya tiene lecturas aprobadas de ${yaAprobado[0].serie}. El reemplazo debe registrarse antes de aprobar el lote de ese período`);
+  }
+
+  // Una máquina participa en un solo cambio por período (el consolidado muestra una fila por cambio)
+  const { rows: otroCambio } = await client.query(
+    `SELECT id_maquina_cambio FROM maquinas_cambio
+     WHERE activo = TRUE AND periodo_afectado = $1
+       AND (maquina_saliente_id = ANY($2::int[]) OR maquina_entrante_id = ANY($2::int[]))
+     LIMIT 1`,
+    [datos.periodo_afectado, [saliente.id_maquina, entrante.id_maquina]]
+  );
+  if (otroCambio.length > 0) {
+    throw errorNegocio(409, `Una de las máquinas ya participa en el reemplazo #${otroCambio[0].id_maquina_cambio} del período ${datos.periodo_afectado}`);
+  }
+
+  // El contrato de la asignación tiene que seguir vigente cuando se instala la entrante
+  const { rows: contrato } = await client.query(
+    `SELECT ($2::date BETWEEN fecha_inicio AND COALESCE(fecha_fin, 'infinity'::date)) AS vigente
+     FROM contratos WHERE id_contrato = $1 AND activo = TRUE`,
+    [asignacion.contrato_id, datos.fecha_instalacion_entrante]
+  );
+  if (contrato.length === 0 || !contrato[0].vigente) {
+    throw errorNegocio(409, `El contrato de la asignación de ${saliente.serie} no está vigente el ${datos.fecha_instalacion_entrante}`);
+  }
+};
+
+// IP de la entrante: la indicada o la de la saliente, que no use otra máquina
+const ipDeLaEntrante = async (client, datos, saliente, asignacion) => {
+  const ip = datos.ip_address || asignacion.ip_address;
+  if (!ip) throw errorNegocio(400, `La asignación de ${saliente.serie} no tiene IP: indique la IP de la entrante`);
+  const { rows: ipEnUso } = await client.query(
+    `SELECT m.serie FROM instalaciones i JOIN maquinas m ON m.id_maquina = i.maquina_id
+     WHERE i.ip_address = $1 AND i.activo = TRUE AND i.fecha_retiro IS NULL AND i.maquina_id <> $2
+     LIMIT 1`,
+    [ip, saliente.id_maquina]
+  );
+  if (ipEnUso.length > 0) throw errorNegocio(409, `La IP ${ip} ya está siendo usada por la máquina ${ipEnUso[0].serie}`);
+  return ip;
+};
+
 /**
  * Registra el reemplazo en una sola transacción:
  *  1. maquinas_cambio y las dos cabeceras de contadores (SALIENTE al salir, ENTRANTE al entrar);
@@ -102,70 +178,9 @@ const registrarReemplazo = async (datos, auditoria = {}) => {
   try {
     await client.query('BEGIN');
 
-    const saliente = await getMaquinaParaCambio(client, datos.maquina_saliente_id);
-    if (!saliente) throw errorNegocio(404, 'La máquina saliente no existe');
-    const entrante = await getMaquinaParaCambio(client, datos.maquina_entrante_id);
-    if (!entrante) throw errorNegocio(404, 'La máquina entrante no existe');
-
-    const asignacion = await getAsignacionVigente(client, saliente.id_maquina);
-    if (!asignacion) {
-      throw errorNegocio(409, `La máquina saliente ${saliente.serie} no tiene una asignación vigente: solo se reemplaza una máquina asignada`);
-    }
-
-    if (!entrante.activo) throw errorNegocio(409, `La máquina entrante ${entrante.serie} está inactiva`);
-    const asignacionEntrante = await getAsignacionVigente(client, entrante.id_maquina);
-    if (asignacionEntrante) {
-      throw errorNegocio(409, `La máquina entrante ${entrante.serie} ya está asignada a ${asignacionEntrante.cliente_nombre} · ${asignacionEntrante.area_nombre}. Elija una máquina libre`);
-    }
-
-    if (datos.fecha_danio < asignacion.fecha_instalacion) {
-      throw errorNegocio(400, `La fecha del daño no puede ser anterior a la instalación de ${saliente.serie} (${asignacion.fecha_instalacion})`);
-    }
-    if (datos.fecha_instalacion_entrante < asignacion.fecha_instalacion) {
-      throw errorNegocio(400, `La fecha de instalación de la entrante no puede ser anterior a la instalación de ${saliente.serie} (${asignacion.fecha_instalacion})`);
-    }
-
-    // Un período ya aprobado no se recalcula: el cambio debe registrarse antes de aprobar su lote
-    const { rows: yaAprobado } = await client.query(
-      `SELECT m.serie FROM reportes_oficiales ro JOIN maquinas m ON m.id_maquina = ro.maquina_id
-       WHERE ro.periodo = $1 AND ro.maquina_id = ANY($2::int[]) LIMIT 1`,
-      [datos.periodo_afectado, [saliente.id_maquina, entrante.id_maquina]]
-    );
-    if (yaAprobado.length > 0) {
-      throw errorNegocio(409, `El período ${datos.periodo_afectado} ya tiene lecturas aprobadas de ${yaAprobado[0].serie}. El reemplazo debe registrarse antes de aprobar el lote de ese período`);
-    }
-
-    // Una máquina participa en un solo cambio por período (el consolidado muestra una fila por cambio)
-    const { rows: otroCambio } = await client.query(
-      `SELECT id_maquina_cambio FROM maquinas_cambio
-       WHERE activo = TRUE AND periodo_afectado = $1
-         AND (maquina_saliente_id = ANY($2::int[]) OR maquina_entrante_id = ANY($2::int[]))
-       LIMIT 1`,
-      [datos.periodo_afectado, [saliente.id_maquina, entrante.id_maquina]]
-    );
-    if (otroCambio.length > 0) {
-      throw errorNegocio(409, `Una de las máquinas ya participa en el reemplazo #${otroCambio[0].id_maquina_cambio} del período ${datos.periodo_afectado}`);
-    }
-
-    // El contrato de la asignación tiene que seguir vigente cuando se instala la entrante
-    const { rows: contrato } = await client.query(
-      `SELECT ($2::date BETWEEN fecha_inicio AND COALESCE(fecha_fin, 'infinity'::date)) AS vigente
-       FROM contratos WHERE id_contrato = $1 AND activo = TRUE`,
-      [asignacion.contrato_id, datos.fecha_instalacion_entrante]
-    );
-    if (contrato.length === 0 || !contrato[0].vigente) {
-      throw errorNegocio(409, `El contrato de la asignación de ${saliente.serie} no está vigente el ${datos.fecha_instalacion_entrante}`);
-    }
-
-    const ip = datos.ip_address || asignacion.ip_address;
-    if (!ip) throw errorNegocio(400, `La asignación de ${saliente.serie} no tiene IP: indique la IP de la entrante`);
-    const { rows: ipEnUso } = await client.query(
-      `SELECT m.serie FROM instalaciones i JOIN maquinas m ON m.id_maquina = i.maquina_id
-       WHERE i.ip_address = $1 AND i.activo = TRUE AND i.fecha_retiro IS NULL AND i.maquina_id <> $2
-       LIMIT 1`,
-      [ip, saliente.id_maquina]
-    );
-    if (ipEnUso.length > 0) throw errorNegocio(409, `La IP ${ip} ya está siendo usada por la máquina ${ipEnUso[0].serie}`);
+    const { saliente, entrante, asignacion } = await validarMaquinasDelCambio(client, datos);
+    await validarPeriodoDelCambio(client, datos, { saliente, entrante, asignacion });
+    const ip = await ipDeLaEntrante(client, datos, saliente, asignacion);
 
     // Contadores acumulados: no pueden ser menores que la última lectura aprobada de cada máquina
     const finalSaliente = { bn: datos.contador_final_saliente_bn, color: datos.contador_final_saliente_color };
@@ -245,6 +260,87 @@ const registrarReemplazo = async (datos, auditoria = {}) => {
   }
 };
 
+// Asignación que el registro creó para la entrante (bloqueada), o null si ya no es de la entrante
+const asignacionEntranteDelCambio = async (client, cambio) => {
+  if (!cambio.instalacion_entrante_id) return null;
+  const { rows: [entrante] } = await client.query(
+    `SELECT id_instalacion, maquina_id, (activo = TRUE AND fecha_retiro IS NULL) AS vigente
+     FROM instalaciones WHERE id_instalacion = $1
+     FOR UPDATE`,
+    [cambio.instalacion_entrante_id]
+  );
+  return entrante && entrante.maquina_id === cambio.maquina_entrante_id ? entrante : null;
+};
+
+// Lo que decide si un cambio activo se puede anular (ver motivoNoAnulable)
+const estadoParaAnular = async (client, cambio) => {
+  const estado = { cambio };
+  const maquinas = [cambio.maquina_saliente_id, cambio.maquina_entrante_id];
+
+  // Lecturas aprobadas que usan el cambio, o de cualquiera de las dos máquinas desde el período afectado
+  const { rows: [lectura] } = await client.query(
+    `SELECT ro.periodo, COALESCE(m.serie, ro.snap_maquina_serie) AS serie
+     FROM reportes_oficiales ro
+     LEFT JOIN maquinas m ON m.id_maquina = ro.maquina_id
+     WHERE ro.maquina_cambio_id = $1
+        OR (ro.maquina_id = ANY($2::int[]) AND ro.periodo >= $3)
+     ORDER BY ro.periodo, ro.id_reporte
+     LIMIT 1`,
+    [cambio.id_maquina_cambio, maquinas, cambio.periodo_afectado]
+  );
+  estado.lecturaAprobada = lectura || null;
+
+  // Un lote sin aprobar con esas máquinas se aprobaría con una asignación que ya no existe
+  const { rows: [lote] } = await client.query(
+    `SELECT l.codigo_referencia AS codigo, s.serie_maquina AS serie
+     FROM reportes_consolidado_staging s
+     JOIN lotes_carga l ON l.id_lote = s.lote_id
+     WHERE l.fecha_aprobacion IS NULL
+       AND s.maquina_id_tentativa = ANY($1::int[])
+       AND COALESCE(l.periodo, $2) >= $2
+     ORDER BY l.id_lote
+     LIMIT 1`,
+    [maquinas, cambio.periodo_afectado]
+  );
+  estado.lotePendiente = lote || null;
+
+  estado.asignacionEntrante = await asignacionEntranteDelCambio(client, cambio);
+  estado.asignacionSaliente = await getAsignacionVigente(client, cambio.maquina_saliente_id);
+
+  if (cambio.instalacion_saliente_id) {
+    const { rows: [ip] } = await client.query(
+      `SELECT m.serie
+       FROM instalaciones sal
+       JOIN instalaciones i ON i.ip_address = sal.ip_address
+       JOIN maquinas m ON m.id_maquina = i.maquina_id
+       WHERE sal.id_instalacion = $1
+         AND i.activo = TRUE AND i.fecha_retiro IS NULL
+         AND i.id_instalacion NOT IN ($1, COALESCE($2, 0))
+       LIMIT 1`,
+      [cambio.instalacion_saliente_id, cambio.instalacion_entrante_id]
+    );
+    estado.ipEnUso = ip ? ip.serie : null;
+  }
+  return estado;
+};
+
+// Auditoría (S3-02) de la anulación: el cambio y las dos asignaciones, con cómo estaban antes
+const auditarAnulacion = async (client, cambio, { cambioAntes, entranteAntes, salienteAntes }, auditoria) => {
+  await auditarFila(client, {
+    tabla: 'maquinas_cambio', idRegistro: cambio.id_maquina_cambio, accion: ACCIONES.ANULAR, antes: cambioAntes, ...auditoria,
+  });
+  if (entranteAntes) {
+    await registrarAuditoria(client, {
+      tabla: 'instalaciones', idRegistro: cambio.instalacion_entrante_id, accion: ACCIONES.ANULAR, antes: entranteAntes, despues: null, ...auditoria,
+    });
+  }
+  if (salienteAntes) {
+    await auditarFila(client, {
+      tabla: 'instalaciones', idRegistro: cambio.instalacion_saliente_id, accion: ACCIONES.ACTIVAR, antes: salienteAntes, ...auditoria,
+    });
+  }
+};
+
 /**
  * Anula un reemplazo registrado por error, en una sola transacción:
  *  1. la asignación de la saliente vuelve a estar vigente (activo, sin fecha de retiro y sin la
@@ -270,78 +366,23 @@ const anularReemplazo = async (pool, id, { motivo = null, usuarioId = null, ip =
       [id]
     );
 
-    const estado = { cambio: cambio || null };
-    if (cambio && cambio.activo !== false) {
-      const maquinas = [cambio.maquina_saliente_id, cambio.maquina_entrante_id];
-
-      // Lecturas aprobadas que usan el cambio, o de cualquiera de las dos máquinas desde el período afectado
-      const { rows: [lectura] } = await client.query(
-        `SELECT ro.periodo, COALESCE(m.serie, ro.snap_maquina_serie) AS serie
-         FROM reportes_oficiales ro
-         LEFT JOIN maquinas m ON m.id_maquina = ro.maquina_id
-         WHERE ro.maquina_cambio_id = $1
-            OR (ro.maquina_id = ANY($2::int[]) AND ro.periodo >= $3)
-         ORDER BY ro.periodo, ro.id_reporte
-         LIMIT 1`,
-        [cambio.id_maquina_cambio, maquinas, cambio.periodo_afectado]
-      );
-      estado.lecturaAprobada = lectura || null;
-
-      // Un lote sin aprobar con esas máquinas se aprobaría con una asignación que ya no existe
-      const { rows: [lote] } = await client.query(
-        `SELECT l.codigo_referencia AS codigo, s.serie_maquina AS serie
-         FROM reportes_consolidado_staging s
-         JOIN lotes_carga l ON l.id_lote = s.lote_id
-         WHERE l.fecha_aprobacion IS NULL
-           AND s.maquina_id_tentativa = ANY($1::int[])
-           AND COALESCE(l.periodo, $2) >= $2
-         ORDER BY l.id_lote
-         LIMIT 1`,
-        [maquinas, cambio.periodo_afectado]
-      );
-      estado.lotePendiente = lote || null;
-
-      if (cambio.instalacion_entrante_id) {
-        const { rows: [entrante] } = await client.query(
-          `SELECT id_instalacion, maquina_id, (activo = TRUE AND fecha_retiro IS NULL) AS vigente
-           FROM instalaciones WHERE id_instalacion = $1
-           FOR UPDATE`,
-          [cambio.instalacion_entrante_id]
-        );
-        estado.asignacionEntrante = entrante && entrante.maquina_id === cambio.maquina_entrante_id ? entrante : null;
-      } else {
-        estado.asignacionEntrante = null;
-      }
-
-      estado.asignacionSaliente = await getAsignacionVigente(client, cambio.maquina_saliente_id);
-
-      if (cambio.instalacion_saliente_id) {
-        const { rows: [ip] } = await client.query(
-          `SELECT m.serie
-           FROM instalaciones sal
-           JOIN instalaciones i ON i.ip_address = sal.ip_address
-           JOIN maquinas m ON m.id_maquina = i.maquina_id
-           WHERE sal.id_instalacion = $1
-             AND i.activo = TRUE AND i.fecha_retiro IS NULL
-             AND i.id_instalacion NOT IN ($1, COALESCE($2, 0))
-           LIMIT 1`,
-          [cambio.instalacion_saliente_id, cambio.instalacion_entrante_id]
-        );
-        estado.ipEnUso = ip ? ip.serie : null;
-      }
-    }
+    const estado = cambio && cambio.activo !== false
+      ? await estadoParaAnular(client, cambio)
+      : { cambio: cambio || null };
 
     const bloqueo = motivoNoAnulable(estado);
     if (bloqueo) throw errorNegocio(bloqueo.status, bloqueo.message);
 
     // Auditoría (S3-02): cómo estaban el cambio y las dos asignaciones antes de anular
-    const cambioAntes = await leerFila(client, 'maquinas_cambio', cambio.id_maquina_cambio);
-    const entranteAntes = cambio.instalacion_entrante_id
-      ? await leerFila(client, 'instalaciones', cambio.instalacion_entrante_id)
-      : null;
-    const salienteAntes = cambio.instalacion_saliente_id
-      ? await leerFila(client, 'instalaciones', cambio.instalacion_saliente_id)
-      : null;
+    const antes = {
+      cambioAntes: await leerFila(client, 'maquinas_cambio', cambio.id_maquina_cambio),
+      entranteAntes: cambio.instalacion_entrante_id
+        ? await leerFila(client, 'instalaciones', cambio.instalacion_entrante_id)
+        : null,
+      salienteAntes: cambio.instalacion_saliente_id
+        ? await leerFila(client, 'instalaciones', cambio.instalacion_saliente_id)
+        : null,
+    };
 
     // Primero se suelta la referencia a la asignación de la entrante y después se borra
     await client.query(
@@ -364,20 +405,7 @@ const anularReemplazo = async (pool, id, { motivo = null, usuarioId = null, ip =
       [cambio.instalacion_saliente_id, quitarNotaRetiro(saliente ? saliente.observaciones : null, cambio.id_maquina_cambio)]
     );
 
-    const auditoria = { usuarioId, ip };
-    await auditarFila(client, {
-      tabla: 'maquinas_cambio', idRegistro: cambio.id_maquina_cambio, accion: ACCIONES.ANULAR, antes: cambioAntes, ...auditoria,
-    });
-    if (entranteAntes) {
-      await registrarAuditoria(client, {
-        tabla: 'instalaciones', idRegistro: cambio.instalacion_entrante_id, accion: ACCIONES.ANULAR, antes: entranteAntes, despues: null, ...auditoria,
-      });
-    }
-    if (salienteAntes) {
-      await auditarFila(client, {
-        tabla: 'instalaciones', idRegistro: cambio.instalacion_saliente_id, accion: ACCIONES.ACTIVAR, antes: salienteAntes, ...auditoria,
-      });
-    }
+    await auditarAnulacion(client, cambio, antes, { usuarioId, ip });
 
     await client.query('COMMIT');
     return cambio.id_maquina_cambio;

@@ -330,7 +330,9 @@ const obtenerLote = async (loteId) => {
   return rows[0] || null;
 };
 
-// approveStagingBatch (staging) deja usuario_aprobacion_id en NULL: aquí se guarda quién aprobó
+// Guarda quién aprobó el lote (usuario_aprobacion_id). approveStagingBatch ya lo guarda en la misma
+// transacción de la aprobación; esto lo confirma con el usuario de la petición y no cambia nada si es
+// el mismo. Solo toca lotes ya aprobados (fecha_aprobacion no nula).
 const registrarAprobador = async (loteId, usuarioId) => {
   await pool.query(
     'UPDATE lotes_carga SET usuario_aprobacion_id = $2 WHERE id_lote = $1 AND fecha_aprobacion IS NOT NULL',

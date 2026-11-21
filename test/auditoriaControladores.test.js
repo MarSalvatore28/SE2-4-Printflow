@@ -10,7 +10,9 @@ const validacionLecturas = require('../src/services/validacionLecturas');
 const Staging = require('../src/models/reportemes_staging/reportemes_staging.model');
 const Notificaciones = require('../src/models/notificaciones/notificaciones.model');
 const notificacionesController = require('../src/controllers/notificaciones/notificaciones.controller');
-const { crearContratoController, actualizarContratoController } = require('../src/controllers/cliente/cliente.controller');
+const {
+  crearContratoController, actualizarContratoController, eliminarClienteController, activarClienteController,
+} = require('../src/controllers/cliente/cliente.controller');
 const { registrarLecturaManualController } = require('../src/controllers/lectura/lectura.controller');
 const { reprocesarReporteController } = require('../src/controllers/reproceso/reproceso.controller');
 const { listarAuditoriaController } = require('../src/controllers/auditoria/auditoria.controller');
@@ -139,6 +141,66 @@ test('si la auditoría falla, el contrato no se crea (ROLLBACK y 500)', async (t
   }, { fallarAuditoria: true });
   const res = respuesta();
   await crearContratoController({ params: { id: 4 }, body: CONTRATO, pool: bd.pool, user: USUARIO, ip: IP }, res);
+
+  assert.equal(res.statusCode, 500);
+  assert.deepEqual(bd.transaccion(), ['BEGIN', 'ROLLBACK']);
+  assert.ok(bd.liberado());
+});
+
+// ------------------------------ Cliente: desactivar y activar en cascada ------------------------------
+
+// Base falsa de un cliente con una asignación vigente (#51) y un contrato (#31)
+const bdCliente = (opciones) => {
+  const estado = { instalacionActiva: true, contratoActivo: opciones.contratoActivo ?? true };
+  return clienteFalso((sql) => {
+    if (/SELECT id_instalacion AS id FROM instalaciones/.test(sql)) return { rows: estado.instalacionActiva ? [{ id: 51 }] : [] };
+    if (/SELECT id_contrato AS id FROM contratos/.test(sql)) {
+      const activos = /activo = TRUE/.test(sql);
+      return { rows: estado.contratoActivo === activos ? [{ id: 31 }] : [] };
+    }
+    if (/to_jsonb\(t\) AS fila FROM instalaciones/.test(sql)) return { rows: [{ fila: { id_instalacion: 51, activo: estado.instalacionActiva } }] };
+    if (/to_jsonb\(t\) AS fila FROM contratos/.test(sql)) return { rows: [{ fila: { id_contrato: 31, activo: estado.contratoActivo } }] };
+    if (/UPDATE instalaciones/.test(sql)) { estado.instalacionActiva = false; return { rows: [], rowCount: 1 }; }
+    if (/UPDATE contratos SET activo = FALSE/.test(sql)) { estado.contratoActivo = false; return { rows: [], rowCount: 1 }; }
+    if (/UPDATE contratos SET activo = TRUE/.test(sql)) { estado.contratoActivo = true; return { rows: [], rowCount: 1 }; }
+    if (/UPDATE (clientes|areas)/.test(sql)) return { rows: [], rowCount: 1 };
+    return undefined;
+  }, opciones);
+};
+
+test('desactivar cliente: la asignación retirada y el contrato desactivado quedan en la auditoría, en la misma transacción', async () => {
+  const bd = bdCliente({});
+  const res = respuesta();
+  await eliminarClienteController({ params: { id: '4' }, pool: bd.pool, user: USUARIO, ip: IP }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(bd.transaccion(), ['BEGIN', 'COMMIT']);
+  const bloqueos = bd.consultas.filter((c) => /SELECT id_(instalacion|contrato) AS id/.test(c.sql));
+  assert.ok(bloqueos.length === 2 && bloqueos.every((c) => /FOR UPDATE/.test(c.sql)), 'las filas de la cascada se bloquean antes de leerlas');
+  assert.deepEqual(bd.auditorias(), [
+    { tabla: 'instalaciones', id: 51, accion: 'RETIRAR', usuario: USUARIO.id, antes: { id_instalacion: 51, activo: true }, despues: { id_instalacion: 51, activo: false }, ip: IP },
+    { tabla: 'contratos', id: 31, accion: 'DESACTIVAR', usuario: USUARIO.id, antes: { id_contrato: 31, activo: true }, despues: { id_contrato: 31, activo: false }, ip: IP },
+  ]);
+  assert.ok(bd.liberado());
+});
+
+test('activar cliente: los contratos que vuelven a estar activos quedan en la auditoría', async () => {
+  const bd = bdCliente({ contratoActivo: false });
+  const res = respuesta();
+  await activarClienteController({ params: { id: '4' }, pool: bd.pool, user: USUARIO, ip: IP }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(bd.transaccion(), ['BEGIN', 'COMMIT']);
+  assert.deepEqual(bd.auditorias(), [
+    { tabla: 'contratos', id: 31, accion: 'ACTIVAR', usuario: USUARIO.id, antes: { id_contrato: 31, activo: false }, despues: { id_contrato: 31, activo: true }, ip: IP },
+  ]);
+});
+
+test('si la auditoría de la cascada falla, el cliente no se desactiva (ROLLBACK y 500)', async (t) => {
+  silenciarErrores(t);
+  const bd = bdCliente({ fallarAuditoria: true });
+  const res = respuesta();
+  await eliminarClienteController({ params: { id: '4' }, pool: bd.pool, user: USUARIO, ip: IP }, res);
 
   assert.equal(res.statusCode, 500);
   assert.deepEqual(bd.transaccion(), ['BEGIN', 'ROLLBACK']);

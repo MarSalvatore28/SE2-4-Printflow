@@ -6,6 +6,30 @@ const { agruparPorCliente, erroresDelCliente, erroresSinCliente } = require('@ut
 const { tarifasParaCongelar, COLUMNAS_CONGELADAS } = require('@utils/tarifasCongeladas');
 const { ACCIONES, leerFila, auditarFila } = require('@services/auditoria');
 
+// Un campo que no vino en la edición queda en null: el COALESCE del UPDATE conserva el valor actual
+const valorONull = (valor) => (valor === undefined ? null : valor);
+
+// print_total, copy_total y totalservicio a guardar al editar un consolidado.
+// El SELECT devuelve consolidado_print_total = print_total - copy_total (impresiones puras).
+// Para guardar correctamente en la BD, hay que reconstruir: print_total = imprimir + copias.
+const totalesEditados = (data) => {
+  const printOnlyEditado = data.consolidado_print_total === undefined ? null : Number(data.consolidado_print_total);
+  const copyTotalEditado = data.consolidado_copy_total === undefined ? null : Number(data.consolidado_copy_total);
+
+  let printTotal = null;
+  if (printOnlyEditado !== null && copyTotalEditado !== null) {
+    // Ambos campos editados: recalcular el total bruto
+    printTotal = printOnlyEditado + copyTotalEditado;
+  } else if (printOnlyEditado !== null) {
+    // Solo se editó el campo "imprimir", usar copy_total tal cual venía (no modificar)
+    printTotal = printOnlyEditado; // el COALESCE de la BD lo completará
+  }
+
+  // totalservicio debe ser consistente con print_total (gran total)
+  const totalServicio = printTotal === null ? valorONull(data.totalservicio) : printTotal;
+  return { printTotal, copyTotal: copyTotalEditado, totalServicio };
+};
+
 // S3-02: lo que la auditoría guarda de cada reporte del lote antes de aprobarlo o rechazarlo
 const resumenStaging = (rows) => rows.map((r) => ({
   id_staging_consolidado: r.id_staging_consolidado,
@@ -258,37 +282,20 @@ const updateConsolidadoStaging = async (id_staging_consolidado, data) => {
       RETURNING *
     `;
 
-    // El SELECT devuelve consolidado_print_total = print_total - copy_total (impresiones puras).
-    // Para guardar correctamente en la BD, hay que reconstruir: print_total = imprimir + copias.
-    const printOnlyEditado = data.consolidado_print_total !== undefined ? Number(data.consolidado_print_total) : null;
-    const copyTotalEditado  = data.consolidado_copy_total  !== undefined ? Number(data.consolidado_copy_total)  : null;
-
-    let printTotalParaGuardar = null;
-    if (printOnlyEditado !== null && copyTotalEditado !== null) {
-      // Ambos campos editados: recalcular el total bruto
-      printTotalParaGuardar = printOnlyEditado + copyTotalEditado;
-    } else if (printOnlyEditado !== null) {
-      // Solo se editó el campo "imprimir", usar copy_total tal cual venía (no modificar)
-      printTotalParaGuardar = printOnlyEditado; // el COALESCE de la BD lo completará
-    }
-
-    // totalservicio debe ser consistente con print_total (gran total)
-    const totalServicioParaGuardar = printTotalParaGuardar !== null
-      ? printTotalParaGuardar
-      : (data.totalservicio !== undefined ? data.totalservicio : null);
+    const totales = totalesEditados(data);
 
     const values = [
-      data.ip_detectada !== undefined ? data.ip_detectada : null,
-      printTotalParaGuardar,
-      copyTotalEditado,
-      data.consolidado_impresion_bn !== undefined ? data.consolidado_impresion_bn : null,
-      data.consolidado_impresion_color !== undefined ? data.consolidado_impresion_color : null,
-      totalServicioParaGuardar,
-      data.maquina_id_tentativa !== undefined ? data.maquina_id_tentativa : null,
-      data.cliente_id_tentativo !== undefined ? data.cliente_id_tentativo : null,
-      data.serie_maquina !== undefined ? data.serie_maquina : null,
-      data.consolidado_fecha_lectura !== undefined ? data.consolidado_fecha_lectura : null,
-      data.consolidado_fecha_corte !== undefined ? data.consolidado_fecha_corte : null,
+      valorONull(data.ip_detectada),
+      totales.printTotal,
+      totales.copyTotal,
+      valorONull(data.consolidado_impresion_bn),
+      valorONull(data.consolidado_impresion_color),
+      totales.totalServicio,
+      valorONull(data.maquina_id_tentativa),
+      valorONull(data.cliente_id_tentativo),
+      valorONull(data.serie_maquina),
+      valorONull(data.consolidado_fecha_lectura),
+      valorONull(data.consolidado_fecha_corte),
       id_staging_consolidado
     ];
 
@@ -342,11 +349,11 @@ const updateDetalleStaging = async (id_staging_detalle, data) => {
       RETURNING *, consolidado_staging_id
     `;
     const values = [
-      data.cuenta_id !== undefined ? data.cuenta_id : null, data.print_total !== undefined ? data.print_total : null,
-      data.copy_total !== undefined ? data.copy_total : null, data.nombre_cuenta !== undefined ? data.nombre_cuenta : null,
-      data.impresion_bn !== undefined ? data.impresion_bn : null, data.impresion_color !== undefined ? data.impresion_color : null,
-      data.copia_bn !== undefined ? data.copia_bn : null, data.copia_color !== undefined ? data.copia_color : null,
-      data.nombre_host !== undefined ? data.nombre_host : null, data.fecha_lectura !== undefined ? data.fecha_lectura : null,
+      valorONull(data.cuenta_id), valorONull(data.print_total),
+      valorONull(data.copy_total), valorONull(data.nombre_cuenta),
+      valorONull(data.impresion_bn), valorONull(data.impresion_color),
+      valorONull(data.copia_bn), valorONull(data.copia_color),
+      valorONull(data.nombre_host), valorONull(data.fecha_lectura),
       id_staging_detalle
     ];
 
@@ -405,10 +412,10 @@ const updateMultiplesDetallesStaging = async (detalles) => {
         WHERE id_staging_detalle = $9 RETURNING *
       `;
       const values = [
-        data.cuenta_id !== undefined ? data.cuenta_id : null, data.print_total !== undefined ? data.print_total : null,
-        data.copy_total !== undefined ? data.copy_total : null, data.nombre_cuenta !== undefined ? data.nombre_cuenta : null,
-        data.impresion_bn !== undefined ? data.impresion_bn : null, data.impresion_color !== undefined ? data.impresion_color : null,
-        data.nombre_host !== undefined ? data.nombre_host : null, data.fecha_lectura !== undefined ? data.fecha_lectura : null,
+        valorONull(data.cuenta_id), valorONull(data.print_total),
+        valorONull(data.copy_total), valorONull(data.nombre_cuenta),
+        valorONull(data.impresion_bn), valorONull(data.impresion_color),
+        valorONull(data.nombre_host), valorONull(data.fecha_lectura),
         id_staging_detalle
       ];
       const { rows } = await client.query(query, values);

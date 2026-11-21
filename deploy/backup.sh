@@ -100,7 +100,10 @@ case "${1:-}" in
       printflow_*.dump) ;;
       *) echo "Uso: sh /backup.sh --bajar-azure printflow_AAAA-MM-DD_HHMM.dump (ver --listar-azure)"; exit 1 ;;
     esac
-    case $nombre in */*) echo "Nombre no válido: $nombre"; exit 1 ;; esac
+    case $nombre in
+      */*) echo "Nombre no válido: $nombre"; exit 1 ;;
+      *) ;;
+    esac
     azure_listo || { echo "Sin AZURE_BLOB_SAS_URL válida: no hay copia en Azure."; exit 1; }
     curl -fsS --max-time 600 -o "$DIR/$nombre.tmp" "$(blob_url "$nombre")"
     mv "$DIR/$nombre.tmp" "$DIR/$nombre"

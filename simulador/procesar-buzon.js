@@ -18,7 +18,8 @@ const { leerCorreo } = require('./lib/correo');
 const { correoAIngesta } = require('./lib/n8n');
 const entrega = require('./lib/entrega');
 
-const API_URL = process.env.API_URL || 'http://api:9000';
+// Por defecto, la API dentro de la red privada de Docker (el simulador corre en un contenedor)
+const API_URL = process.env.API_URL || 'http://api:9000'; // NOSONAR: red interna de Docker, sin salir del equipo
 const BUZON = path.join(__dirname, 'buzon');
 const DIR = {
   entrada: path.join(BUZON, 'entrada'),
@@ -59,6 +60,54 @@ function alertar({ archivo, asunto, motivo, fallos, pendientes, log }) {
   log(`   🔔 Alerta enviada a ${alertaPara} (buzon/alertas/${nombre})`);
 }
 
+/// Lee y convierte un correo de la entrada. Si no se puede, lo pasa a con-error, avisa y devuelve null.
+function leerDelBuzon(archivo, { estado, resumen, log }) {
+  try {
+    const correo = leerCorreo(fs.readFileSync(path.join(DIR.entrada, archivo), 'utf8'));
+    return { correo, ingesta: correoAIngesta(correo) };
+  } catch (error) {
+    mover(archivo, DIR.error, `No se pudo leer el correo: ${error.message}`);
+    log(`✗ ${archivo}: no se pudo leer (${error.message}) → con-error`);
+    alertar({ archivo, motivo: `Correo ilegible: ${error.message}`, log });
+    delete estado[archivo];
+    resumen.push({ archivo, resultado: 'ERROR_LECTURA', detalle: error.message });
+    return null;
+  }
+}
+
+// La API sigue sin responder: el correo NO se pierde, queda para el próximo ciclo
+function registrarReintento(archivo, correo, envio, { estado, config, log }) {
+  const registro = estado[archivo] || { fallos: 0, alertado: false };
+  registro.fallos += 1;
+  registro.ultimoError = envio.error || `HTTP ${envio.status}`;
+  estado[archivo] = registro;
+  const pendientes = fs.readdirSync(DIR.entrada).filter((a) => a.endsWith('.eml')).length;
+  log(`   … ${registro.ultimoError}. Ciclo fallido ${registro.fallos}; el correo se queda en la entrada.`);
+  if (registro.fallos >= config.fallosParaAlerta && !registro.alertado) {
+    alertar({ archivo, asunto: correo.asunto, motivo: registro.ultimoError, fallos: registro.fallos, pendientes, log });
+    registro.alertado = true;
+  }
+  return { archivo, resultado: 'REINTENTAR', detalle: registro.ultimoError, fallos: registro.fallos };
+}
+
+// La API respondió: el correo pasa a procesados o a con-error. Devuelve su resumen.
+function registrarRespuesta(archivo, { correo, ingesta }, envio, log) {
+  const { status, cuerpo } = envio;
+  if (status === 200 && cuerpo.success) {
+    const resultado = cuerpo.estado || 'PROCESADO';
+    mover(archivo, DIR.procesados);
+    log(resultado === 'DESCARTADO'
+      ? `   ↺ DESCARTADO: este correo (${correo.messageId}) ya se había procesado`
+      : `   ✓ PROCESADO: ${cuerpo.data?.total_procesados} reporte(s) en staging`);
+    return { archivo, resultado, lote: ingesta.lote.codigo_referencia, intentos: envio.intentos };
+  }
+  const motivo = `HTTP ${status}: ${cuerpo.message || 'sin mensaje'}`;
+  mover(archivo, DIR.error, motivo);
+  log(`   ✗ ${motivo} → con-error`);
+  alertar({ archivo, asunto: correo.asunto, motivo: `La API rechazó el correo (${motivo})`, log });
+  return { archivo, resultado: 'RECHAZADO', detalle: motivo };
+}
+
 // Procesa todo el buzón una vez. Devuelve un resumen por correo.
 async function procesarBuzon({ silencioso = false } = {}) {
   const log = silencioso ? () => {} : console.log;
@@ -69,19 +118,9 @@ async function procesarBuzon({ silencioso = false } = {}) {
   const resumen = [];
 
   for (const archivo of archivos) {
-    let correo;
-    let ingesta;
-    try {
-      correo = leerCorreo(fs.readFileSync(path.join(DIR.entrada, archivo), 'utf8'));
-      ingesta = correoAIngesta(correo);
-    } catch (error) {
-      mover(archivo, DIR.error, `No se pudo leer el correo: ${error.message}`);
-      log(`✗ ${archivo}: no se pudo leer (${error.message}) → con-error`);
-      alertar({ archivo, motivo: `Correo ilegible: ${error.message}`, log });
-      delete estado[archivo];
-      resumen.push({ archivo, resultado: 'ERROR_LECTURA', detalle: error.message });
-      continue;
-    }
+    const leido = leerDelBuzon(archivo, { estado, resumen, log });
+    if (!leido) continue;
+    const { correo, ingesta } = leido;
 
     const formatos = [...new Set(ingesta.reportes.map((r) => r.formato))].join(', ');
     log(`✉ ${archivo} · «${correo.asunto}»`);
@@ -91,39 +130,14 @@ async function procesarBuzon({ silencioso = false } = {}) {
     const envio = await entrega.enviarConReintentos(() => enviarAIngesta(ingesta.items), {
       reintentos: config.reintentos, esperaBaseMs: config.esperaBaseMs, log,
     });
-    const { status, cuerpo } = envio;
 
     if (envio.agotado) {
-      // La API sigue sin responder: el correo NO se pierde, queda para el próximo ciclo
-      const registro = estado[archivo] || { fallos: 0, alertado: false };
-      registro.fallos += 1;
-      registro.ultimoError = envio.error || `HTTP ${status}`;
-      estado[archivo] = registro;
-      const pendientes = fs.readdirSync(DIR.entrada).filter((a) => a.endsWith('.eml')).length;
-      log(`   … ${registro.ultimoError}. Ciclo fallido ${registro.fallos}; el correo se queda en la entrada.`);
-      if (registro.fallos >= config.fallosParaAlerta && !registro.alertado) {
-        alertar({ archivo, asunto: correo.asunto, motivo: registro.ultimoError, fallos: registro.fallos, pendientes, log });
-        registro.alertado = true;
-      }
-      resumen.push({ archivo, resultado: 'REINTENTAR', detalle: registro.ultimoError, fallos: registro.fallos });
+      resumen.push(registrarReintento(archivo, correo, envio, { estado, config, log }));
       break; // si la API está caída, los demás correos fallarían igual
     }
 
     delete estado[archivo];
-    if (status === 200 && cuerpo.success) {
-      const resultado = cuerpo.estado || 'PROCESADO';
-      mover(archivo, DIR.procesados);
-      log(resultado === 'DESCARTADO'
-        ? `   ↺ DESCARTADO: este correo (${correo.messageId}) ya se había procesado`
-        : `   ✓ PROCESADO: ${cuerpo.data?.total_procesados} reporte(s) en staging`);
-      resumen.push({ archivo, resultado, lote: ingesta.lote.codigo_referencia, intentos: envio.intentos });
-    } else {
-      const motivo = `HTTP ${status}: ${cuerpo.message || 'sin mensaje'}`;
-      mover(archivo, DIR.error, motivo);
-      log(`   ✗ ${motivo} → con-error`);
-      alertar({ archivo, asunto: correo.asunto, motivo: `La API rechazó el correo (${motivo})`, log });
-      resumen.push({ archivo, resultado: 'RECHAZADO', detalle: motivo });
-    }
+    resumen.push(registrarRespuesta(archivo, leido, envio, log));
   }
 
   entrega.guardarEstado(RUTA_ESTADO, estado);
@@ -134,24 +148,19 @@ async function procesarBuzon({ silencioso = false } = {}) {
 module.exports = { procesarBuzon };
 
 if (require.main === module) {
-  const vigilar = process.argv.includes('--vigilar');
-  const ciclo = async () => {
-    try {
-      await procesarBuzon();
-    } catch (error) {
-      console.error(`Error: ${error.message}`);
-      process.exit(1);
-    }
+  const fallar = (error) => {
+    console.error(`Error: ${error.message}`);
+    process.exit(1);
   };
-  if (!vigilar) {
-    ciclo();
-  } else {
+  if (process.argv.includes('--vigilar')) {
     console.log(`Vigilando simulador/buzon/entrada cada 10 s (API: ${API_URL}). Ctrl+C para salir.`);
     const repetir = async () => {
       const hayCorreos = fs.existsSync(DIR.entrada) && fs.readdirSync(DIR.entrada).some((a) => a.endsWith('.eml'));
-      if (hayCorreos) await ciclo();
-      setTimeout(repetir, 10000);
+      if (hayCorreos) await procesarBuzon();
+      setTimeout(() => repetir().catch(fallar), 10000);
     };
-    repetir();
+    repetir().catch(fallar);
+  } else {
+    procesarBuzon().catch(fallar);
   }
 }

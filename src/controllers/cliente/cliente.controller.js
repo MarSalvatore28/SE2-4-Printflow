@@ -274,7 +274,7 @@ const actualizarClienteController = async (req, res) => {
 const eliminarClienteController = async (req, res) => {
   try {
     const { id } = req.params;
-    const affectedRows = await deleteCliente(id);
+    const affectedRows = await deleteCliente(id, contextoAuditoria(req), req.pool);
 
     if (affectedRows === 0) {
       return res.status(404).json({
@@ -300,7 +300,7 @@ const eliminarClienteController = async (req, res) => {
 const activarClienteController = async (req, res) => {
   try {
     const { id } = req.params;
-    const affectedRows = await activarCliente(id);
+    const affectedRows = await activarCliente(id, contextoAuditoria(req), req.pool);
 
     if (affectedRows === 0) {
       return res.status(404).json({

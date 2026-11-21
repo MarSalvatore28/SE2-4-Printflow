@@ -54,7 +54,7 @@ Cada comprobación sale en pantalla con ✓ o ✗. Hoy son **115**.
    - la facturación de noviembre con ese consumo;
    - octubre sigue en $395,48;
    - **anular el reemplazo** con noviembre aprobado → 409.
-7. **Lote de noviembre de Andina:** SIMC0003 queda en ERROR con «Retroceso de contador…», SIMD0004 con «Salto anómalo…» y SIME0005 con «Lectura duplicada…» (`procesar_lectura = false`). Aprobar el lote responde **409** con los tres motivos y el lote sigue pendiente.
+7. **Lote de noviembre de Andina:** SIMC0003 queda en ERROR con «Retroceso de contador…», SIMD0004 con «Salto anómalo…» y SIME0005 con «Lectura duplicada…» (`procesar_lectura = false`). Aprobar el lote responde **409** con los tres motivos, cada uno con su máquina («Máquina SIMC0003: Retroceso de contador…»), y el lote sigue pendiente.
 
 ## Cómo leer el resultado
 

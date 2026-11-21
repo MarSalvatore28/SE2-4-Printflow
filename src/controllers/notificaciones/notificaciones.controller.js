@@ -228,34 +228,36 @@ const limpiarAntiguasController = async (req, res) => {
 
 // --------------------------------- Lotes ----------------------------------
 
-const listarLotesController = async (req, res) => {
-  const { estado, cliente_id, desde, hasta } = req.query;
+const vieneValor = (valor) => valor !== undefined && valor !== '';
+
+// Filtros de GET /api/notificaciones/lotes. Devuelve { error } (mensaje para el 400) o { filtros }.
+const filtrosDeLotes = ({ estado, cliente_id, desde, hasta }) => {
   const filtros = {};
 
-  if (estado !== undefined && estado !== '') {
+  if (vieneValor(estado)) {
     filtros.estado = String(estado).toUpperCase();
     if (!Notificaciones.ESTADOS_LOTE.includes(filtros.estado)) {
-      return res.status(400).json({
-        success: false,
-        message: `estado debe ser uno de: ${Notificaciones.ESTADOS_LOTE.join(', ')}`,
-      });
+      return { error: `estado debe ser uno de: ${Notificaciones.ESTADOS_LOTE.join(', ')}` };
     }
   }
-  if (cliente_id !== undefined && cliente_id !== '') {
+  if (vieneValor(cliente_id)) {
     filtros.clienteId = aEntero(cliente_id);
-    if (!filtros.clienteId) return res.status(400).json({ success: false, message: 'cliente_id inválido' });
+    if (!filtros.clienteId) return { error: 'cliente_id inválido' };
   }
   for (const [nombre, valor] of [['desde', desde], ['hasta', hasta]]) {
-    if (valor !== undefined && valor !== '') {
-      if (!esFechaValida(String(valor))) {
-        return res.status(400).json({ success: false, message: `${nombre} debe tener el formato AAAA-MM-DD` });
-      }
-      filtros[nombre] = String(valor);
-    }
+    if (!vieneValor(valor)) continue;
+    if (!esFechaValida(String(valor))) return { error: `${nombre} debe tener el formato AAAA-MM-DD` };
+    filtros[nombre] = String(valor);
   }
   if (filtros.desde && filtros.hasta && filtros.desde > filtros.hasta) {
-    return res.status(400).json({ success: false, message: 'La fecha desde no puede ser posterior a la fecha hasta' });
+    return { error: 'La fecha desde no puede ser posterior a la fecha hasta' };
   }
+  return { filtros };
+};
+
+const listarLotesController = async (req, res) => {
+  const { error, filtros } = filtrosDeLotes(req.query);
+  if (error) return res.status(400).json({ success: false, message: error });
 
   try {
     const data = await Notificaciones.listarLotes(filtros);

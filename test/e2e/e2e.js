@@ -36,7 +36,8 @@ const PROYECTO = process.env.E2E_PROYECTO || 'printflow-e2e';
 const WEB_PORT = process.env.E2E_WEB_PORT || '8099';
 const DB_PORT = process.env.E2E_DB_PORT || '5499';
 const BASE = `http://localhost:${WEB_PORT}`;
-const CLAVE = 'Printflow2026*';
+// Contraseña de los usuarios de prueba: DEMO_PASSWORD (del entorno o del .env) o la de siempre
+let CLAVE = process.env.DEMO_PASSWORD || 'Printflow2026*';
 const MESES = ['2026-08', '2026-09', '2026-10'];
 const NOVIEMBRE = '2026-11';
 const ENV = { ...process.env, WEB_PORT, DB_HOST_PORT: DB_PORT };
@@ -294,15 +295,18 @@ async function compararConsolidado(token, cliente, clienteId, periodo, { reempla
 }
 
 // ---------------------------------------------------------------------------
-// La prueba
+// La prueba, por secciones. `ctx` lleva lo que comparten: el .env, los tokens, los ids de los
+// clientes, los lotes aprobados y el reemplazo de noviembre.
 // ---------------------------------------------------------------------------
 
-async function prueba() {
-  console.log('PrintFlow · prueba de punta a punta (E2E)');
-  console.log(`Proyecto de Docker: ${PROYECTO} · web ${BASE} · base 127.0.0.1:${DB_PORT}`);
-  console.log('No toca tu base de desarrollo (proyecto «printflow»).');
+const lista = (valor) => valor || [];
+const motivosDe = (datos) => (datos.errores || [datos.message]).join('; ');
+const consumoDeFila = (fila) => ({ bn: fila?.consumo?.total_bn, color: fila?.consumo?.total_color });
+const maquinaDe = (serie) => escenario.clientes.flatMap((c) => c.maquinas).find((m) => m.serie === serie);
+const clienteDe = (codigo) => escenario.clientes.find((c) => c.codigo === codigo);
 
-  // 1 ---------------------------------------------------------------------
+// 1. Base limpia, sistema arriba, datos del escenario y sesiones de los tres roles
+async function seccionSistemaArriba(ctx) {
   seccion('1. Base limpia y sistema arriba');
   const env = leerEnv();
   exigir(Boolean(env), 'Existe el .env del backend', 'Falta el .env: corre `npm run configurar` y vuelve a intentarlo');
@@ -310,6 +314,8 @@ async function prueba() {
     'Corre `npm run configurar` para completarlo');
   DB_USER = env.DB_USER || DB_USER;
   DB_NAME = env.DB_NAME || DB_NAME;
+  CLAVE = process.env.DEMO_PASSWORD || env.DEMO_PASSWORD || CLAVE;
+  ctx.env = env;
 
   const info = spawnSync(DOCKER, ['info', '--format', '{{.ServerVersion}}'], { encoding: 'utf8' });
   exigir(info.status === 0, 'Docker está corriendo', 'Abre Docker Desktop y espera «Engine running»');
@@ -329,83 +335,93 @@ async function prueba() {
   exigir(r.codigo === 0 && r.salida.includes('Simulación lista: 5 máquinas asignadas'),
     'preparar-datos.js: clientes, contratos, áreas y 5 máquinas asignadas', ultimasLineas(r.salida));
 
-  const operador = await iniciarSesion('operador');
-  const admin = await iniciarSesion('admin');
-  const auditor = await iniciarSesion('auditor');
+  ctx.operador = await iniciarSesion('operador');
+  ctx.admin = await iniciarSesion('admin');
+  ctx.auditor = await iniciarSesion('auditor');
 
-  const ids = {};
+  ctx.ids = {};
   for (const cliente of escenario.clientes) {
-    const { status, datos } = await api(`/api/clientes/ruc/${cliente.ruc}`, { token: operador });
-    ids[cliente.codigo] = (datos.data || datos)?.id_cliente;
-    exigir(status === 200 && Boolean(ids[cliente.codigo]), `Cliente ${cliente.nombre} registrado (#${ids[cliente.codigo]})`, `HTTP ${status}`);
+    const { status, datos } = await api(`/api/clientes/ruc/${cliente.ruc}`, { token: ctx.operador });
+    ctx.ids[cliente.codigo] = (datos.data || datos)?.id_cliente;
+    exigir(status === 200 && Boolean(ctx.ids[cliente.codigo]), `Cliente ${cliente.nombre} registrado (#${ctx.ids[cliente.codigo]})`, `HTTP ${status}`);
   }
+}
 
-  // 2 ---------------------------------------------------------------------
+// Comprueba y aprueba el lote de un cliente en un mes. Devuelve el id del lote si se aprobó.
+async function aprobarLoteDelMes(ctx, lotes, periodo, cliente) {
+  const codigo = `SIM-${periodo}-${cliente.codigo}`;
+  const lote = lotes[codigo];
+  if (!comprobar(Boolean(lote), `${codigo}: lote en staging`, `lotes pendientes: ${Object.keys(lotes).join(', ') || 'ninguno'}`)) return;
+  const conError = lote.filas.filter((f) => f.estado_maquina === 'ERROR');
+  comprobar(lote.filas.length === cliente.maquinas.length && conError.length === 0,
+    `${codigo}: ${lote.filas.length} lecturas, ninguna en ERROR`,
+    conError.map((f) => `${f.serie_maquina}: ${f.mensaje_aviso}`).join('; '));
+  const { status, datos } = await aprobar(ctx.operador, lote.loteId, periodo);
+  comprobar(status === 200, `${codigo} (#${lote.loteId}) aprobado`, `HTTP ${status}: ${motivosDe(datos)}`);
+  if (status === 200) ctx.lotesAprobados[codigo] = lote.loteId;
+}
+
+// 2. Correos de cada mes, ingesta y aprobación por la API
+async function seccionCorreosYAprobacion(ctx) {
   seccion(`2. Correos de ${MESES[0]} a ${MESES[MESES.length - 1]}, ingesta y aprobación por la API (operador)`);
-  const lotesAprobados = {};
+  ctx.lotesAprobados = {};
   for (const periodo of MESES) {
     enviarCorreos(periodo);
-    const lotes = await lotesPendientes(operador, periodo);
-    for (const cliente of escenario.clientes) {
-      const codigo = `SIM-${periodo}-${cliente.codigo}`;
-      const lote = lotes[codigo];
-      if (!comprobar(Boolean(lote), `${codigo}: lote en staging`, `lotes pendientes: ${Object.keys(lotes).join(', ') || 'ninguno'}`)) continue;
-      const conError = lote.filas.filter((f) => f.estado_maquina === 'ERROR');
-      comprobar(lote.filas.length === cliente.maquinas.length && conError.length === 0,
-        `${codigo}: ${lote.filas.length} lecturas, ninguna en ERROR`,
-        conError.map((f) => `${f.serie_maquina}: ${f.mensaje_aviso}`).join('; '));
-      const { status, datos } = await aprobar(operador, lote.loteId, periodo);
-      comprobar(status === 200, `${codigo} (#${lote.loteId}) aprobado`, `HTTP ${status}: ${(datos.errores || [datos.message]).join('; ')}`);
-      if (status === 200) lotesAprobados[codigo] = lote.loteId;
-    }
+    const lotes = await lotesPendientes(ctx.operador, periodo);
+    for (const cliente of escenario.clientes) await aprobarLoteDelMes(ctx, lotes, periodo, cliente);
   }
+}
 
-  // 3 ---------------------------------------------------------------------
+// 3. Consolidado de cada mes y cliente contra el cálculo a mano
+async function seccionConsolidado(ctx) {
   seccion('3. Consolidado contra el cálculo a mano del escenario (contadoresAlCierre)');
   for (const periodo of MESES) {
     for (const cliente of escenario.clientes) {
-      const data = await compararConsolidado(operador, cliente, ids[cliente.codigo], periodo, { primerMes: periodo === MESES[0] });
+      const data = await compararConsolidado(ctx.operador, cliente, ctx.ids[cliente.codigo], periodo, { primerMes: periodo === MESES[0] });
       if (cliente.codigo === 'horizonte' && periodo === '2026-10') {
         comprobar(data?.resumen?.monto_total_general === '395.48', 'Colegio Horizonte · 2026-10 factura $395,48 (el número de la demo)',
           `obtenido $${data?.resumen?.monto_total_general}`);
       }
     }
   }
+}
 
-  // 4 ---------------------------------------------------------------------
+// 4. Tokens, roles, ingesta desde fuera y auditoría
+async function seccionSeguridad(ctx) {
   seccion('4. Seguridad');
   let res = await api('/api/auth/perfil');
   comprobar(res.status === 401, 'Sin token: GET /api/auth/perfil → 401', `HTTP ${res.status}`);
   res = await api('/api/auth/perfil', { token: 'token-falso' });
   comprobar(res.status === 401, 'Token falso: GET /api/auth/perfil → 401', `HTTP ${res.status}`);
-  res = await api('/api/auth/perfil', { token: operador });
+  res = await api('/api/auth/perfil', { token: ctx.operador });
   comprobar(res.status === 200 && Boolean(res.cabeceras.get('x-nuevo-token')), 'Token válido: 200 y la respuesta trae X-Nuevo-Token',
     `HTTP ${res.status}`);
-  res = await aprobar(auditor, lotesAprobados['SIM-2026-10-horizonte'] || 1, '2026-10');
+  res = await aprobar(ctx.auditor, ctx.lotesAprobados['SIM-2026-10-horizonte'] || 1, '2026-10');
   comprobar(res.status === 403, 'El auditor no puede aprobar lotes: POST /api/staging/approve-batch → 403', `HTTP ${res.status}`);
-  res = await api('/api/ingesta/cargar', { metodo: 'POST', cuerpo: [], token: env.INGESTA_TOKEN });
+  res = await api('/api/ingesta/cargar', { metodo: 'POST', cuerpo: [], token: ctx.env.INGESTA_TOKEN });
   comprobar(res.status === 403, `Ingesta desde fuera (puerto ${WEB_PORT}), aun con el token de ingesta → 403`, `HTTP ${res.status}`);
-  res = await api('/api/auditoria?tabla=lotes_carga', { token: auditor });
+  res = await api('/api/auditoria?tabla=lotes_carga', { token: ctx.auditor });
   comprobar(res.status === 403, 'La auditoría es solo para admin: el auditor recibe 403', `HTTP ${res.status}`);
-  const loteAuditado = lotesAprobados['SIM-2026-10-horizonte'];
-  res = await api(`/api/auditoria?tabla=lotes_carga&id_registro=${loteAuditado}`, { token: admin });
-  const aprobacion = (res.datos.data || []).find((a) => a.accion === 'APROBAR');
+  const loteAuditado = ctx.lotesAprobados['SIM-2026-10-horizonte'];
+  res = await api(`/api/auditoria?tabla=lotes_carga&id_registro=${loteAuditado}`, { token: ctx.admin });
+  const registros = lista(res.datos.data);
+  const aprobacion = registros.find((a) => a.accion === 'APROBAR');
   comprobar(res.status === 200 && aprobacion?.usuario_email === 'operador@printflow.local',
     `GET /api/auditoria (admin) muestra la aprobación del lote #${loteAuditado} por operador@printflow.local`,
-    `HTTP ${res.status}: ${JSON.stringify((res.datos.data || []).map((a) => [a.accion, a.usuario_email]))}`);
+    `HTTP ${res.status}: ${JSON.stringify(registros.map((a) => [a.accion, a.usuario_email]))}`);
+}
 
-  // 5 ---------------------------------------------------------------------
+const instalacion = async (ctx, serie) => (await api(`/api/instalacion/serie/${serie}`, { token: ctx.operador })).datos.data || {};
+
+// 5. Lecturas que deben quedar en DUPLICADA, RETROCESO y SALTO_ANOMALO en noviembre
+async function seccionValidaciones(ctx) {
   seccion('5. Validaciones de lecturas (S3-01): DUPLICADA, RETROCESO y SALTO_ANOMALO');
-  const horizonte = escenario.clientes.find((c) => c.codigo === 'horizonte');
-  const andina = escenario.clientes.find((c) => c.codigo === 'andina');
-  const maquinaDe = (serie) => escenario.clientes.flatMap((c) => c.maquinas).find((m) => m.serie === serie);
-  const instalacion = async (serie) => (await api(`/api/instalacion/serie/${serie}`, { token: operador })).datos.data || {};
 
   // DUPLICADA con la lectura manual: SIMA0001 ya tiene su lectura de octubre aprobada
-  const simA = await instalacion('SIMA0001');
+  const simA = await instalacion(ctx, 'SIMA0001');
   const octubreA = lecturaEsperada(maquinaDe('SIMA0001'), '2026-10');
-  res = await api('/api/lecturas/manual', {
-    token: operador,
+  let res = await api('/api/lecturas/manual', {
+    token: ctx.operador,
     metodo: 'POST',
     cuerpo: {
       instalacion_id: simA.id_instalacion, fecha_lectura: '2026-10-20',
@@ -418,10 +434,10 @@ async function prueba() {
 
   // DUPLICADA en un lote: el operador registra a mano la lectura de noviembre de SIME0005 y luego
   // llega igual su correo
-  const simE = await instalacion('SIME0005');
+  const simE = await instalacion(ctx, 'SIME0005');
   const noviembreE = lecturaEsperada(maquinaDe('SIME0005'), NOVIEMBRE);
   res = await api('/api/lecturas/manual', {
-    token: operador,
+    token: ctx.operador,
     metodo: 'POST',
     cuerpo: {
       instalacion_id: simE.id_instalacion, fecha_lectura: '2026-11-20',
@@ -432,7 +448,7 @@ async function prueba() {
 
   // RETROCESO y SALTO_ANOMALO alterando el historial aprobado de Constructora Andina (como en el PR #58).
   // Solo se tocan máquinas de Andina: el reemplazo de noviembre es de Colegio Horizonte.
-  r = psql(`
+  const r = psql(`
     UPDATE reportes_oficiales SET contador_impresiones_bn = contador_impresiones_bn + 100000000
      WHERE periodo = '2026-10' AND maquina_id = (SELECT id_maquina FROM maquinas WHERE serie = 'SIMC0003');
     UPDATE reportes_oficiales SET contador_impresiones_bn = contador_impresiones_bn / 10
@@ -440,17 +456,19 @@ async function prueba() {
   `);
   comprobar(r.codigo === 0, 'Historial alterado: SIMC0003 +100.000.000 en octubre (retroceso) y SIMD0004 ÷10 de agosto a octubre (salto)',
     ultimasLineas(r.salida));
+}
 
-  // 6 ---------------------------------------------------------------------
-  seccion('6. Reemplazo de noviembre: SIMB0002 → SIMF0006 (Colegio Horizonte)');
+// 6a. El reemplazo SIMB0002 → SIMF0006 registrado por la API
+async function registrarReemplazoNoviembre(ctx) {
   const datosReemplazo = reemplazosPorRegistrar(escenario, NOVIEMBRE)[0];
-  const saliente = await instalacion(datosReemplazo.saliente);
-  const libres = (await api('/api/instalacion/disponibles', { token: admin })).datos.data || [];
+  ctx.datosReemplazo = datosReemplazo;
+  const saliente = await instalacion(ctx, datosReemplazo.saliente);
+  const libres = (await api('/api/instalacion/disponibles', { token: ctx.admin })).datos.data || [];
   const entrante = libres.find((m) => m.serie === datosReemplazo.entrante) || {};
   comprobar(Boolean(saliente.id_maquina && entrante.id_maquina), `${datosReemplazo.saliente} asignada y ${datosReemplazo.entrante} libre`,
     `saliente #${saliente.id_maquina}, entrante #${entrante.id_maquina}`);
-  res = await api('/api/maquinas-cambio', {
-    token: admin,
+  const res = await api('/api/maquinas-cambio', {
+    token: ctx.admin,
     metodo: 'POST',
     cuerpo: {
       maquina_saliente_id: saliente.id_maquina,
@@ -466,44 +484,39 @@ async function prueba() {
       contador_inicial_entrante_color: datosReemplazo.contador_inicial_entrante.color,
     },
   });
-  const reemplazo = res.datos.data || {};
-  comprobar(res.status === 201 && reemplazo.tipo_cambio === 'Daño',
-    `Reemplazo registrado por la API (admin, tipo «${reemplazo.tipo_cambio}»): #${reemplazo.id_maquina_cambio}`,
+  ctx.reemplazo = res.datos.data || {};
+  comprobar(res.status === 201 && ctx.reemplazo.tipo_cambio === 'Daño',
+    `Reemplazo registrado por la API (admin, tipo «${ctx.reemplazo.tipo_cambio}»): #${ctx.reemplazo.id_maquina_cambio}`,
     `HTTP ${res.status}: ${res.datos.message}`);
+}
 
-  enviarCorreos(NOVIEMBRE, { reemplazos: true });
-  let lotes = await lotesPendientes(operador, NOVIEMBRE);
-
+// 6b. Lote de noviembre de Horizonte: la entrante en lugar de la saliente, sin errores, aprobado
+async function aprobarNoviembreHorizonte(ctx) {
+  const { datosReemplazo } = ctx;
   const codigoH = `SIM-${NOVIEMBRE}-horizonte`;
-  const loteH = lotes[codigoH];
-  if (comprobar(Boolean(loteH), `${codigoH}: lote en staging`)) {
-    const filaF = loteH.filas.find((f) => f.serie_maquina === datosReemplazo.entrante);
-    if (filaF?.estado_maquina === 'ERROR') {
-      res = await api(`/api/staging/${filaF.id_staging_consolidado}/reprocesar`, { token: operador, metodo: 'POST' });
-      comprobar(res.status === 200 && res.datos.data?.corregido, `${datosReemplazo.entrante} estaba en ERROR («${filaF.mensaje_aviso}»): reprocesado`,
-        `HTTP ${res.status}: ${res.datos.message}`);
-      lotes = await lotesPendientes(operador, NOVIEMBRE);
-    }
-    const filas = (lotes[codigoH] || loteH).filas;
-    const conError = filas.filter((f) => f.estado_maquina === 'ERROR');
-    comprobar(conError.length === 0 && filas.some((f) => f.serie_maquina === datosReemplazo.entrante),
-      `${codigoH}: trae a ${datosReemplazo.entrante} en lugar de ${datosReemplazo.saliente}, sin errores`,
-      `${filas.map((f) => `${f.serie_maquina} ${f.estado_maquina} ${f.mensaje_aviso || ''}`).join('; ')}`);
-    res = await aprobar(operador, loteH.loteId, NOVIEMBRE);
-    comprobar(res.status === 200, `${codigoH} (#${loteH.loteId}) aprobado`, `HTTP ${res.status}: ${(res.datos.errores || [res.datos.message]).join('; ')}`);
+  const loteH = ctx.lotesNoviembre[codigoH];
+  if (!comprobar(Boolean(loteH), `${codigoH}: lote en staging`)) return;
+
+  const filaF = loteH.filas.find((f) => f.serie_maquina === datosReemplazo.entrante);
+  if (filaF?.estado_maquina === 'ERROR') {
+    const res = await api(`/api/staging/${filaF.id_staging_consolidado}/reprocesar`, { token: ctx.operador, metodo: 'POST' });
+    comprobar(res.status === 200 && res.datos.data?.corregido, `${datosReemplazo.entrante} estaba en ERROR («${filaF.mensaje_aviso}»): reprocesado`,
+      `HTTP ${res.status}: ${res.datos.message}`);
+    ctx.lotesNoviembre = await lotesPendientes(ctx.operador, NOVIEMBRE);
   }
+  const filas = (ctx.lotesNoviembre[codigoH] || loteH).filas;
+  const conError = filas.filter((f) => f.estado_maquina === 'ERROR');
+  comprobar(conError.length === 0 && filas.some((f) => f.serie_maquina === datosReemplazo.entrante),
+    `${codigoH}: trae a ${datosReemplazo.entrante} en lugar de ${datosReemplazo.saliente}, sin errores`,
+    `${filas.map((f) => `${f.serie_maquina} ${f.estado_maquina} ${f.mensaje_aviso || ''}`).join('; ')}`);
+  const res = await aprobar(ctx.operador, loteH.loteId, NOVIEMBRE);
+  comprobar(res.status === 200, `${codigoH} (#${loteH.loteId}) aprobado`, `HTTP ${res.status}: ${motivosDe(res.datos)}`);
+}
 
-  // Consolidado de noviembre: SIMA0001 como siempre y una fila del cambio con los dos tramos
-  const { status: stNov, data: nov } = await consolidado(operador, ids.horizonte, NOVIEMBRE);
-  comprobar(stNov === 200 && (nov.detalles || []).length === 2, `${horizonte.nombre} · ${NOVIEMBRE}: 2 filas en el consolidado (SIMA0001 y la del cambio)`,
-    `HTTP ${stNov}: ${(nov.detalles || []).map((f) => f.info?.serie).join(', ')}`);
-  const filaA = (nov.detalles || []).find((f) => f.info?.serie === 'SIMA0001');
-  const a = { actual: lecturaEsperada(maquinaDe('SIMA0001'), NOVIEMBRE), anterior: lecturaEsperada(maquinaDe('SIMA0001'), '2026-10') };
-  const consumoA = { bn: a.actual.bn - a.anterior.bn, color: a.actual.color - a.anterior.color };
-  comprobar(igual({ bn: filaA?.consumo?.total_bn, color: filaA?.consumo?.total_color }, consumoA),
-    `${NOVIEMBRE} · SIMA0001: consumo B/N ${numero(consumoA.bn)} · color ${numero(consumoA.color)}`,
-    diferencia({ bn: filaA?.consumo?.total_bn, color: filaA?.consumo?.total_color }, consumoA));
-
+// 6c. La fila del cambio del consolidado de noviembre: saliente + entrante. Devuelve su consumo.
+function compararFilaDelCambio(ctx, filasNov) {
+  const { datosReemplazo } = ctx;
+  const horizonte = clienteDe('horizonte');
   const entranteEsc = maquinasDelPeriodo(horizonte, NOVIEMBRE, escenario, { reemplazos: true }).find((m) => m.serie === datosReemplazo.entrante);
   const octubreB = lecturaEsperada(maquinaDe(datosReemplazo.saliente), '2026-10');
   const tramoSaliente = {
@@ -516,61 +529,109 @@ async function prueba() {
     color: lecturaF.color - datosReemplazo.contador_inicial_entrante.color,
   };
   const consumoCambio = { bn: tramoSaliente.bn + tramoEntrante.bn, color: tramoSaliente.color + tramoEntrante.color };
-  const filaCambio = (nov.detalles || []).find((f) => f.info?.tiene_cambio);
-  comprobar(Boolean(filaCambio) && filaCambio.cambio?.maquina_saliente?.serie === datosReemplazo.saliente &&
-    filaCambio.cambio?.maquina_entrante?.serie === datosReemplazo.entrante,
+  const filaCambio = filasNov.find((f) => f.info?.tiene_cambio);
+  const cambio = filaCambio?.cambio;
+  comprobar(Boolean(filaCambio) && cambio?.maquina_saliente?.serie === datosReemplazo.saliente &&
+    cambio?.maquina_entrante?.serie === datosReemplazo.entrante,
   `${NOVIEMBRE}: fila con cambio (${datosReemplazo.saliente} → ${datosReemplazo.entrante})`,
-  filaCambio ? `saliente ${filaCambio.cambio?.maquina_saliente?.serie}, entrante ${filaCambio.cambio?.maquina_entrante?.serie}` : 'no hay fila con tiene_cambio');
-  const tramo = (lado) => ({ bn: filaCambio?.cambio?.[lado]?.contadores?.consumo?.total_bn, color: filaCambio?.cambio?.[lado]?.contadores?.consumo?.total_color });
+  filaCambio ? `saliente ${cambio?.maquina_saliente?.serie}, entrante ${cambio?.maquina_entrante?.serie}` : 'no hay fila con tiene_cambio');
+  const tramo = (lado) => ({ bn: cambio?.[lado]?.contadores?.consumo?.total_bn, color: cambio?.[lado]?.contadores?.consumo?.total_color });
   comprobar(igual(tramo('maquina_saliente'), tramoSaliente),
     `Tramo saliente: contador final ${numero(datosReemplazo.contador_final_saliente.bn)} − octubre ${numero(octubreB.bn)} = B/N ${numero(tramoSaliente.bn)}`,
     diferencia(tramo('maquina_saliente'), tramoSaliente));
   comprobar(igual(tramo('maquina_entrante'), tramoEntrante),
     `Tramo entrante: noviembre ${numero(lecturaF.bn)} − contador inicial ${numero(datosReemplazo.contador_inicial_entrante.bn)} = B/N ${numero(tramoEntrante.bn)}`,
     diferencia(tramo('maquina_entrante'), tramoEntrante));
-  const realCambio = { bn: filaCambio?.consumo?.total_bn, color: filaCambio?.consumo?.total_color };
+  const realCambio = consumoDeFila(filaCambio);
   comprobar(igual(realCambio, consumoCambio), `Consumo de la fila del cambio = saliente + entrante: B/N ${numero(consumoCambio.bn)} · color ${numero(consumoCambio.color)}`,
     diferencia(realCambio, consumoCambio));
+  return consumoCambio;
+}
+
+// 6d. Consolidado y facturación de noviembre con el reemplazo; octubre no cambia
+async function compararNoviembreHorizonte(ctx) {
+  const horizonte = clienteDe('horizonte');
+  // Consolidado de noviembre: SIMA0001 como siempre y una fila del cambio con los dos tramos
+  const { status: stNov, data: nov } = await consolidado(ctx.operador, ctx.ids.horizonte, NOVIEMBRE);
+  const filasNov = lista(nov.detalles);
+  comprobar(stNov === 200 && filasNov.length === 2, `${horizonte.nombre} · ${NOVIEMBRE}: 2 filas en el consolidado (SIMA0001 y la del cambio)`,
+    `HTTP ${stNov}: ${filasNov.map((f) => f.info?.serie).join(', ')}`);
+  const filaA = filasNov.find((f) => f.info?.serie === 'SIMA0001');
+  const a = { actual: lecturaEsperada(maquinaDe('SIMA0001'), NOVIEMBRE), anterior: lecturaEsperada(maquinaDe('SIMA0001'), '2026-10') };
+  const consumoA = { bn: a.actual.bn - a.anterior.bn, color: a.actual.color - a.anterior.color };
+  comprobar(igual(consumoDeFila(filaA), consumoA),
+    `${NOVIEMBRE} · SIMA0001: consumo B/N ${numero(consumoA.bn)} · color ${numero(consumoA.color)}`,
+    diferencia(consumoDeFila(filaA), consumoA));
+
+  const consumoCambio = compararFilaDelCambio(ctx, filasNov);
 
   const facturaNov = facturacionEsperada(horizonte.contrato, { bn: consumoA.bn + consumoCambio.bn, color: consumoA.color + consumoCambio.color });
-  const cNov = (nov.resumen?.facturacion || [])[0] || {};
+  const cNov = lista(nov.resumen?.facturacion)[0] || {};
   const obtenidaNov = { modo: cNov.modo, bn: soloTramo(cNov.bn), color: soloTramo(cNov.color), renta: cNov.renta, total: cNov.total };
   comprobar(igual(obtenidaNov, facturaNov) && nov.resumen?.monto_total_general === facturaNov.total,
     `${horizonte.nombre} · ${NOVIEMBRE}: facturación con el reemplazo = $${facturaNov.total}`, diferencia(obtenidaNov, facturaNov));
 
-  const { data: octDespues } = await consolidado(operador, ids.horizonte, '2026-10');
+  const { data: octDespues } = await consolidado(ctx.operador, ctx.ids.horizonte, '2026-10');
   comprobar(octDespues.resumen?.monto_total_general === '395.48', `${horizonte.nombre} · 2026-10 no cambió con el reemplazo: sigue en $395,48`,
     `obtenido $${octDespues.resumen?.monto_total_general}`);
+}
 
-  res = await api(`/api/maquinas-cambio/${reemplazo.id_maquina_cambio}/anular`, { token: admin, metodo: 'POST', cuerpo: { motivo: 'Prueba E2E: anular con el período aprobado' } });
+// 6. Reemplazo de noviembre: registro, lote, consolidado y que no se pueda anular con el mes aprobado
+async function seccionReemplazo(ctx) {
+  seccion('6. Reemplazo de noviembre: SIMB0002 → SIMF0006 (Colegio Horizonte)');
+  await registrarReemplazoNoviembre(ctx);
+
+  enviarCorreos(NOVIEMBRE, { reemplazos: true });
+  ctx.lotesNoviembre = await lotesPendientes(ctx.operador, NOVIEMBRE);
+  await aprobarNoviembreHorizonte(ctx);
+  await compararNoviembreHorizonte(ctx);
+
+  const { reemplazo } = ctx;
+  const res = await api(`/api/maquinas-cambio/${reemplazo.id_maquina_cambio}/anular`, { token: ctx.admin, metodo: 'POST', cuerpo: { motivo: 'Prueba E2E: anular con el período aprobado' } });
   comprobar(res.status === 409, `Anular el reemplazo #${reemplazo.id_maquina_cambio} con ${NOVIEMBRE} aprobado → 409: «${res.datos.message}»`,
     `HTTP ${res.status}: ${res.datos.message}`);
+}
 
-  // 7 ---------------------------------------------------------------------
+// 7. El lote de noviembre de Andina queda en ERROR por las tres reglas y no se puede aprobar
+async function seccionLoteAndina(ctx) {
   seccion('7. Lote de noviembre de Constructora Andina con las tres validaciones');
   const codigoA = `SIM-${NOVIEMBRE}-andina`;
-  const loteA = lotes[codigoA];
-  if (comprobar(Boolean(loteA), `${codigoA}: lote en staging`)) {
-    const esperados = [
-      { serie: 'SIMC0003', regla: 'RETROCESO', texto: 'Retroceso de contador' },
-      { serie: 'SIMD0004', regla: 'SALTO_ANOMALO', texto: 'Salto anómalo' },
-      { serie: 'SIME0005', regla: 'DUPLICADA', texto: 'Lectura duplicada' },
-    ];
-    for (const e of esperados) {
-      const fila = loteA.filas.find((f) => f.serie_maquina === e.serie);
-      comprobar(fila?.estado_maquina === 'ERROR' && fila.procesar_lectura === false && String(fila.mensaje_aviso || '').startsWith(e.texto),
-        `${e.regla}: ${e.serie} en ERROR con «${fila?.mensaje_aviso}»`,
-        fila ? `estado ${fila.estado_maquina}, procesar_lectura ${fila.procesar_lectura}` : 'sin fila en el lote');
-    }
-    res = await aprobar(operador, loteA.loteId, NOVIEMBRE);
-    const errores = res.datos.errores || [];
-    // Los errores de la ingesta vuelven tal cual su mensaje_aviso (sin la serie)
-    comprobar(res.status === 409 && esperados.every((e) => errores.some((t) => t.startsWith(e.texto))),
-      `Aprobar ${codigoA} (#${loteA.loteId}) → 409 con los tres motivos (retroceso, salto anómalo y duplicada)`,
-      `HTTP ${res.status}: ${errores.join('; ') || res.datos.message}`);
-    const pendiente = (await lotesPendientes(operador, NOVIEMBRE))[codigoA];
-    comprobar(Boolean(pendiente), `${codigoA} sigue pendiente (no se aprobó nada)`);
+  const loteA = ctx.lotesNoviembre[codigoA];
+  if (!comprobar(Boolean(loteA), `${codigoA}: lote en staging`)) return;
+  const esperados = [
+    { serie: 'SIMC0003', regla: 'RETROCESO', texto: 'Retroceso de contador' },
+    { serie: 'SIMD0004', regla: 'SALTO_ANOMALO', texto: 'Salto anómalo' },
+    { serie: 'SIME0005', regla: 'DUPLICADA', texto: 'Lectura duplicada' },
+  ];
+  for (const e of esperados) {
+    const fila = loteA.filas.find((f) => f.serie_maquina === e.serie);
+    comprobar(fila?.estado_maquina === 'ERROR' && fila.procesar_lectura === false && String(fila.mensaje_aviso || '').startsWith(e.texto),
+      `${e.regla}: ${e.serie} en ERROR con «${fila?.mensaje_aviso}»`,
+      fila ? `estado ${fila.estado_maquina}, procesar_lectura ${fila.procesar_lectura}` : 'sin fila en el lote');
   }
+  const res = await aprobar(ctx.operador, loteA.loteId, NOVIEMBRE);
+  const errores = lista(res.datos.errores);
+  // Cada motivo dice de qué máquina es: «Máquina SIMC0003: Retroceso de contador…»
+  comprobar(res.status === 409 && esperados.every((e) => errores.some((t) => t.startsWith(`Máquina ${e.serie}: ${e.texto}`))),
+    `Aprobar ${codigoA} (#${loteA.loteId}) → 409 con los tres motivos, cada uno con su máquina (retroceso, salto anómalo y duplicada)`,
+    `HTTP ${res.status}: ${errores.join('; ') || res.datos.message}`);
+  const pendiente = (await lotesPendientes(ctx.operador, NOVIEMBRE))[codigoA];
+  comprobar(Boolean(pendiente), `${codigoA} sigue pendiente (no se aprobó nada)`);
+}
+
+async function prueba() {
+  console.log('PrintFlow · prueba de punta a punta (E2E)');
+  console.log(`Proyecto de Docker: ${PROYECTO} · web ${BASE} · base 127.0.0.1:${DB_PORT}`);
+  console.log('No toca tu base de desarrollo (proyecto «printflow»).');
+
+  const ctx = {};
+  await seccionSistemaArriba(ctx);
+  await seccionCorreosYAprobacion(ctx);
+  await seccionConsolidado(ctx);
+  await seccionSeguridad(ctx);
+  await seccionValidaciones(ctx);
+  await seccionReemplazo(ctx);
+  await seccionLoteAndina(ctx);
 }
 
 async function main() {

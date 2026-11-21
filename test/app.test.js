@@ -30,6 +30,11 @@ test('una ruta de /api sin token responde 401 en JSON', async () => {
   assert.equal(body.success, false);
 });
 
+test('las respuestas no dicen que la API es Express (sin X-Powered-By)', async () => {
+  const res = await fetch(`${base}/no-existe`);
+  assert.equal(res.headers.get('x-powered-by'), null);
+});
+
 test('la documentación de Swagger carga', async () => {
   const res = await fetch(`${base}/api-docs/`);
   assert.equal(res.status, 200);
