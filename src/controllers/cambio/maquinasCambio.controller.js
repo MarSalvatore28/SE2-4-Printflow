@@ -11,6 +11,7 @@ const {
   validarDatosReemplazo,
   validarFiltrosListado,
 } = require('@utils/maquinasCambio.reglas');
+const { contextoAuditoria } = require('@services/auditoria');
 
 const PERIODO_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -28,7 +29,7 @@ const registrarReemplazoController = async (req, res) => {
     const { error, data } = validarDatosReemplazo(req.body);
     if (error) return res.status(error.status).json({ success: false, message: error.message });
 
-    const id = await registrarReemplazo(data);
+    const id = await registrarReemplazo(data, contextoAuditoria(req));
     const reemplazo = await getReemplazoById(id);
     res.status(201).json({
       success: true,

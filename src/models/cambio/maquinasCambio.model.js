@@ -1,5 +1,6 @@
 const pool = require('@config/db');
 const { contadorMenorQueLectura } = require('@utils/maquinasCambio.reglas');
+const { ACCIONES, leerFila, auditarFila } = require('@services/auditoria');
 
 // Error de negocio: el controlador lo responde con su status (400/404/409) y su mensaje.
 const errorNegocio = (status, message) => Object.assign(new Error(message), { status, esNegocio: true });
@@ -93,8 +94,10 @@ const insertarCabecera = (db, cambioId, maquinaId, tipo, contador, anterior) => 
  *  2. retira la asignación de la saliente (fecha de retiro = fecha del daño);
  *  3. crea la asignación de la entrante en la misma área, contrato e IP (o la IP indicada).
  * Lanza errorNegocio (status 400/404/409) si algo no cuadra; no deja nada a medias.
+ * S3-02: audita el reemplazo, el retiro de la saliente y la asignación de la entrante
+ * con `auditoria` = { usuarioId, ip } de la petición.
  */
-const registrarReemplazo = async (datos) => {
+const registrarReemplazo = async (datos, auditoria = {}) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -191,6 +194,7 @@ const registrarReemplazo = async (datos) => {
     );
     const cambioId = cambio.id_maquina_cambio;
 
+    const asignacionAntes = await leerFila(client, 'instalaciones', asignacion.id_instalacion, { bloquear: true });
     await client.query(
       `UPDATE instalaciones
        SET fecha_retiro = $2::date, activo = FALSE,
@@ -220,6 +224,12 @@ const registrarReemplazo = async (datos) => {
 
     await insertarCabecera(client, cambioId, saliente.id_maquina, 'SALIENTE', finalSaliente, lecturaSaliente);
     await insertarCabecera(client, cambioId, entrante.id_maquina, 'ENTRANTE', inicialEntrante, lecturaEntrante);
+
+    await auditarFila(client, { tabla: 'maquinas_cambio', idRegistro: cambioId, accion: ACCIONES.CREAR, ...auditoria });
+    await auditarFila(client, {
+      tabla: 'instalaciones', idRegistro: asignacion.id_instalacion, accion: ACCIONES.RETIRAR, antes: asignacionAntes, ...auditoria,
+    });
+    await auditarFila(client, { tabla: 'instalaciones', idRegistro: nueva.id_instalacion, accion: ACCIONES.CREAR, ...auditoria });
 
     await client.query('COMMIT');
     return cambioId;
