@@ -8,8 +8,8 @@
 //     contadores: { impresion_bn, impresion_color, copia_bn, copia_color },
 //     cuentas: [ { cuenta, nombre, impresion_bn, ... } ] | null }
 
-const ESTADOS_OK = ['lista', 'listo', 'en reposo', 'imprimiendo', 'ok'];
-const estadoEsOk = (estado) => ESTADOS_OK.includes(String(estado || '').trim().toLowerCase());
+const ESTADOS_OK = new Set(['lista', 'listo', 'en reposo', 'imprimiendo', 'ok']);
+const estadoEsOk = (estado) => ESTADOS_OK.has(String(estado || '').trim().toLowerCase());
 
 const dosDigitos = (n) => String(n).padStart(2, '0');
 const isoCorto = (fecha) =>

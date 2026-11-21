@@ -60,8 +60,8 @@ app.get(['/health', '/api/health'], async (_req, res) => {
 // --- Seguridad de la API (Equipo C, Fase 2): todo /api exige token, salvo login y la ingesta,
 //     que usa su propio token. Va ANTES de las rutas.
 const { protect } = require('@middlewares/auth.middleware'); // [C-F2]
-const RUTAS_PUBLICAS = ['/auth/login', '/auth/validate-token']; // [C-F2]
-app.use('/api', (req, res, next) => (RUTAS_PUBLICAS.includes(req.path) || req.path.startsWith('/ingesta') ? next() : protect(req, res, next))); // [C-F2]
+const RUTAS_PUBLICAS = new Set(['/auth/login', '/auth/validate-token']); // [C-F2]
+app.use('/api', (req, res, next) => (RUTAS_PUBLICAS.has(req.path) || req.path.startsWith('/ingesta') ? next() : protect(req, res, next))); // [C-F2]
 
 // --- Fase 0
 const authRoutes = require('@routes/usuario/usuario.routes'); // [C-F0]
