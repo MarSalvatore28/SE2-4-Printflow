@@ -256,3 +256,5 @@ Cliente: **DOX S.A.**
 ---
 
 Proyecto académico. El código no se distribuye bajo una licencia de código abierto.
+
+---------
